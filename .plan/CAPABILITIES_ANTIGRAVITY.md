@@ -29,6 +29,7 @@
 ```bash
 agy \
   --print "사용자 프롬프트 내용" \
-  --model "gemini-2.5-pro" \
+  --model "gemini-3.7-flash" \
+  --effort "medium" \
   --dangerously-skip-permissions
 ```

@@ -136,10 +136,11 @@ export class AntigravityAdapter extends ProviderAdapter {
     const { prompt, model, cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
 
     return new Promise((resolve, reject) => {
-      // agy 1.1.20 공식 비대화형 플래그 매핑
+      // agy 1.1.20 공식 비대화형 플래그 매핑 (--effort medium 기본 적용)
       const args = [
         '--print', prompt,
-        '--dangerously-skip-permissions'
+        '--dangerously-skip-permissions',
+        '--effort', 'medium'
       ];
 
       if (model && model !== 'default') {
