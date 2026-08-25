@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Node 의존성 설치
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # 소스코드 복사
 COPY src/ ./src/
