@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
+import sharp from 'sharp';
 import { getDb } from '../database/index.js';
 
 export class AttachmentManager {
@@ -26,7 +27,7 @@ export class AttachmentManager {
   }
 
   /**
-   * Telegram으로부터 파일을 다운로드하고 SHA256 계산 후 영속 저장한다.
+   * Telegram으로부터 파일을 다운로드하고, 이미지의 경우 WebP로 압축 변환 후 SHA256 계산 및 영속 저장한다.
    * @param {import('node-telegram-bot-api')} bot
    * @param {string} fileId
    * @param {object} fileMeta { sessionId, messageId, mediaGroupId, fileName, fileType, mimeType, fileSize }
@@ -36,13 +37,12 @@ export class AttachmentManager {
     const fileLink = await bot.getFileLink(fileId);
     const targetDir = this.getMonthlyUploadDir();
 
-    const fileExt = path.extname(fileMeta.fileName || '') || this.guessExtension(fileMeta.mimeType);
-    const uniqueFileName = `${crypto.randomUUID()}${fileExt}`;
-    const localPath = path.join(targetDir, uniqueFileName);
+    const isImage = fileMeta.fileType === 'IMAGE' || fileMeta.mimeType?.startsWith('image/');
+    const fileUuid = crypto.randomUUID();
 
-    // 파일 다운로드 및 SHA256 해시 스트림 계산
-    const hash = crypto.createHash('sha256');
-    const writeStream = fs.createWriteStream(localPath);
+    // 1. 임시 파일로 먼저 다운로드
+    const tempPath = path.join(targetDir, `${fileUuid}.tmp`);
+    const tempWriteStream = fs.createWriteStream(tempPath);
 
     await new Promise((resolve, reject) => {
       const client = fileLink.startsWith('https') ? https : http;
@@ -51,19 +51,50 @@ export class AttachmentManager {
           reject(new Error(`Telegram 파일 다운로드 실패 (HTTP ${response.statusCode})`));
           return;
         }
-
-        response.on('data', (chunk) => {
-          hash.update(chunk);
-        });
-
-        response.pipe(writeStream);
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
+        response.pipe(tempWriteStream);
+        tempWriteStream.on('finish', resolve);
+        tempWriteStream.on('error', reject);
       }).on('error', reject);
     });
 
-    const sha256 = hash.digest('hex');
-    const stats = fs.statSync(localPath);
+    let finalLocalPath = '';
+    let finalMimeType = fileMeta.mimeType || 'application/octet-stream';
+    let finalFileName = fileMeta.fileName || `${fileUuid}.bin`;
+
+    if (isImage) {
+      // 2. 이미지는 sharp를 이용해 고효율 WebP로 압축 변환 (quality 75, 최대 가로 2048px)
+      const webpFileName = `${fileUuid}.webp`;
+      finalLocalPath = path.join(targetDir, webpFileName);
+      finalMimeType = 'image/webp';
+      finalFileName = fileMeta.fileName
+        ? `${path.parse(fileMeta.fileName).name}.webp`
+        : webpFileName;
+
+      try {
+        await sharp(tempPath)
+          .resize({ width: 2048, withoutEnlargement: true })
+          .webp({ quality: 75, effort: 4 })
+          .toFile(finalLocalPath);
+
+        // 임시 원본 파일 삭제
+        fs.unlinkSync(tempPath);
+      } catch (err) {
+        console.warn(`[AttachmentManager] WebP 변환 실패, 원본 유지: ${err.message}`);
+        finalLocalPath = path.join(targetDir, `${fileUuid}.jpg`);
+        fs.renameSync(tempPath, finalLocalPath);
+        finalMimeType = 'image/jpeg';
+      }
+    } else {
+      // 3. 일반 문서는 원본 확장자로 저장
+      const fileExt = path.extname(fileMeta.fileName || '') || this.guessExtension(fileMeta.mimeType);
+      finalLocalPath = path.join(targetDir, `${fileUuid}${fileExt}`);
+      fs.renameSync(tempPath, finalLocalPath);
+    }
+
+    // 4. 최종 저장 파일의 SHA256 및 용량 계산
+    const fileBuffer = fs.readFileSync(finalLocalPath);
+    const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+    const finalSize = fileBuffer.length;
     const attachmentId = crypto.randomUUID();
 
     const db = getDb();
@@ -77,11 +108,11 @@ export class AttachmentManager {
       fileMeta.sessionId,
       fileMeta.messageId || null,
       fileMeta.mediaGroupId || null,
-      fileMeta.fileName || uniqueFileName,
-      fileMeta.fileType || 'DOCUMENT',
-      fileMeta.mimeType || 'application/octet-stream',
-      stats.size,
-      localPath,
+      finalFileName,
+      fileMeta.fileType || (isImage ? 'IMAGE' : 'DOCUMENT'),
+      finalMimeType,
+      finalSize,
+      finalLocalPath,
       sha256,
       JSON.stringify(fileMeta.metadata || {})
     );
