@@ -75,8 +75,6 @@ export function initTelegramBot() {
       text: userText || `[첨부 파일 ${attachedFiles.length}건 전송]`
     });
 
-    }
-
     let statusMsg = null;
     try {
       // 1. 초기 진행 상태 메시지 발송
