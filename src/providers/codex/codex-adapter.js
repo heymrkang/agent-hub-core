@@ -1,6 +1,7 @@
 import { spawn, execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import fs from 'fs';
 import { ProviderAdapter } from '../provider-adapter.js';
 
 const execFileAsync = promisify(execFile);
@@ -28,26 +29,29 @@ export class CodexAdapter extends ProviderAdapter {
   }
 
   /**
-   * Codex 인증 상태 점검 (codex doctor --json 기반)
+   * Codex 인증 상태 점검
    */
   async checkAuth() {
-    try {
-      const { stdout } = await execFileAsync('codex', ['doctor', '--json'], { timeout: 15000 });
-      const report = JSON.parse(stdout);
-      // doctor 리포트 파싱
-      const authOk = report.auth?.valid || report.authenticated || true;
-      return {
-        authenticated: authOk,
-        details: report.summary || 'Codex CLI 인증 정상'
-      };
-    } catch (error) {
-      // doctor 실패 시 일반 health 점검 결과 활용
-      const health = await this.checkHealth();
-      if (!health.healthy) {
-        return { authenticated: false, details: `CLI 실행 불가: ${health.error}` };
-      }
-      return { authenticated: true, details: '인증 상태 확인 완료 (CLI 정상)' };
+    const health = await this.checkHealth();
+    if (!health.healthy) {
+      return { authenticated: false, details: `CLI 실행 불가: ${health.error}` };
     }
+
+    const codexDir = path.join(process.env.HOME || '/root', '.codex');
+    const authFile = path.join(codexDir, 'auth.json');
+    const hasAuth = fs.existsSync(authFile) || (fs.existsSync(codexDir) && fs.readdirSync(codexDir).length > 0);
+
+    if (hasAuth) {
+      return {
+        authenticated: true,
+        details: 'Codex 세션 인증 정상 (~/.codex)'
+      };
+    }
+
+    return {
+      authenticated: false,
+      details: 'Codex 로그인 필요 (컨테이너 내에서 `codex` 또는 `codex login` 실행 필요)'
+    };
   }
 
   /**

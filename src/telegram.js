@@ -2,6 +2,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { isAuthorizedUser } from './telegram/auth.js';
 import { SessionManager } from './sessions/session-manager.js';
 import { TitleService } from './sessions/title-service.js';
+import { ContextManager } from './context/context-manager.js';
 import { queueManager } from './jobs/queue-manager.js';
 import { JobStatusRenderer } from './telegram/renderer/job-status.js';
 import { splitMessage } from './telegram/renderer/response-renderer.js';
@@ -113,6 +114,20 @@ export function initTelegramBot() {
       text
     });
 
+    // 이전 대화 기록(Canonical Context) 빌드 및 주입
+    const contextPackage = ContextManager.buildContextPackage(activeSession.id);
+    let promptWithContext = text;
+
+    if (contextPackage.messages.length > 1) {
+      const history = contextPackage.messages
+        .slice(0, -1) // 방금 저장한 현재 질문 제외
+        .slice(-10) // 최근 최대 10개
+        .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
+        .join('\n\n');
+
+      promptWithContext = `[이전 대화 기록 / Context]\n${history}\n\n[사용자 질문]\n${text}`;
+    }
+
     let statusMsg = null;
     try {
       // 1. 초기 진행 상태 메시지 발송
@@ -129,7 +144,7 @@ export function initTelegramBot() {
         sessionTitle: activeSession.title,
         provider: activeSession.active_provider,
         model: activeSession.active_model,
-        prompt: text,
+        prompt: promptWithContext,
         profile: activeSession.execution_profile,
         onStatusUpdate: (currentStatus, elapsedSec) => {
           if (statusMsg) {
