@@ -55,7 +55,7 @@ export class AntigravityAdapter extends ProviderAdapter {
   }
 
   /**
-   * 지원 모델 목록 동적 조회
+   * 지원 모델 목록 동적 조회 (agy models 기반)
    */
   async discoverModels(forceRefresh = false) {
     const now = Date.now();
@@ -63,13 +63,53 @@ export class AntigravityAdapter extends ProviderAdapter {
       return this.cachedModels;
     }
 
-    this.cachedModels = [
-      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Antigravity 기본/고성능)', default: true },
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (초고속)' },
-      { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet (Thinking)' }
+    try {
+      const { stdout } = await execFileAsync('agy', ['models'], { timeout: 10000 });
+      // ANSI escape 코드 제거 및 라인 분할
+      const cleanStdout = stdout.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+      const lines = cleanStdout.split('\n').map((l) => l.trim()).filter(Boolean);
+      const discovered = [];
+
+      for (const line of lines) {
+        // 헤더나 구분선 필터링
+        if (
+          line.startsWith('Model') ||
+          line.startsWith('---') ||
+          line.startsWith('===') ||
+          line.startsWith('Available') ||
+          line.toLowerCase().includes('usage:')
+        ) {
+          continue;
+        }
+
+        const parts = line.split(/\s+/);
+        const id = parts[0];
+        if (id && id.length > 2) {
+          const desc = parts.slice(1).join(' ');
+          discovered.push({
+            id,
+            name: desc ? `${id} (${desc})` : id,
+            default: discovered.length === 0 // 첫 번째 모델을 기본으로
+          });
+        }
+      }
+
+      if (discovered.length > 0) {
+        console.log(`[AntigravityAdapter] agy models 동적 발견: ${discovered.length}개 모델`);
+        this.cachedModels = discovered;
+        this.lastModelCheck = now;
+        return this.cachedModels;
+      }
+    } catch (err) {
+      console.warn(`[AntigravityAdapter] agy models 동적 조회 실패: ${err.message}`);
+    }
+
+    // CLI 실행 실패 시 기본 fallback
+    return [
+      { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', default: true },
+      { id: 'gemini-3.6-pro', name: 'Gemini 3.6 Pro' },
+      { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet' }
     ];
-    this.lastModelCheck = now;
-    return this.cachedModels;
   }
 
   /**
@@ -82,7 +122,7 @@ export class AntigravityAdapter extends ProviderAdapter {
       jsonOutput: 'SUPPORTED',
       nativeSessionResume: 'SUPPORTED',
       modelSwitching: 'SUPPORTED',
-      dynamicModelDiscovery: 'PARTIAL',
+      dynamicModelDiscovery: 'SUPPORTED',
       multiImage: 'SUPPORTED',
       nativeCompact: 'UNSUPPORTED',
       usageMetrics: 'PARTIAL'
@@ -90,17 +130,20 @@ export class AntigravityAdapter extends ProviderAdapter {
   }
 
   /**
-   * 프롬프트 실행
+   * 프롬프트 실행 (agy 공식 플래그 매핑)
    */
   async executePrompt(options = {}) {
     const { prompt, model, cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
 
     return new Promise((resolve, reject) => {
-      // agy 비대화형 실행 인자 구성
-      const args = ['-p', prompt, '--skip-trust', '-y'];
+      // agy 1.1.20 공식 비대화형 플래그 매핑
+      const args = [
+        '--print', prompt,
+        '--dangerously-skip-permissions'
+      ];
 
       if (model && model !== 'default') {
-        args.push('-m', model);
+        args.push('--model', model);
       }
 
       const child = spawn('agy', args, {

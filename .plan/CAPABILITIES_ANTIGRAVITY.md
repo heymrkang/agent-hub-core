@@ -28,8 +28,7 @@
 ### 1) 신규 프롬프트 비대화형 실행
 ```bash
 agy \
-  -p "사용자 프롬프트 내용" \
-  -m "gemini-2.5-pro" \
-  --skip-trust \
-  -y
+  --print "사용자 프롬프트 내용" \
+  --model "gemini-2.5-pro" \
+  --dangerously-skip-permissions
 ```
