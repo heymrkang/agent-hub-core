@@ -7,21 +7,21 @@ import { ProviderAdapter } from '../provider-adapter.js';
 
 const execFileAsync = promisify(execFile);
 
-export class GeminiAdapter extends ProviderAdapter {
+export class AntigravityAdapter extends ProviderAdapter {
   constructor() {
-    super('gemini');
+    super('antigravity');
     this.workspaceDir = process.env.WORKSPACE_DIR || path.resolve(process.cwd(), 'workspace');
-    this.defaultTimeoutMs = parseInt(process.env.GEMINI_TIMEOUT_MS || '120000', 10);
+    this.defaultTimeoutMs = parseInt(process.env.ANTIGRAVITY_TIMEOUT_MS || '120000', 10);
     this.cachedModels = null;
     this.lastModelCheck = 0;
   }
 
   /**
-   * Gemini CLI 설치 및 버전 확인
+   * Antigravity CLI (agy) 설치 및 버전 확인
    */
   async checkHealth() {
     try {
-      const { stdout } = await execFileAsync('gemini', ['-v'], { timeout: 10000 });
+      const { stdout } = await execFileAsync('agy', ['--version'], { timeout: 10000 });
       const version = stdout.trim();
       return { healthy: true, version };
     } catch (error) {
@@ -30,7 +30,7 @@ export class GeminiAdapter extends ProviderAdapter {
   }
 
   /**
-   * Gemini 로그인/인증 상태 점검 (OAuth 세션 및 ~/.gemini 기반)
+   * Antigravity 인증 상태 점검 (OAuth 및 ~/.gemini 세션 기반)
    */
   async checkAuth() {
     const health = await this.checkHealth();
@@ -38,47 +38,24 @@ export class GeminiAdapter extends ProviderAdapter {
       return { authenticated: false, details: `CLI 실행 불가: ${health.error}` };
     }
 
-    // ~/.gemini 또는 /data/providers/gemini 세션 디렉토리 확인
-    const userGeminiDir = path.join(os.homedir(), '.gemini');
-    const dataGeminiDir = '/data/providers/gemini';
+    const geminiDir = path.join(os.homedir(), '.gemini');
+    const hasAuthFiles = fs.existsSync(geminiDir) && fs.readdirSync(geminiDir).length > 0;
 
-    const hasUserAuth = fs.existsSync(userGeminiDir) && fs.readdirSync(userGeminiDir).length > 0;
-    const hasDataAuth = fs.existsSync(dataGeminiDir) && fs.readdirSync(dataGeminiDir).length > 0;
-
-    // 간이 ping 프롬프트로 실제 OAuth 인증 세션 유효성 테스트
-    try {
-      await execFileAsync('gemini', ['-p', 'ping', '--approval-mode', 'yolo', '--skip-trust', '-o', 'text'], {
-        timeout: 10000
-      });
+    if (hasAuthFiles) {
       return {
         authenticated: true,
-        details: 'Gemini CLI 로그인 세션 인증 정상'
-      };
-    } catch (error) {
-      // 에러 메시지에 auth 관련 키워드가 있는 경우
-      if (error.message.includes('auth') || error.message.includes('login') || error.message.includes('credential')) {
-        return {
-          authenticated: false,
-          details: 'Gemini CLI 로그인 필요 (`gemini login` 또는 ~/.gemini 영속 세션 필요)'
-        };
-      }
-
-      if (hasUserAuth || hasDataAuth) {
-        return {
-          authenticated: true,
-          details: 'Gemini 영속 세션 디렉토리 확인 완료'
-        };
-      }
-
-      return {
-        authenticated: false,
-        details: 'Gemini CLI 로그인 필요 (영속 계정 미확인)'
+        details: 'Antigravity Google 계정 세션 인증 정상 (~/.gemini)'
       };
     }
+
+    return {
+      authenticated: false,
+      details: 'Antigravity Google 로그인 필요 (`agy` 실행 후 브라우저 로그인 진행)'
+    };
   }
 
   /**
-   * 지원 모델 목록 조회
+   * 지원 모델 목록 동적 조회
    */
   async discoverModels(forceRefresh = false) {
     const now = Date.now();
@@ -87,10 +64,9 @@ export class GeminiAdapter extends ProviderAdapter {
     }
 
     this.cachedModels = [
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (권장/빠름)', default: true },
-      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (고성능)' },
-      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' }
+      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Antigravity 기본/고성능)', default: true },
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (초고속)' },
+      { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet (Thinking)' }
     ];
     this.lastModelCheck = now;
     return this.cachedModels;
@@ -120,19 +96,14 @@ export class GeminiAdapter extends ProviderAdapter {
     const { prompt, model, cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
 
     return new Promise((resolve, reject) => {
-      const args = [
-        '-p', prompt,
-        '--approval-mode', 'yolo',
-        '--skip-trust',
-        '-o', 'text'
-      ];
+      // agy 비대화형 실행 인자 구성
+      const args = ['-p', prompt, '--skip-trust', '-y'];
 
-      // 모델 지정
       if (model && model !== 'default') {
         args.push('-m', model);
       }
 
-      const child = spawn('gemini', args, {
+      const child = spawn('agy', args, {
         cwd,
         env: { ...process.env, CI: 'true' },
         stdio: ['ignore', 'pipe', 'pipe']
@@ -146,7 +117,7 @@ export class GeminiAdapter extends ProviderAdapter {
         if (!isFinished) {
           isFinished = true;
           child.kill('SIGKILL');
-          reject(new Error(`Gemini 실행 타임아웃 (${timeoutMs / 1000}초 초과)`));
+          reject(new Error(`Antigravity 실행 타임아웃 (${timeoutMs / 1000}초 초과)`));
         }
       }, timeoutMs);
 
@@ -156,7 +127,7 @@ export class GeminiAdapter extends ProviderAdapter {
             isFinished = true;
             clearTimeout(timer);
             child.kill('SIGKILL');
-            reject(new Error('Gemini 작업이 사용자에 의해 중단되었습니다.'));
+            reject(new Error('Antigravity 작업이 사용자에 의해 중단되었습니다.'));
           }
         });
       }
@@ -173,7 +144,7 @@ export class GeminiAdapter extends ProviderAdapter {
         if (isFinished) return;
         isFinished = true;
         clearTimeout(timer);
-        reject(new Error(`Gemini 프로세스 시작 실패: ${err.message}`));
+        reject(new Error(`Antigravity 프로세스 시작 실패: ${err.message}`));
       });
 
       child.on('close', (code) => {
@@ -186,12 +157,12 @@ export class GeminiAdapter extends ProviderAdapter {
 
         if (code !== 0) {
           const errorMsg = trimmedStderr || trimmedStdout || `Exit code: ${code}`;
-          reject(new Error(`Gemini 실행 실패 (Exit code: ${code}):\n${errorMsg}`));
+          reject(new Error(`Antigravity 실행 실패 (Exit code: ${code}):\n${errorMsg}`));
           return;
         }
 
         resolve({
-          response: trimmedStdout || 'Gemini로부터 빈 응답을 받았습니다.'
+          response: trimmedStdout || 'Antigravity로부터 빈 응답을 받았습니다.'
         });
       });
     });

@@ -1,5 +1,5 @@
 import { CodexAdapter } from './codex/codex-adapter.js';
-import { GeminiAdapter } from './gemini/gemini-adapter.js';
+import { AntigravityAdapter } from './antigravity/antigravity-adapter.js';
 
 class ProviderManager {
   constructor() {
@@ -12,9 +12,9 @@ class ProviderManager {
     const codex = new CodexAdapter();
     this.registerAdapter(codex);
 
-    // 2. Gemini Adapter 등록
-    const gemini = new GeminiAdapter();
-    this.registerAdapter(gemini);
+    // 2. Antigravity Adapter 등록
+    const antigravity = new AntigravityAdapter();
+    this.registerAdapter(antigravity);
   }
 
   /**

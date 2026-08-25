@@ -15,8 +15,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Codex CLI & Gemini CLI 고정 버전 전역 설치
-RUN npm install -g @openai/codex@0.149.1 @google/gemini-cli@0.56.0
+# Codex CLI 고정 버전 전역 설치
+RUN npm install -g @openai/codex@0.149.1
+
+# Antigravity CLI (agy) v1.1.20 고정 버전 설치 및 SHA512 무결성 검증
+RUN curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.1.20-5830032204103680/linux-x64/cli_linux_x64.tar.gz" -o /tmp/agy.tar.gz \
+    && echo "6cdc7fc90562ba40c8bf0658f30ede016e6acd03083779be8d54d4bf63dd99800393e33c00addf943f6c2b79b4dacefc6fb4a963b2b02f6ce63635ef54a42868  /tmp/agy.tar.gz" | sha512sum -c - \
+    && tar -xzf /tmp/agy.tar.gz -C /tmp \
+    && mv /tmp/antigravity /usr/local/bin/agy \
+    && chmod +x /usr/local/bin/agy \
+    && rm -rf /tmp/agy.tar.gz
 
 # 작업 디렉토리 설정
 WORKDIR /app
@@ -32,7 +40,7 @@ COPY src/ ./src/
 RUN mkdir -p /workspace \
     /data/agent-hub.db \
     /data/providers/codex \
-    /data/providers/gemini \
+    /data/providers/antigravity \
     /data/memory \
     /data/ssh/keys \
     /data/uploads \

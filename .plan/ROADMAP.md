@@ -14,7 +14,7 @@
 |---|---|---|---|---|---|
 | **Deploy #1** | **Phase 0 + 1** | Baseline & Core Persistence | 컨테이너 기동, Telegram 인증, SQLite 영속화, 세션 CRUD | [PHASE_00](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_00_BASELINE_AUDIT.md), [PHASE_01](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_01_CORE_PERSISTENCE.md) | `TESTED_OK` |
 | **Deploy #2** | **Phase 2 + 3** | Provider Abstraction & Job Queue | 동적 모델 검색, `/model`, 세션/동시성 큐, `/stop`, 재시작 복구 | [PHASE_02](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_02_PROVIDER_ABSTRACTION.md), [PHASE_03](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_03_JOB_RUNTIME.md) | `TESTED_OK` |
-| **Deploy #3** | **Phase 4 + 5** | Multi-Provider & Context Handoff | Gemini CLI 통합, Codex ↔ Gemini Handoff, 증분 복귀, `/compact` | [PHASE_04](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_04_CONTEXT_HANDOFF.md), [PHASE_05](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_05_GEMINI_INTEGRATION.md) | `READY_FOR_TEST` |
+| **Deploy #3** | **Phase 4 + 5** | Multi-Provider & Context Handoff | Antigravity CLI(agy) 통합, Codex ↔ Antigravity Handoff, 증분 복귀, `/compact` | [PHASE_04](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_04_CONTEXT_HANDOFF.md), [PHASE_05](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_05_ANTIGRAVITY_INTEGRATION.md) | `READY_FOR_TEST` |
 
   ------------------------------------------------------------------------------------------------------------------------
   Phase          단계명             핵심 내용                          상세 파일                            상태
@@ -39,9 +39,9 @@
                  & Handoff          Rolling Summary, `/compact`,                                            
                                     Transactional Handoff                                                   
 
-  **Phase 5**    Gemini Integration Gemini CLI 버전 고정,              `PHASE_05_GEMINI_INTEGRATION.md`     `DONE`
-                                    GeminiAdapter, Codex ↔ Gemini                                           
-                                    Handoff                                                                 
+  **Phase 5**    Antigravity        Antigravity CLI (agy) 설치,        `PHASE_05_ANTIGRAVITY_INTEGRATION.md` `DONE`
+                 Integration        AntigravityAdapter, Codex ↔                                             
+                                    Antigravity Handoff                                                     
 
   **Phase 6**    Multi-Attachment   다중 이미지/파일, Telegram Media   `PHASE_06_ATTACHMENTS.md`            `PLANNED`
                                     Group, `/data/uploads`, Provider                                        

@@ -13,7 +13,7 @@ class QueueManager {
     // 프로바이더별 최대 동시 실행 수
     this.providerConcurrencyLimits = new Map([
       ['codex', 2],
-      ['gemini', 2]
+      ['antigravity', 2]
     ]);
 
     // 활성 실행 객체 관리: Map<jobId, { abortController, startTime, intervalTimer, ... }>
