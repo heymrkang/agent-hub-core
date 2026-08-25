@@ -12,6 +12,8 @@ services:
       - ./data:/data
       # Codex 인증 세션 영속화 (/data 하위로 수렴)
       - ./data/providers/codex:/root/.codex
+      # Gemini 인증 세션 영속화 (/data 하위로 수렴)
+      - ./data/providers/gemini:/root/.gemini
       # 작업 컨텍스트 / 워크스페이스
       - ./workspace:/workspace
     environment:

@@ -15,8 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Codex CLI 고정 버전 전역 설치
-RUN npm install -g @openai/codex@0.149.1
+# Codex CLI & Gemini CLI 고정 버전 전역 설치
+RUN npm install -g @openai/codex@0.149.1 @google/gemini-cli@0.56.0
 
 # 작업 디렉토리 설정
 WORKDIR /app

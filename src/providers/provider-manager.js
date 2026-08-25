@@ -1,4 +1,5 @@
 import { CodexAdapter } from './codex/codex-adapter.js';
+import { GeminiAdapter } from './gemini/gemini-adapter.js';
 
 class ProviderManager {
   constructor() {
@@ -10,6 +11,10 @@ class ProviderManager {
     // 1. Codex Adapter 등록
     const codex = new CodexAdapter();
     this.registerAdapter(codex);
+
+    // 2. Gemini Adapter 등록
+    const gemini = new GeminiAdapter();
+    this.registerAdapter(gemini);
   }
 
   /**

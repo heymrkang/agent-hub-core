@@ -14,7 +14,7 @@ export class JobStatusRenderer {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '🛑 작업 중단 (/stop)', callback_data: `job_cancel:${job.id}` }]
+          [{ text: '🛑 작업 중단 (/stop)', callback_data: `job_cancel_session:${job.sessionId}` }]
         ]
       }
     };
@@ -43,7 +43,7 @@ export class JobStatusRenderer {
         ? { inline_keyboard: [] }
         : {
             inline_keyboard: [
-              [{ text: '🛑 작업 중단 (/stop)', callback_data: `job_cancel:${job.id}` }]
+              [{ text: '🛑 작업 중단 (/stop)', callback_data: `job_cancel_session:${job.sessionId}` }]
             ]
           };
 

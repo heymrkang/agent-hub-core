@@ -36,11 +36,18 @@ export async function handleStopCommand(bot, msg) {
  */
 export async function handleJobCancelCallback(bot, callbackQuery) {
   const data = callbackQuery.data;
-  const jobId = data.replace('job_cancel:', '');
 
-  const cancelled = queueManager.cancelJob(jobId);
+  let cancelled = false;
+  if (data.startsWith('job_cancel_session:')) {
+    const sessionId = data.replace('job_cancel_session:', '');
+    cancelled = queueManager.cancelActiveJobForSession(sessionId);
+  } else if (data.startsWith('job_cancel:')) {
+    const jobId = data.replace('job_cancel:', '');
+    cancelled = queueManager.cancelJob(jobId);
+  }
+
   if (cancelled) {
-    await bot.answerCallbackQuery(callbackQuery.id, { text: '작업이 중단되었습니다.' });
+    await bot.answerCallbackQuery(callbackQuery.id, { text: '작업이 즉시 중단되었습니다.' });
   } else {
     await bot.answerCallbackQuery(callbackQuery.id, { text: '이미 완료되었거나 실행 중이지 않은 작업입니다.' });
   }

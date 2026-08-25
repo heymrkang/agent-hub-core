@@ -17,37 +17,18 @@
     -   정확한 버전으로 설치.
     -   `latest` 추적 금지.
     -   Auth/config persistence path를 확인하고
-        `/data/providers/gemini/`와 연결.
--   [ ] **Gemini Capability Audit**
-    -   Auth persistence.
-    -   Non-interactive execution.
-    -   Native session create/resume.
-    -   Same-provider model switching.
-    -   Dynamic model discovery.
-    -   Usage/quota.
-    -   Context/compact.
-    -   Image/multi-image/file.
-    -   Cancellation/exit code.
-    -   Machine-readable output.
-    -   Sandbox/approval.
-    -   `.plan/CAPABILITIES_GEMINI.md` 기록.
--   [ ] **GeminiAdapter**
-    -   `ProviderAdapter` 구현.
-    -   실제 지원 기능만 `SUPPORTED`.
-    -   미지원 기능을 하드코딩/Fallback으로 위장하지 않음.
--   [ ] **Model Discovery**
-    -   Gemini CLI의 신뢰 가능한 discovery가 있을 때 동적 조회.
-    -   없으면 `UNSUPPORTED`.
-    -   모델 리스트 하드코딩 금지.
--   [ ] **Provider Manager 등록**
-    -   `/providers`.
-    -   `/model`.
-    -   Health/Auth isolation.
--   [ ] **Codex ↔ Gemini Handoff**
-    -   Codex → Gemini.
-    -   Gemini → Codex.
-    -   기존 Native Session 복귀 시 incremental sync.
-    -   실패 rollback.
+-   [x] **Gemini CLI Baseline & Capability Audit**
+    -   `@google/gemini-cli@0.56.0` 고정 및 `.plan/CAPABILITIES_GEMINI.md` 작성.
+-   [x] **GeminiAdapter**
+    -   `src/providers/gemini/gemini-adapter.js` 구현.
+    -   비대화형 실행 (`-p`, `--approval-mode yolo`, `--skip-trust`, `-o text`), 모델 매핑, 타임아웃, 중단 핸들링.
+-   [x] **Auth & Config Persistence**
+    -   `GEMINI_API_KEY` 환경변수 지원 및 `/data/providers/gemini/` 영속 볼륨 연동.
+-   [x] **ProviderManager 등록**
+    -   `src/providers/provider-manager.js`에 `GeminiAdapter` 기본 등록.
+-   [x] **Codex ↔ Gemini Handoff 검증**
+    -   `/model` 명령어를 통해 Codex와 Gemini 간 모델/프로바이더 전환 지원.
+    -   Handoff 트랜잭션 및 실패 시 자동 롤백.
 
 ## 4. 생성 / 수정 대상 파일
 

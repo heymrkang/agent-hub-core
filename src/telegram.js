@@ -12,6 +12,7 @@ import { handleModelCommand, handleModelCallback } from './telegram/commands/mod
 import { handleProvidersCommand, handleProvidersCallback } from './telegram/commands/providers.js';
 import { handleStopCommand, handleJobCancelCallback } from './telegram/commands/stop.js';
 import { handleQueueCommand } from './telegram/commands/queue.js';
+import { handleCompactCommand } from './telegram/commands/compact.js';
 
 export function initTelegramBot() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -96,6 +97,11 @@ export function initTelegramBot() {
       return;
     }
 
+    if (text === '/compact') {
+      await handleCompactCommand(bot, msg);
+      return;
+    }
+
     // 일반 프롬프트 실행 (2단계 큐 시스템 연동)
     const activeSession = SessionManager.getActiveSession(userId);
     console.log(`[Telegram] 메시지 수신 [Session: ${activeSession.id} / ${activeSession.title}]: ${text}`);
@@ -111,7 +117,7 @@ export function initTelegramBot() {
     try {
       // 1. 초기 진행 상태 메시지 발송
       statusMsg = await JobStatusRenderer.sendInitialStatus(bot, chatId, {
-        id: 'pending',
+        sessionId: activeSession.id,
         sessionTitle: activeSession.title,
         provider: activeSession.active_provider,
         model: activeSession.active_model
@@ -132,7 +138,7 @@ export function initTelegramBot() {
               chatId,
               statusMsg.message_id,
               {
-                id: 'active',
+                sessionId: activeSession.id,
                 sessionTitle: activeSession.title,
                 provider: activeSession.active_provider,
                 model: activeSession.active_model
