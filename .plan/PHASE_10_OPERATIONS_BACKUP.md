@@ -1,0 +1,112 @@
+# Phase 10: Operations, Backup, Notification & Observability
+
+## 1. 목표
+
+-   `/usage`, `/status`, `/settings`, 내부 `/health`를 완성한다.
+-   Daily Core Backup + 최근 7개 보존을 구현한다.
+-   수동 Full Backup을 구현한다.
+-   공통 Notification Manager를 구축한다.
+-   30일 Cleanup/Log Rotation/System Job을 구현한다.
+
+## 2. 선행 조건
+
+-   Phase 1 \~ 9 주요 모듈 완료.
+
+## 3. 세부 작업 항목
+
+-   [ ] **`/usage`**
+    -   Provider가 실제 노출하는 quota/window만 표시.
+    -   없는 수치 추정 금지.
+    -   Agent Hub Job 통계: 실행 횟수/시간/provider/model distribution.
+    -   실제 token count가 제공될 때만 저장/표시.
+    -   High-usage automatic warning은 Backlog.
+-   [ ] **`/status`**
+    -   App version.
+    -   DB schema version.
+    -   Core/DB/Scheduler.
+    -   Codex/Gemini health/auth.
+    -   Docker/SSH.
+    -   Active Session/Provider/Model/Profile/Job.
+    -   최근 중요 failure가 유용하면 요약.
+-   [ ] **Internal `/health`**
+    -   Docker/Coolify healthcheck용 경량 HTTP endpoint.
+    -   **Public Agent Hub API가 아님.**
+    -   가능하면 외부 인터넷에 직접 공개하지 않고 내부 network/localhost
+        또는 Coolify health path로 사용.
+    -   SQLite/Core critical failure → unhealthy.
+    -   개별 Provider/SSH 장애 → degraded일 수 있으나 Core health와
+        분리.
+    -   Docker HEALTHCHECK 연결.
+-   [ ] **`/settings`**
+    -   Defaults: provider/model/profile.
+    -   Context: auto compact threshold.
+    -   Runtime: Codex/Gemini concurrency.
+    -   User: timezone.
+    -   Notifications.
+    -   Session: automatic title.
+    -   설정은 SQLite 영속화.
+-   [ ] **Core Backup**
+    -   Daily once.
+    -   Latest 7 retained.
+    -   SQLite 안전 snapshot API 사용.
+    -   Memory/settings/critical metadata 포함.
+    -   SSH Private Keys 기본 제외.
+    -   Logs 기본 제외.
+-   [ ] **Manual Full Backup**
+    -   `/backup`에서 명시적으로 실행.
+    -   Full의 정확한 포함 범위를 문서화.
+    -   SSH Private Key는 기본 제외를 유지하며, 포함 기능은 별도 명시
+        정책 없이는 자동 포함하지 않는다.
+    -   Backup metadata SQLite 저장.
+-   [ ] **`/backup`**
+    -   Run Core backup now.
+    -   Run Full backup.
+    -   List backups.
+    -   Backup settings/status.
+-   [ ] **Notification Manager**
+    -   Telegram only V1.
+    -   Background session completion → notify.
+    -   Scheduler completed/failed → notify.
+    -   Backup success → silent.
+    -   Cleanup success → silent.
+    -   Backup/System Job/Auth/Core health failure → notify.
+    -   설정 ON/OFF 적용.
+-   [ ] **Internal System Jobs**
+    -   Daily Core Backup.
+    -   30일 경과 Soft Deleted Session + 연결 upload 영구 삭제.
+    -   30일 경과 Log cleanup/rotation.
+    -   User Schedule과 구분.
+-   [ ] **Structured Logging**
+    -   app/provider/scheduler/error category.
+    -   timestamp/level/session/provider/model/event/duration/error
+        code.
+    -   Canonical Conversation 원문을 일반 log에 중복 저장하지 않는다.
+    -   Secret redaction.
+
+## 4. 생성 / 수정 대상 파일
+
+-   `src/database/migrations/008_backups.sql`
+-   `src/backup/backup-manager.js`
+-   `src/notifications/notification-manager.js`
+-   `src/health/health-server.js`
+-   `src/logging/logger.js`
+-   `src/system/system-jobs.js`
+-   `src/telegram/commands/usage.js`
+-   `src/telegram/commands/status.js`
+-   `src/telegram/commands/settings.js`
+-   `src/telegram/commands/backup.js`
+-   `Dockerfile`
+
+## 5. 테스트 / 검증 기준
+
+-   [ ] `/usage`에서 미제공 수치가 추정되지 않음.
+-   [ ] `/status` 주요 컴포넌트 상태 확인.
+-   [ ] 내부 `/health` 200/degraded/unhealthy 정책 검증.
+-   [ ] Core Backup 유효 SQLite snapshot.
+-   [ ] Daily backup retention 7.
+-   [ ] Manual Full Backup 생성.
+-   [ ] Backup에서 SSH private key 기본 제외.
+-   [ ] 30일 Session/Upload cleanup.
+-   [ ] 30일 Log cleanup.
+-   [ ] Secret이 log에 평문으로 남지 않음.
+-   [ ] Notification policy가 설정대로 동작.

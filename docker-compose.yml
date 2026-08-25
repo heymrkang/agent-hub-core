@@ -8,16 +8,13 @@ services:
     env_file:
       - .env
     volumes:
-      # 영속 데이터 및 세션 저장소
+      # 영속 데이터 전체 마운트
       - ./data:/data
-      # Codex 인증 세션 영속화
-      - codex_auth:/root/.codex
+      # Codex 인증 세션 영속화 (/data 하위로 수렴)
+      - ./data/providers/codex:/root/.codex
       # 작업 컨텍스트 / 워크스페이스
       - ./workspace:/workspace
     environment:
       - TZ=Asia/Seoul
       - WORKSPACE_DIR=/workspace
       - DATA_DIR=/data
-
-volumes:
-  codex_auth:
