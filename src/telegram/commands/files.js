@@ -66,18 +66,59 @@ export async function handleDownloadCommand(bot, msg, filename) {
   const workspaceDir = process.env.WORKSPACE_DIR || '/workspace';
   const dataDir = process.env.DATA_DIR || '/data';
 
-  // 경로 탐색 후보지
-  let resolvedPath = path.isAbsolute(targetFile) ? targetFile : path.join(workspaceDir, targetFile);
+  let resolvedPath = null;
 
-  // workspace에 없으면 /data/uploads 탐색
-  if (!fs.existsSync(resolvedPath)) {
-    const candidateUploadPath = path.join(dataDir, 'uploads', targetFile);
-    if (fs.existsSync(candidateUploadPath)) {
-      resolvedPath = candidateUploadPath;
+  // 1. 전체 절대 경로로 전달된 경우
+  if (path.isAbsolute(targetFile) && fs.existsSync(targetFile)) {
+    resolvedPath = targetFile;
+  }
+
+  // 2. DB attachments 테이블에서 file_name 또는 local_path로 조회
+  if (!resolvedPath) {
+    try {
+      const attachments = AttachmentManager.getAttachmentsForSession(
+        SessionManager.getActiveSession(msg.from.id).id,
+        50
+      );
+      const match = attachments.find(
+        (a) => a.file_name === targetFile || a.id === targetFile || path.basename(a.local_path) === targetFile
+      );
+      if (match && fs.existsSync(match.local_path)) {
+        resolvedPath = match.local_path;
+      }
+    } catch {}
+  }
+
+  // 3. workspace 디렉토리에서 검색
+  if (!resolvedPath) {
+    const candidateWorkspace = path.join(workspaceDir, targetFile);
+    if (fs.existsSync(candidateWorkspace)) {
+      resolvedPath = candidateWorkspace;
     }
   }
 
-  if (!fs.existsSync(resolvedPath)) {
+  // 4. /data/uploads 하위 폴더 재귀 검색
+  if (!resolvedPath) {
+    const uploadsDir = path.join(dataDir, 'uploads');
+    if (fs.existsSync(uploadsDir)) {
+      const findInDir = (dir) => {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            const found = findInDir(full);
+            if (found) return found;
+          } else if (entry.name === targetFile) {
+            return full;
+          }
+        }
+        return null;
+      };
+      resolvedPath = findInDir(uploadsDir);
+    }
+  }
+
+  if (!resolvedPath || !fs.existsSync(resolvedPath)) {
     await bot.sendMessage(chatId, `❌ 파일을 찾을 수 없습니다: \`${targetFile}\``, {
       parse_mode: 'Markdown'
     });
