@@ -39,7 +39,6 @@ COPY src/ ./src/
 
 # 영속 데이터 및 볼륨 마운트 표준 디렉토리 구조 생성
 RUN mkdir -p /workspace \
-    /data/agent-hub.db \
     /data/providers/codex \
     /data/providers/antigravity \
     /data/memory \

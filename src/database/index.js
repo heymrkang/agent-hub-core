@@ -22,6 +22,12 @@ export function initDatabase() {
   const dbPath = path.join(dataDir, 'agent-hub.db');
   const backupDir = path.join(dataDir, 'backups', 'migrations');
 
+  // 만약 이전 mkdir 오류로 agent-hub.db가 디렉토리로 생성되어 있다면 안전하게 제거
+  if (fs.existsSync(dbPath) && fs.statSync(dbPath).isDirectory()) {
+    console.warn(`[Database Warning] ${dbPath}가 디렉토리로 생성되어 있어 정리합니다.`);
+    fs.rmSync(dbPath, { recursive: true, force: true });
+  }
+
   console.log(`[Database] SQLite 데이터베이스 연결: ${dbPath}`);
 
   try {
