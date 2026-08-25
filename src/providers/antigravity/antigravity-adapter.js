@@ -64,7 +64,10 @@ export class AntigravityAdapter extends ProviderAdapter {
     }
 
     try {
-      const { stdout } = await execFileAsync('agy', ['models'], { timeout: 10000 });
+      const { stdout } = await execFileAsync('agy', ['models', '--skip-trust'], {
+        timeout: 10000,
+        cwd: this.workspaceDir
+      });
       // ANSI escape 코드 제거 및 라인 분할
       const cleanStdout = stdout.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
       const lines = cleanStdout.split('\n').map((l) => l.trim()).filter(Boolean);

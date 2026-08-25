@@ -15,6 +15,24 @@ class ProviderManager {
     // 2. Antigravity Adapter 등록
     const antigravity = new AntigravityAdapter();
     this.registerAdapter(antigravity);
+
+    // 백그라운드 모델 목록 사전 캐싱 (UI 지연 제거)
+    setTimeout(() => {
+      this.prefetchModels().catch(() => {});
+    }, 1000);
+  }
+
+  /**
+   * 모든 프로바이더의 모델 목록을 백그라운드에서 미리 로드하여 메모리 캐싱한다.
+   */
+  async prefetchModels() {
+    console.log('[ProviderManager] 모델 목록 백그라운드 프리페치 시작...');
+    for (const adapter of this.adapters.values()) {
+      try {
+        await adapter.discoverModels();
+      } catch {}
+    }
+    console.log('[ProviderManager] 모델 목록 사전 캐싱 완료.');
   }
 
   /**

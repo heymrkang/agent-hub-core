@@ -227,7 +227,7 @@ export function initTelegramBot() {
       return;
     }
 
-    if (data.startsWith('job_cancel:')) {
+    if (data.startsWith('job_cancel')) {
       await handleJobCancelCallback(bot, callbackQuery);
       return;
     }
