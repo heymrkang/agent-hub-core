@@ -14,23 +14,16 @@
 
 ## 3. 세부 작업 항목
 
--   [ ] **Memory Files**
-    -   `/data/memory/PROFILE.md`
-    -   `/data/memory/GOALS.md`
-    -   `/data/memory/CURRENT.md`
-    -   `/data/memory/NOTES.md`
-    -   Markdown 파일이 사람이 읽을 수 있는 Memory Source.
--   [ ] **Memory History**
-    -   `memory_history`.
-    -   file/diff/summary/source session/timestamp.
-    -   Secret 저장 금지.
--   [ ] **Memory Manager**
-    -   Read/write.
-    -   Atomic write.
-    -   동시성 보호.
-    -   변경 이력.
-    -   사소한 대화를 매번 Memory로 승격하지 않는다.
--   [ ] **Agent Update Policy**
+-   [x] **Global Memory Storage**
+    -   `/data/memory/MEMORY.md`: Markdown 기반 단일 진실 공급원.
+    -   `/data/memory/audit.jsonl`: diff 및 변경 이력 추적.
+    -   `005_memory.sql`: DB `memory_logs` 테이블 생성 및 감사 기록.
+-   [x] **Memory Manager**
+    -   `src/memory/memory-manager.js`: 원자적 파일 쓰기(Atomic Rename), Audit Trail 기록, 프롬프트 주입 블록 생성.
+-   [x] **Context Injection**
+    -   `src/telegram.js`: 모든 세션 질의 실행 시 `[글로벌 장기 기억 / Global Memory]` 블록을 프롬프트 최상단에 자동 주입.
+-   [x] **`/memory` 명령어**
+    -   `src/telegram/commands/memory.js`: `/memory` (조회), `/memory add <내용>` (추가), `/memory set <내용>` (수정), `/memory clear` (초기화).Policy**
     -   지속적으로 유효한 정보만 업데이트.
     -   자동 변경 시 Audit Trail 필수.
     -   사용자가 `/memory`에서 직접 수정/삭제 가능.

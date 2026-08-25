@@ -14,29 +14,16 @@
 
 ## 3. 세부 작업 항목
 
--   [ ] **Attachment Schema**
-    -   1 Message : N Attachments.
-    -   `id`, `message_id`, `session_id`, `type`, `original_name`,
-        `stored_path`, `mime_type`, `size`, `telegram_file_id`,
-        `created_at`.
-    -   Binary를 SQLite BLOB으로 저장하지 않는다.
--   [ ] **Storage**
-    -   `/data/uploads/<session-id>/`.
-    -   안전한 filename 생성.
-    -   Path traversal 방지.
-    -   다운로드 실패 시 partial file 정리.
--   [ ] **Telegram Multi-Attachment**
-    -   Single image.
-    -   Multiple images / Media Group.
-    -   Documents.
-    -   Text + attachments.
-    -   Telegram Media Group의 여러 Update를 하나의 논리 Message로 묶는
-        aggregation 처리.
--   [ ] **Provider Delivery**
-    -   Image는 Provider Native image mechanism 우선.
-    -   일반 File은 CLI가 접근 가능한 안전한 workspace/path로 전달.
-    -   Provider Capability 미지원 시 명확한 오류.
-    -   무리한 자동 변환 금지.
+-   [x] **Attachments Migration**
+    -   `004_attachments.sql`: `session_id`, `message_id`, `media_group_id`, `file_name`, `file_type`, `local_path`, `sha256`, `metadata`.
+-   [x] **Attachment Manager**
+    -   `src/attachments/attachment-manager.js`: Telegram 파일 다운로드, `/data/uploads/YYYY-MM/` 영속화, SHA256 해시 계산.
+-   [x] **Media Group Debounce Buffer**
+    -   `src/attachments/media-group-buffer.js`: Telegram 앨범/다중 전송 시 500ms 디바운스로 단일 작업 묶음 처리.
+-   [x] **Provider Multi-Image / File Injection**
+    -   `src/telegram.js`: `[첨부 파일 목록]` 및 파일 경로를 프롬프트에 자동 주입하여 Codex / Antigravity 모두 분석 가능하도록 연동.
+-   [x] **파일 다운로드 명령어**
+    -   `src/telegram/commands/files.js`: `/files` (세션 첨부 파일 조회), `/download <filename>` (안전한 파일 다운로드 및 Path Traversal 방어).
 -   [ ] **Handoff**
     -   관련 Attachment metadata/path 포함.
     -   필요 Attachment만 선택적으로 재첨부.
