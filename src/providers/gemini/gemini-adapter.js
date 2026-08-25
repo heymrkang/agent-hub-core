@@ -1,6 +1,8 @@
 import { spawn, execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import fs from 'fs';
+import os from 'os';
 import { ProviderAdapter } from '../provider-adapter.js';
 
 const execFileAsync = promisify(execFile);
@@ -28,27 +30,51 @@ export class GeminiAdapter extends ProviderAdapter {
   }
 
   /**
-   * Gemini 인증 상태 점검
+   * Gemini 로그인/인증 상태 점검 (OAuth 세션 및 ~/.gemini 기반)
    */
   async checkAuth() {
-    // 1. GEMINI_API_KEY 환경변수 확인
-    if (process.env.GEMINI_API_KEY) {
-      return {
-        authenticated: true,
-        details: 'GEMINI_API_KEY 환경변수 인증 활성화'
-      };
-    }
-
-    // 2. CLI 헬스 점검
     const health = await this.checkHealth();
     if (!health.healthy) {
       return { authenticated: false, details: `CLI 실행 불가: ${health.error}` };
     }
 
-    return {
-      authenticated: true,
-      details: 'Gemini CLI 설치 및 세션 인증 준비 완료'
-    };
+    // ~/.gemini 또는 /data/providers/gemini 세션 디렉토리 확인
+    const userGeminiDir = path.join(os.homedir(), '.gemini');
+    const dataGeminiDir = '/data/providers/gemini';
+
+    const hasUserAuth = fs.existsSync(userGeminiDir) && fs.readdirSync(userGeminiDir).length > 0;
+    const hasDataAuth = fs.existsSync(dataGeminiDir) && fs.readdirSync(dataGeminiDir).length > 0;
+
+    // 간이 ping 프롬프트로 실제 OAuth 인증 세션 유효성 테스트
+    try {
+      await execFileAsync('gemini', ['-p', 'ping', '--approval-mode', 'yolo', '--skip-trust', '-o', 'text'], {
+        timeout: 10000
+      });
+      return {
+        authenticated: true,
+        details: 'Gemini CLI 로그인 세션 인증 정상'
+      };
+    } catch (error) {
+      // 에러 메시지에 auth 관련 키워드가 있는 경우
+      if (error.message.includes('auth') || error.message.includes('login') || error.message.includes('credential')) {
+        return {
+          authenticated: false,
+          details: 'Gemini CLI 로그인 필요 (`gemini login` 또는 ~/.gemini 영속 세션 필요)'
+        };
+      }
+
+      if (hasUserAuth || hasDataAuth) {
+        return {
+          authenticated: true,
+          details: 'Gemini 영속 세션 디렉토리 확인 완료'
+        };
+      }
+
+      return {
+        authenticated: false,
+        details: 'Gemini CLI 로그인 필요 (영속 계정 미확인)'
+      };
+    }
   }
 
   /**

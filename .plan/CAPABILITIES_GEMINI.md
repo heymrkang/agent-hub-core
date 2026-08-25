@@ -10,7 +10,7 @@
 
 | Capability Area | Status | Verification & Syntax Details |
 |---|---|---|
-| **Auth Persistence** | `SUPPORTED` | `GEMINI_API_KEY` 환경변수 또는 `~/.gemini` 설정 디렉토리. Docker 볼륨 마운트(`/data/providers/gemini` -> `~/.gemini`)로 영속화 지원. |
+| **Auth Persistence** | `SUPPORTED` | `gemini login` 또는 OAuth 인증 세션. 컨테이너의 `/root/.gemini`를 `/data/providers/gemini`로 마운트하여 컨테이너 재배포 시에도 로그인 상태 완벽 영속화. |
 | **Non-Interactive Execution** | `SUPPORTED` | `gemini -p "<prompt>" --approval-mode yolo --skip-trust` 로 완전 비대화형 headless 실행 가능. |
 | **JSON / Machine-Readable Output** | `SUPPORTED` | `-o, --output-format json` 또는 `stream-json` 옵션 지원. |
 | **Native Session Creation & Resume** | `SUPPORTED` | `--session-id <UUID>`로 명시적 세션 ID 생성 지원. `-r, --resume latest` 또는 `--resume <index>`로 세션 재개 지원. `--list-sessions` 지원. |

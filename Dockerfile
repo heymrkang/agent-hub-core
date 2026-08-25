@@ -40,7 +40,8 @@ RUN mkdir -p /workspace \
     /data/backups/core \
     /data/backups/full \
     /data/backups/migrations \
-    /root/.codex
+    /root/.codex \
+    /root/.gemini
 
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
