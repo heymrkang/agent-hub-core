@@ -27,14 +27,16 @@ export async function handleFilesCommand(bot, msg) {
     let text = `📁 **[${activeSession.title}] 세션 첨부 파일 목록**\n\n`;
     for (const [idx, att] of attachments.entries()) {
       const sizeKb = Math.round(att.file_size / 1024);
-      text += `${idx + 1}. **${att.file_name}** (${sizeKb} KB, \`${att.file_type}\`)\n`;
+      text += `${idx + 1}. \`${att.file_name}\` (${sizeKb} KB, ${att.file_type})\n`;
       text += `   - 경로: \`${att.local_path}\`\n`;
       text += `   - 일시: ${formatKST(att.created_at)}\n`;
     }
 
     text += `\n_파일을 다운로드하려면 \`/download <파일명>\` 명령어를 사용하세요._`;
 
-    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(async () => {
+      await bot.sendMessage(chatId, text);
+    });
   } catch (error) {
     console.error(`[Command /files Error] ${error.message}`);
     await bot.sendMessage(chatId, `❌ 파일 목록 조회 실패: ${error.message}`);
