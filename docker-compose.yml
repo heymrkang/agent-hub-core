@@ -1,0 +1,23 @@
+services:
+  agent-telegram:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docker-agent-telegram
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # 영속 데이터 및 세션 저장소
+      - ./data:/data
+      # Codex 인증 세션 영속화
+      - codex_auth:/root/.codex
+      # 작업 컨텍스트 / 워크스페이스
+      - ./workspace:/workspace
+    environment:
+      - TZ=Asia/Seoul
+      - WORKSPACE_DIR=/workspace
+      - DATA_DIR=/data
+
+volumes:
+  codex_auth:
