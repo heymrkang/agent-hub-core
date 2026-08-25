@@ -12,8 +12,8 @@
 
 | 마일스톤 | 대상 Phase | 단계명 | 핵심 검증 목표 | 상세 파일 | 상태 |
 |---|---|---|---|---|---|
-| **Deploy #1** | **Phase 0 + 1** | Baseline & Core Persistence | 컨테이너 기동, Telegram 인증, SQLite 영속화, 세션 CRUD | [PHASE_00](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_00_BASELINE_AUDIT.md), [PHASE_01](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_01_CORE_PERSISTENCE.md) | `READY_FOR_TEST` |
-| **Deploy #2** | **Phase 2 + 3** | Provider Abstraction & Job Queue | 동적 모델 검색, `/model`, 세션/동시성 큐, `/stop`, 재시작 복구 | [PHASE_02](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_02_PROVIDER_ABSTRACTION.md), [PHASE_03](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_03_JOB_RUNTIME.md) | `PLANNED` |
+| **Deploy #1** | **Phase 0 + 1** | Baseline & Core Persistence | 컨테이너 기동, Telegram 인증, SQLite 영속화, 세션 CRUD | [PHASE_00](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_00_BASELINE_AUDIT.md), [PHASE_01](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_01_CORE_PERSISTENCE.md) | `TESTED_OK` |
+| **Deploy #2** | **Phase 2 + 3** | Provider Abstraction & Job Queue | 동적 모델 검색, `/model`, 세션/동시성 큐, `/stop`, 재시작 복구 | [PHASE_02](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_02_PROVIDER_ABSTRACTION.md), [PHASE_03](file:///c:/dev/workspace/agent-hub-core/.plan/PHASE_03_JOB_RUNTIME.md) | `READY_FOR_TEST` |
 
   ------------------------------------------------------------------------------------------------------------------------
   Phase          단계명             핵심 내용                          상세 파일                            상태
@@ -26,15 +26,15 @@
                  Session            세션/메시지, `/new`, `/sessions`,                                       
                                     `/rename`, Archive/Restore                                              
 
-  **Phase 2**    Provider           ProviderAdapter, CodexAdapter,     `PHASE_02_PROVIDER_ABSTRACTION.md`   `READY`
+  **Phase 2**    Provider           ProviderAdapter, CodexAdapter,     `PHASE_02_PROVIDER_ABSTRACTION.md`   `DONE`
                  Abstraction &      Capability 기반 동적 모델 조회,                                         
                  Model Discovery    `/model`, `/providers`, 자동 제목                                       
 
-  **Phase 3**    Job Runtime &      Job 상태 머신, Session/Provider    `PHASE_03_JOB_RUNTIME.md`            `PLANNED`
+  **Phase 3**    Job Runtime &      Job 상태 머신, Session/Provider    `PHASE_03_JOB_RUNTIME.md`            `DONE`
                  Queue              Queue, `/queue`, `/stop`, Response                                      
                                     Renderer                                                                
 
-  **Phase 4**    Context Management Canonical Context, Native Context, `PHASE_04_CONTEXT_HANDOFF.md`        `PLANNED`
+  **Phase 4**    Context Management Canonical Context, Native Context, `PHASE_04_CONTEXT_HANDOFF.md`        `READY`
                  & Handoff          Rolling Summary, `/compact`,                                            
                                     Transactional Handoff                                                   
 

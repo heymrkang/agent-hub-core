@@ -14,48 +14,26 @@
 
 ## 3. 세부 작업 항목
 
--   [ ] **Job State Machine**
-    -   `QUEUED`
-    -   `RUNNING`
-    -   `COMPLETED`
-    -   `FAILED`
-    -   `CANCELLED`
-    -   `INTERRUPTED`
-    -   `jobs` Migration 추가.
-    -   Provider/Model/Session/Timing/Exit Code/Error Category 저장.
--   [ ] **Session Queue**
-    -   동일 Session 요청 FIFO.
-    -   Session 내부 순서 보장.
--   [ ] **Provider Queue**
-    -   Provider별 concurrency limit.
-    -   초기 기본값 Codex 2 / Gemini 2.
-    -   Phase 10 `/settings`에서 변경 가능하도록 설정 키 준비.
-    -   무제한 process 폭증 방지.
--   [ ] **Job Runtime**
-    -   Child Process spawn.
-    -   stdout/stderr 분리.
-    -   timeout/cancellation 기반 구조.
-    -   `/stop`은 Active Session의 Running Job에 적용.
-    -   다른 Session Job은 `/sessions` UI에서 취소 가능하도록 hook 제공.
--   [ ] **Restart Recovery**
-    -   Startup 시 남은 `RUNNING` Job → `INTERRUPTED`.
-    -   reason `AGENT_HUB_RESTART`.
-    -   자동 재실행 금지.
--   [ ] **Telegram Job Status**
-    -   `QUEUED → RUNNING → terminal state`.
-    -   Provider/Model/Elapsed/Queue position.
-    -   Stop button.
-    -   Background Session 완료 시 Source Session 식별.
--   [ ] **Response Renderer**
-    -   Provider Assistant 원문은 DB에 **한 메시지**로 저장.
-    -   Telegram 전송 시에만 길이 제한에 맞게 안전 분할.
-    -   Markdown escape/format 오류 방어.
-    -   Code block을 가능한 한 보존.
-    -   Telegram 여러 메시지로 나뉘어도 Canonical DB Message를 쪼개지
-        않는다.
--   [ ] **Error Taxonomy 기반**
-    -   Provider/Auth/Network/Timeout/Cancelled/Internal 등 최소 분류
-        구조.
+-   [x] **Job State Machine**
+    -   `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`, `INTERRUPTED`.
+    -   `002_jobs.sql` 마이그레이션 적용 및 `src/jobs/types.js`에 상태/에러 상수 정의.
+-   [x] **Session Queue**
+    -   `src/jobs/queue-manager.js`: 동일 세션 내 동시 요청 시 FIFO 순서 보장.
+-   [x] **Provider Queue**
+    -   프로바이더별 동시 실행 슬롯 제한 (Codex 2, Gemini 2).
+    -   슬롯 초과 시 Provider Queue에서 대기 후 슬롯 반환 시 자동 실행.
+-   [x] **Job Runtime**
+    -   `src/jobs/job-runtime.js`: DB `jobs` 영속 관리.
+    -   `AbortController` 기반 취소 및 `/stop` 연동.
+-   [x] **Restart Recovery**
+    -   앱 기동 시 `RUNNING` 상태의 잔여 Job을 `INTERRUPTED` (reason: `AGENT_HUB_RESTART`)로 일괄 전환. 자동 재실행 배제.
+-   [x] **Telegram Job Status**
+    -   `src/telegram/renderer/job-status.js`: `QUEUED` -> `RUNNING` -> `COMPLETED`/`FAILED`/`CANCELLED` 실시간 상태 메시지 갱신.
+    -   인라인 취소 버튼 (`/stop`) 제공.
+-   [x] **Response Renderer**
+    -   `src/telegram/renderer/response-renderer.js`: DB에는 원문 1건 저장, Telegram 전송 시 코드 블록(```) 보존 안전 분할.
+-   [x] **Error Taxonomy 기반**
+    -   에러 범주별 분류 (`TIMEOUT`, `CANCELLED`, `PROVIDER_EXEC`, `AGENT_HUB_RESTART` 등).
 
 ## 4. 생성 / 수정 대상 파일
 

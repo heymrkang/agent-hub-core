@@ -1,4 +1,5 @@
 import { SessionManager } from '../../sessions/session-manager.js';
+import { formatKST } from '../../utils/date.js';
 
 /**
  * /sessions 명령어 처리: 세션 목록 및 관리 UI 제공
@@ -111,8 +112,8 @@ async function showSessionDetail(bot, callbackQuery, sessionId) {
   text += `🤖 **Provider**: ${session.active_provider}\n`;
   text += `⚙️ **Profile**: ${session.execution_profile}\n`;
   text += `📊 **상태**: ${session.status}\n`;
-  text += `🕒 **생성일**: ${session.created_at}\n`;
-  text += `🔄 **최근활동**: ${session.updated_at}\n`;
+  text += `🕒 **생성일**: ${formatKST(session.created_at)}\n`;
+  text += `🔄 **최근활동**: ${formatKST(session.updated_at)}\n`;
 
   const buttons = [];
 
