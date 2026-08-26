@@ -14,17 +14,41 @@ class QueueManager {
     this.activeExecutions = new Map();
   }
 
-  async enqueueJob({ sessionId, sessionTitle, provider, model, prompt, profile, onStatusUpdate, type = 'CHAT', timeoutMs = null }) {
+  enqueueJob({ sessionId, sessionTitle, provider, model, prompt, profile, onStatusUpdate, type = 'CHAT', timeoutMs = null, queueGraceMs = null }) {
     const jobRecord = JobRuntime.createJob({ sessionId, type, provider, model });
     const abortController = new AbortController();
-    const queueItem = { job: { ...jobRecord, sessionTitle }, prompt, profile, abortController, onStatusUpdate, timeoutMs, resolve: null, reject: null };
+    const queueItem = {
+      job: { ...jobRecord, sessionTitle }, prompt, profile, abortController, onStatusUpdate,
+      timeoutMs, queueGraceMs, queueTimer: null, resolve: null, reject: null, started: false
+    };
     const promise = new Promise((resolve, reject) => { queueItem.resolve = resolve; queueItem.reject = reject; });
     promise.jobId = jobRecord.id;
+
     if (!this.sessionQueues.has(sessionId)) this.sessionQueues.set(sessionId, []);
     this.sessionQueues.get(sessionId).push(queueItem);
     onStatusUpdate?.(JobStatus.QUEUED, 0);
+
+    if (queueGraceMs && queueGraceMs > 0) {
+      queueItem.queueTimer = setTimeout(() => this.expireQueuedItem(queueItem), queueGraceMs);
+    }
+
     this.processNext(provider);
     return promise;
+  }
+
+  expireQueuedItem(item) {
+    if (item.started) return;
+    for (const [sessionId, queue] of this.sessionQueues.entries()) {
+      const idx = queue.indexOf(item);
+      if (idx === -1) continue;
+      queue.splice(idx, 1);
+      if (!queue.length) this.sessionQueues.delete(sessionId);
+      JobRuntime.markCancelled(item.job.id);
+      const error = new Error('Provider queue grace 초과');
+      error.code = 'QUEUE_GRACE_EXCEEDED';
+      item.reject(error);
+      return;
+    }
   }
 
   processNext(providerName = 'codex') {
@@ -40,6 +64,8 @@ class QueueManager {
         break;
       }
       if (!candidate) break;
+      candidate.started = true;
+      if (candidate.queueTimer) clearTimeout(candidate.queueTimer);
       this.executeJobItem(candidate);
     }
   }
@@ -100,6 +126,7 @@ class QueueManager {
       const idx = queue.findIndex((item) => item.job.id === jobId);
       if (idx !== -1) {
         const [removed] = queue.splice(idx, 1);
+        if (removed.queueTimer) clearTimeout(removed.queueTimer);
         JobRuntime.markCancelled(jobId);
         removed.onStatusUpdate?.(JobStatus.CANCELLED, 0);
         removed.reject(new Error('작업이 대기 중 취소되었습니다.'));
