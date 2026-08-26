@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import fs from 'fs';
 import { getDb } from '../database/index.js';
 
 export class SessionManager {
@@ -55,6 +56,10 @@ export class SessionManager {
     return getDb().prepare('SELECT * FROM sessions WHERE user_id=? AND status=? AND is_system=0 ORDER BY updated_at DESC').all(userId, status);
   }
 
+  static countSessions(userId, status = 'ACTIVE') {
+    return getDb().prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id=? AND status=? AND is_system=0').get(userId, status)?.count || 0;
+  }
+
   static renameSession(sessionId, newTitle) {
     const r = getDb().prepare(`UPDATE sessions SET title=?,title_locked=1,updated_at=datetime('now') WHERE id=? AND is_system=0`).run(newTitle, sessionId);
     if (!r.changes) throw new Error(`세션을 찾을 수 없습니다: ${sessionId}`);
@@ -62,6 +67,53 @@ export class SessionManager {
   static archiveSession(sessionId) { getDb().prepare(`UPDATE sessions SET status='ARCHIVED',updated_at=datetime('now') WHERE id=? AND is_system=0`).run(sessionId); }
   static softDeleteSession(sessionId) { getDb().prepare(`UPDATE sessions SET status='DELETED',deleted_at=datetime('now'),updated_at=datetime('now') WHERE id=? AND is_system=0`).run(sessionId); }
   static restoreSession(sessionId) { getDb().prepare(`UPDATE sessions SET status='ACTIVE',deleted_at=NULL,updated_at=datetime('now') WHERE id=? AND is_system=0`).run(sessionId); }
+
+  static _removeAttachmentFiles(rows) {
+    for (const row of rows) {
+      if (!row?.local_path) continue;
+      try {
+        if (fs.existsSync(row.local_path)) fs.unlinkSync(row.local_path);
+      } catch (error) {
+        console.warn(`[SessionManager] 첨부파일 삭제 실패: ${row.local_path}: ${error.message}`);
+      }
+    }
+  }
+
+  static permanentlyDeleteSession(userId, sessionId) {
+    const db = getDb();
+    const session = db.prepare("SELECT * FROM sessions WHERE id=? AND user_id=? AND status='DELETED' AND is_system=0").get(sessionId, userId);
+    if (!session) throw new Error('휴지통에서 삭제할 세션을 찾을 수 없습니다.');
+
+    const attachments = db.prepare('SELECT local_path FROM attachments WHERE session_id=?').all(sessionId);
+    const remove = db.transaction(() => {
+      db.prepare('DELETE FROM attachments WHERE session_id=?').run(sessionId);
+      db.prepare('DELETE FROM jobs WHERE session_id=?').run(sessionId);
+      db.prepare('DELETE FROM messages WHERE session_id=?').run(sessionId);
+      db.prepare('DELETE FROM sessions WHERE id=?').run(sessionId);
+    });
+    remove();
+    this._removeAttachmentFiles(attachments);
+    return 1;
+  }
+
+  static emptyTrash(userId) {
+    const db = getDb();
+    const sessions = db.prepare("SELECT id FROM sessions WHERE user_id=? AND status='DELETED' AND is_system=0").all(userId);
+    if (!sessions.length) return 0;
+
+    const ids = sessions.map((row) => row.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const attachments = db.prepare(`SELECT local_path FROM attachments WHERE session_id IN (${placeholders})`).all(...ids);
+    const remove = db.transaction(() => {
+      db.prepare(`DELETE FROM attachments WHERE session_id IN (${placeholders})`).run(...ids);
+      db.prepare(`DELETE FROM jobs WHERE session_id IN (${placeholders})`).run(...ids);
+      db.prepare(`DELETE FROM messages WHERE session_id IN (${placeholders})`).run(...ids);
+      db.prepare(`DELETE FROM sessions WHERE id IN (${placeholders})`).run(...ids);
+    });
+    remove();
+    this._removeAttachmentFiles(attachments);
+    return ids.length;
+  }
 
   static saveMessage({ sessionId, role, text, provider = null, model = null }) {
     const db = getDb();
