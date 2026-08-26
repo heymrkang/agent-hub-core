@@ -44,6 +44,11 @@
     -   User: timezone.
     -   Notifications.
     -   Session: automatic title.
+    -   Telegram UI Style: `NORMAL` / `STEALTH`.
+        - `NORMAL`: 기존 이모티콘/강조 UI 사용.
+        - `STEALTH`: Telegram Bot **명령어/시스템 UI**의 컬러 이모티콘을 제거하고 흑백 기호(예: `●`, `○`, `■`, `>` 등)와 텍스트 중심으로 렌더링.
+        - LLM이 생성한 일반 답변 내용은 Stealth가 임의 변조하지 않는다.
+        - Inline button label도 동일 UI style을 적용한다.
     -   설정은 SQLite 영속화.
 -   [ ] **Core Backup**
     -   Daily once.
@@ -94,6 +99,7 @@
 -   `src/telegram/commands/usage.js`
 -   `src/telegram/commands/status.js`
 -   `src/telegram/commands/settings.js`
+-   `src/telegram/ui-style.js`
 -   `src/telegram/commands/backup.js`
 -   `Dockerfile`
 
@@ -102,6 +108,7 @@
 -   [ ] `/usage`에서 미제공 수치가 추정되지 않음.
 -   [ ] `/status` 주요 컴포넌트 상태 확인.
 -   [ ] 내부 `/health` 200/degraded/unhealthy 정책 검증.
+-   [ ] `/settings` Stealth ON/OFF가 SQLite에 영속되고 Telegram 명령 UI만 스타일 전환되며 LLM 일반 답변은 변경하지 않음.
 -   [ ] Core Backup 유효 SQLite snapshot.
 -   [ ] Daily backup retention 7.
 -   [ ] Manual Full Backup 생성.
