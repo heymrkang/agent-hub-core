@@ -28,16 +28,12 @@ class QueueManager {
 
   processNext(providerName = 'codex') {
     const pName = providerName.toLowerCase();
-    const currentRunning = this.providerRunningCounts.get(pName) || 0;
-    const limit = this.providerConcurrencyLimits.get(pName) || 2;
-    if (currentRunning >= limit) return;
-
+    if ((this.providerRunningCounts.get(pName) || 0) >= (this.providerConcurrencyLimits.get(pName) || 2)) return;
     for (const [sessionId, queue] of this.sessionQueues.entries()) {
       if (queue.length === 0) continue;
       const candidate = queue[0];
       if (candidate.job.provider.toLowerCase() !== pName) continue;
-      const isSessionBusy = Array.from(this.activeExecutions.values()).some((e) => e.sessionId === sessionId);
-      if (isSessionBusy) continue;
+      if (Array.from(this.activeExecutions.values()).some((e) => e.sessionId === sessionId)) continue;
       queue.shift();
       if (queue.length === 0) this.sessionQueues.delete(sessionId);
       this.executeJobItem(candidate);
@@ -49,47 +45,42 @@ class QueueManager {
     const { job, prompt, profile, abortController, onStatusUpdate, resolve, reject } = queueItem;
     const providerName = job.provider.toLowerCase();
     this.providerRunningCounts.set(providerName, (this.providerRunningCounts.get(providerName) || 0) + 1);
-
     const startTime = Date.now();
     JobRuntime.markRunning(job.id);
-    const intervalTimer = setInterval(() => {
-      if (onStatusUpdate) onStatusUpdate(JobStatus.RUNNING, Math.floor((Date.now() - startTime) / 1000));
-    }, 1000);
-    if (onStatusUpdate) onStatusUpdate(JobStatus.RUNNING, 0);
+    const intervalTimer = setInterval(() => onStatusUpdate?.(JobStatus.RUNNING, Math.floor((Date.now() - startTime) / 1000)), 1000);
+    onStatusUpdate?.(JobStatus.RUNNING, 0);
     this.activeExecutions.set(job.id, { sessionId: job.session_id, provider: providerName, abortController, intervalTimer, startTime });
 
     try {
       const adapter = providerManager.getAdapter(job.provider);
       const providerSession = ContextManager.getProviderSession(job.session_id, providerName);
-      const result = await adapter.executePrompt({
-        prompt,
-        model: job.model,
-        sessionId: job.session_id,
-        nativeSessionRef: providerSession?.native_session_ref || null,
-        profile,
-        signal: abortController.signal
-      });
+      const result = await adapter.executePrompt({ prompt, model: job.model, sessionId: job.session_id, nativeSessionRef: providerSession?.native_session_ref || null, profile, signal: abortController.signal });
 
-      if (result.nativeSessionRef) {
-        ContextManager.upsertProviderSession({ sessionId: job.session_id, provider: providerName, nativeSessionRef: result.nativeSessionRef });
-      }
+      // 실제 Provider가 성공한 뒤에만 native ref와 Canonical sync cursor를 전진시킨다.
+      const canonical = ContextManager.buildContextPackage(job.session_id);
+      ContextManager.upsertProviderSession({
+        sessionId: job.session_id,
+        provider: providerName,
+        nativeSessionRef: result.nativeSessionRef || null,
+        lastSyncedMessageId: canonical.latestMessageId
+      });
 
       clearInterval(intervalTimer);
       const durationMs = Date.now() - startTime;
       JobRuntime.markCompleted(job.id, durationMs);
-      if (onStatusUpdate) onStatusUpdate(JobStatus.COMPLETED, Math.floor(durationMs / 1000));
+      onStatusUpdate?.(JobStatus.COMPLETED, Math.floor(durationMs / 1000));
       resolve(result.response);
     } catch (error) {
       clearInterval(intervalTimer);
       const durationMs = Date.now() - startTime;
       if (abortController.signal.aborted) {
         JobRuntime.markCancelled(job.id, durationMs);
-        if (onStatusUpdate) onStatusUpdate(JobStatus.CANCELLED, Math.floor(durationMs / 1000));
+        onStatusUpdate?.(JobStatus.CANCELLED, Math.floor(durationMs / 1000));
         reject(new Error('작업이 취소되었습니다.'));
       } else {
         const errorCategory = error.message.includes('타임아웃') ? ErrorCategory.TIMEOUT : ErrorCategory.PROVIDER_EXEC;
         JobRuntime.markFailed(job.id, errorCategory, error.message, 1, durationMs);
-        if (onStatusUpdate) onStatusUpdate(JobStatus.FAILED, Math.floor(durationMs / 1000));
+        onStatusUpdate?.(JobStatus.FAILED, Math.floor(durationMs / 1000));
         reject(error);
       }
     } finally {
@@ -107,7 +98,7 @@ class QueueManager {
       if (idx !== -1) {
         const [removed] = queue.splice(idx, 1);
         JobRuntime.markCancelled(jobId);
-        if (removed.onStatusUpdate) removed.onStatusUpdate(JobStatus.CANCELLED, 0);
+        removed.onStatusUpdate?.(JobStatus.CANCELLED, 0);
         removed.reject(new Error('작업이 대기 중 취소되었습니다.'));
         if (queue.length === 0) this.sessionQueues.delete(sessionId);
         return true;
@@ -119,8 +110,7 @@ class QueueManager {
   cancelActiveJobForSession(sessionId) {
     for (const [jobId, active] of this.activeExecutions.entries()) if (active.sessionId === sessionId) return this.cancelJob(jobId);
     const queue = this.sessionQueues.get(sessionId);
-    if (queue && queue.length > 0) return this.cancelJob(queue[0].job.id);
-    return false;
+    return queue?.length ? this.cancelJob(queue[0].job.id) : false;
   }
 
   getQueueStats() {
