@@ -41,21 +41,72 @@ export class AntigravityAdapter extends ProviderAdapter {
     if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels;
 
     try {
-      const { stdout } = await execFileAsync('agy', ['models', '--skip-trust'], { timeout: 10000, cwd: this.workspaceDir });
-      const clean = stdout.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+      // agy models는 독립 서브커맨드다. --skip-trust 같은 대화 실행용 플래그를 붙이지 않는다.
+      const { stdout, stderr } = await execFileAsync('agy', ['models'], {
+        timeout: 20000,
+        cwd: this.workspaceDir,
+        env: { ...process.env, CI: 'true' }
+      });
+
+      const raw = `${stdout || ''}\n${stderr || ''}`;
+      const clean = raw.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
       const discovered = [];
-      for (const line of clean.split('\n').map((l) => l.trim()).filter(Boolean)) {
-        if (line.startsWith('Model') || line.startsWith('---') || line.startsWith('===') || line.startsWith('Available') || line.toLowerCase().includes('usage:')) continue;
-        const parts = line.split(/\s+/);
-        const id = parts[0];
-        if (id && id.length > 2) discovered.push({ id, name: parts.length > 1 ? `${id} (${parts.slice(1).join(' ')})` : id, default: discovered.length === 0 });
+      const seen = new Set();
+
+      for (const originalLine of clean.split('\n')) {
+        const line = originalLine.trim();
+        if (!line) continue;
+        if (
+          line.startsWith('Model') ||
+          line.startsWith('---') ||
+          line.startsWith('===') ||
+          line.startsWith('Available') ||
+          line.toLowerCase().startsWith('usage:')
+        ) continue;
+
+        // agy 버전에 따라 다음 두 형태를 모두 지원한다.
+        // 1) gemini-3.6-flash-high
+        // 2) gemini-3.6-flash-high<TAB>Gemini 3.6 Flash (High)
+        let id;
+        let displayName;
+
+        if (line.includes('\t')) {
+          const [slug, ...labelParts] = line.split('\t');
+          id = slug.trim();
+          displayName = labelParts.join('\t').trim() || id;
+        } else {
+          const parts = line.split(/\s{2,}/);
+          if (parts.length > 1) {
+            id = parts[0].trim();
+            displayName = parts.slice(1).join(' ').trim() || id;
+          } else {
+            // 구버전은 bare slug 한 줄만 반환할 수 있다.
+            id = line;
+            displayName = line;
+          }
+        }
+
+        // 모델 slug/display name으로 보이는 항목만 허용한다.
+        if (!id || id.length < 3 || seen.has(id)) continue;
+        const looksLikeModel = /gemini|claude|gpt|oss|model/i.test(`${id} ${displayName}`);
+        if (!looksLikeModel) continue;
+
+        seen.add(id);
+        discovered.push({
+          id,
+          name: displayName,
+          default: discovered.length === 0
+        });
       }
-      if (discovered.length > 0) {
-        this.cachedModels = discovered;
-        this.lastModelCheck = now;
-        return discovered;
+
+      if (discovered.length === 0) {
+        throw new Error(`agy models 출력에서 모델을 파싱하지 못했습니다. raw=${clean.trim().slice(0, 300) || '(empty)'}`);
       }
-      throw new Error('agy models가 모델을 반환하지 않았습니다.');
+
+      this.cachedModels = discovered;
+      this.lastModelCheck = now;
+      console.log(`[AntigravityAdapter] agy models 동적 발견: ${discovered.length}개 모델`);
+      return discovered;
     } catch (error) {
       this.cachedModels = null;
       throw new Error(`Antigravity 모델 동적 조회 실패 (하드코딩 fallback 없음): ${error.message}`);
