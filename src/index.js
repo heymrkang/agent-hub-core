@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { initDatabase } from './database/index.js';
 import { JobRuntime } from './jobs/job-runtime.js';
 import { initTelegramBot } from './telegram.js';
+import { schedulerEngine } from './scheduler/engine.js';
 
 console.log('==========================================');
 console.log('            Agent Hub Core V1');
@@ -13,7 +14,8 @@ process.on('unhandledRejection', (reason, promise) => console.error('[FATAL] Unh
 try {
   initDatabase();
   JobRuntime.recoverInterruptedJobs();
-  initTelegramBot();
+  const bot = initTelegramBot();
+  schedulerEngine.start(bot);
 } catch (error) {
   console.error('[Fatal Init Error]', error.message);
   process.exit(1);
