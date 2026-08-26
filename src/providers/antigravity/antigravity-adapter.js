@@ -42,16 +42,23 @@ export class AntigravityAdapter extends ProviderAdapter {
     if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels;
 
     try {
-      // 수동 shell에서 정상 동작하는 `agy models`와 최대한 동일한 환경으로 실행한다.
-      // CI=true는 일부 CLI에서 비대화형 동작을 바꾸거나 대기를 유발할 수 있어 model discovery에는 강제하지 않는다.
-      const { stdout, stderr } = await execFileAsync('agy', ['models'], {
-        timeout: this.modelDiscoveryTimeoutMs,
-        cwd: this.workspaceDir,
-        env: { ...process.env }
-      });
+      // Antigravity CLI v1.1.20의 `agy models`는 실제 TTY에서는 빠르게 종료하지만
+      // pipe 기반 child_process에서는 출력 없이 대기할 수 있다. util-linux `script`로
+      // pseudo-TTY를 제공해 사용자가 터미널에서 직접 실행하는 조건과 맞춘다.
+      const { stdout, stderr } = await execFileAsync(
+        'script',
+        ['-q', '-e', '-c', 'agy models', '/dev/null'],
+        {
+          timeout: this.modelDiscoveryTimeoutMs,
+          cwd: this.workspaceDir,
+          env: { ...process.env }
+        }
+      );
 
       const raw = `${stdout || ''}\n${stderr || ''}`;
-      const clean = raw.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+      const clean = raw
+        .replace(/\x1B\[[0-9;?]*[ -\/]*[@-~]/g, '')
+        .replace(/\r/g, '');
       const discovered = [];
       const seen = new Set();
 
@@ -97,18 +104,18 @@ export class AntigravityAdapter extends ProviderAdapter {
       }
 
       if (discovered.length === 0) {
-        throw new Error(`agy models 출력에서 모델을 파싱하지 못했습니다. raw=${clean.trim().slice(0, 300) || '(empty)'}`);
+        throw new Error(`agy models 출력에서 모델을 파싱하지 못했습니다. raw=${clean.trim().slice(0, 500) || '(empty)'}`);
       }
 
       this.cachedModels = discovered;
       this.lastModelCheck = now;
-      console.log(`[AntigravityAdapter] agy models 동적 발견: ${discovered.length}개 모델`);
+      console.log(`[AntigravityAdapter] agy models PTY 동적 발견: ${discovered.length}개 모델`);
       return discovered;
     } catch (error) {
       this.cachedModels = null;
 
       const diagnostic = {
-        command: 'agy models',
+        command: 'script -q -e -c "agy models" /dev/null',
         timeoutMs: this.modelDiscoveryTimeoutMs,
         code: error?.code ?? null,
         exitCode: error?.code ?? null,
@@ -121,9 +128,9 @@ export class AntigravityAdapter extends ProviderAdapter {
         stderr: String(error?.stderr || '').trim().slice(0, 2000) || '(empty)',
         message: error?.message || String(error)
       };
-      console.error('[AntigravityAdapter] agy models 진단:', diagnostic);
+      console.error('[AntigravityAdapter] agy models PTY 진단:', diagnostic);
 
-      throw new Error(`Antigravity 모델 동적 조회 실패 (하드코딩 fallback 없음): ${error.message}`);
+      throw new Error(`Antigravity 모델 동적 조회 실패 (PTY, 하드코딩 fallback 없음): ${error.message}`);
     }
   }
 
