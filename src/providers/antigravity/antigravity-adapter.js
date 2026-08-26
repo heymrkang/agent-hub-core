@@ -42,9 +42,6 @@ export class AntigravityAdapter extends ProviderAdapter {
     if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels;
 
     try {
-      // Antigravity CLI v1.1.20의 `agy models`는 실제 TTY에서는 빠르게 종료하지만
-      // pipe 기반 child_process에서는 출력 없이 대기할 수 있다. util-linux `script`로
-      // pseudo-TTY를 제공해 사용자가 터미널에서 직접 실행하는 조건과 맞춘다.
       const { stdout, stderr } = await execFileAsync(
         'script',
         ['-q', '-e', '-c', 'agy models', '/dev/null'],
@@ -58,13 +55,22 @@ export class AntigravityAdapter extends ProviderAdapter {
       const raw = `${stdout || ''}\n${stderr || ''}`;
       const clean = raw
         .replace(/\x1B\[[0-9;?]*[ -\/]*[@-~]/g, '')
-        .replace(/\r/g, '');
+        .replace(/\r/g, '\n');
       const discovered = [];
       const seen = new Set();
 
       for (const originalLine of clean.split('\n')) {
-        const line = originalLine.trim();
+        let line = originalLine.trim();
         if (!line) continue;
+
+        // PTY spinner/progress redraw는 CR 기반이라 여러 상태 문자열이 섞일 수 있다.
+        // 모델 slug로 시작하는 실제 결과만 엄격하게 추출한다.
+        if (/Fetching available models/i.test(line)) {
+          const modelStart = line.search(/(?:gemini|claude|gpt|oss)[a-z0-9._-]*/i);
+          if (modelStart < 0) continue;
+          line = line.slice(modelStart).trim();
+        }
+
         if (
           line.startsWith('Model') ||
           line.startsWith('---') ||
@@ -73,27 +79,13 @@ export class AntigravityAdapter extends ProviderAdapter {
           line.toLowerCase().startsWith('usage:')
         ) continue;
 
-        let id;
-        let displayName;
+        const match = line.match(/^((?:gemini|claude|gpt|oss)[a-z0-9._-]*)(?:\s{2,}|\t)(.*)$/i)
+          || line.match(/^((?:gemini|claude|gpt|oss)[a-z0-9._-]*)$/i);
+        if (!match) continue;
 
-        if (line.includes('\t')) {
-          const [slug, ...labelParts] = line.split('\t');
-          id = slug.trim();
-          displayName = labelParts.join('\t').trim() || id;
-        } else {
-          const parts = line.split(/\s{2,}/);
-          if (parts.length > 1) {
-            id = parts[0].trim();
-            displayName = parts.slice(1).join(' ').trim() || id;
-          } else {
-            id = line;
-            displayName = line;
-          }
-        }
-
-        if (!id || id.length < 3 || seen.has(id)) continue;
-        const looksLikeModel = /gemini|claude|gpt|oss|model/i.test(`${id} ${displayName}`);
-        if (!looksLikeModel) continue;
+        const id = match[1].trim();
+        const displayName = (match[2] || id).trim();
+        if (!id || seen.has(id)) continue;
 
         seen.add(id);
         discovered.push({
