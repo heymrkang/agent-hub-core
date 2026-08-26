@@ -64,9 +64,6 @@ export class AntigravityAdapter extends ProviderAdapter {
           line.toLowerCase().startsWith('usage:')
         ) continue;
 
-        // agy 버전에 따라 다음 두 형태를 모두 지원한다.
-        // 1) gemini-3.6-flash-high
-        // 2) gemini-3.6-flash-high<TAB>Gemini 3.6 Flash (High)
         let id;
         let displayName;
 
@@ -80,13 +77,11 @@ export class AntigravityAdapter extends ProviderAdapter {
             id = parts[0].trim();
             displayName = parts.slice(1).join(' ').trim() || id;
           } else {
-            // 구버전은 bare slug 한 줄만 반환할 수 있다.
             id = line;
             displayName = line;
           }
         }
 
-        // 모델 slug/display name으로 보이는 항목만 허용한다.
         if (!id || id.length < 3 || seen.has(id)) continue;
         const looksLikeModel = /gemini|claude|gpt|oss|model/i.test(`${id} ${displayName}`);
         if (!looksLikeModel) continue;
@@ -109,6 +104,24 @@ export class AntigravityAdapter extends ProviderAdapter {
       return discovered;
     } catch (error) {
       this.cachedModels = null;
+
+      // 민감정보를 출력하지 않는 범위에서 child_process 실행 환경과 실제 실패 원인을 남긴다.
+      // env 전체는 절대 로그하지 않는다. PATH/HOME/cwd는 CLI 실행 차이 진단에 필요한 값만 기록한다.
+      const diagnostic = {
+        command: 'agy models',
+        code: error?.code ?? null,
+        exitCode: error?.code ?? null,
+        signal: error?.signal ?? null,
+        killed: error?.killed ?? false,
+        cwd: this.workspaceDir,
+        PATH: process.env.PATH || '(unset)',
+        HOME: process.env.HOME || '(unset)',
+        stdout: String(error?.stdout || '').trim().slice(0, 2000) || '(empty)',
+        stderr: String(error?.stderr || '').trim().slice(0, 2000) || '(empty)',
+        message: error?.message || String(error)
+      };
+      console.error('[AntigravityAdapter] agy models 진단:', diagnostic);
+
       throw new Error(`Antigravity 모델 동적 조회 실패 (하드코딩 fallback 없음): ${error.message}`);
     }
   }
