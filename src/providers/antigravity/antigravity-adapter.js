@@ -16,108 +16,52 @@ export class AntigravityAdapter extends ProviderAdapter {
     this.lastModelCheck = 0;
   }
 
-  /**
-   * Antigravity CLI (agy) 설치 및 버전 확인
-   */
   async checkHealth() {
     try {
       const { stdout } = await execFileAsync('agy', ['--version'], { timeout: 10000 });
-      const version = stdout.trim();
-      return { healthy: true, version };
+      return { healthy: true, version: stdout.trim() };
     } catch (error) {
       return { healthy: false, error: error.message };
     }
   }
 
-  /**
-   * Antigravity 인증 상태 점검 (OAuth 및 ~/.gemini 세션 기반)
-   */
   async checkAuth() {
     const health = await this.checkHealth();
-    if (!health.healthy) {
-      return { authenticated: false, details: `CLI 실행 불가: ${health.error}` };
-    }
+    if (!health.healthy) return { authenticated: false, state: 'CLI_UNAVAILABLE', details: `CLI 실행 불가: ${health.error}` };
 
     const geminiDir = path.join(os.homedir(), '.gemini');
-    const hasAuthFiles = fs.existsSync(geminiDir) && fs.readdirSync(geminiDir).length > 0;
-
-    if (hasAuthFiles) {
-      return {
-        authenticated: true,
-        details: 'Antigravity Google 계정 세션 인증 정상 (~/.gemini)'
-      };
-    }
-
-    return {
-      authenticated: false,
-      details: 'Antigravity Google 로그인 필요 (`agy` 실행 후 브라우저 로그인 진행)'
-    };
+    const hasCredentialState = fs.existsSync(geminiDir) && fs.readdirSync(geminiDir).length > 0;
+    return hasCredentialState
+      ? { authenticated: null, state: 'CREDENTIAL_PRESENT', details: 'Antigravity 인증 상태 파일 존재. 실제 유효성은 CLI 실행 결과로 검증됩니다.' }
+      : { authenticated: false, state: 'LOGIN_REQUIRED', details: 'Antigravity Google 로그인 필요 (`agy` 대화형 실행)' };
   }
 
-  /**
-   * 지원 모델 목록 동적 조회 (agy models 기반)
-   */
   async discoverModels(forceRefresh = false) {
     const now = Date.now();
-    if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) {
-      return this.cachedModels;
-    }
+    if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels;
 
     try {
-      const { stdout } = await execFileAsync('agy', ['models', '--skip-trust'], {
-        timeout: 10000,
-        cwd: this.workspaceDir
-      });
-      // ANSI escape 코드 제거 및 라인 분할
-      const cleanStdout = stdout.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-      const lines = cleanStdout.split('\n').map((l) => l.trim()).filter(Boolean);
+      const { stdout } = await execFileAsync('agy', ['models', '--skip-trust'], { timeout: 10000, cwd: this.workspaceDir });
+      const clean = stdout.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
       const discovered = [];
-
-      for (const line of lines) {
-        // 헤더나 구분선 필터링
-        if (
-          line.startsWith('Model') ||
-          line.startsWith('---') ||
-          line.startsWith('===') ||
-          line.startsWith('Available') ||
-          line.toLowerCase().includes('usage:')
-        ) {
-          continue;
-        }
-
+      for (const line of clean.split('\n').map((l) => l.trim()).filter(Boolean)) {
+        if (line.startsWith('Model') || line.startsWith('---') || line.startsWith('===') || line.startsWith('Available') || line.toLowerCase().includes('usage:')) continue;
         const parts = line.split(/\s+/);
         const id = parts[0];
-        if (id && id.length > 2) {
-          const desc = parts.slice(1).join(' ');
-          discovered.push({
-            id,
-            name: desc ? `${id} (${desc})` : id,
-            default: discovered.length === 0 // 첫 번째 모델을 기본으로
-          });
-        }
+        if (id && id.length > 2) discovered.push({ id, name: parts.length > 1 ? `${id} (${parts.slice(1).join(' ')})` : id, default: discovered.length === 0 });
       }
-
       if (discovered.length > 0) {
-        console.log(`[AntigravityAdapter] agy models 동적 발견: ${discovered.length}개 모델`);
         this.cachedModels = discovered;
         this.lastModelCheck = now;
-        return this.cachedModels;
+        return discovered;
       }
-    } catch (err) {
-      console.warn(`[AntigravityAdapter] agy models 동적 조회 실패: ${err.message}`);
+      throw new Error('agy models가 모델을 반환하지 않았습니다.');
+    } catch (error) {
+      this.cachedModels = null;
+      throw new Error(`Antigravity 모델 동적 조회 실패 (하드코딩 fallback 없음): ${error.message}`);
     }
-
-    // CLI 실행 실패 시 기본 fallback
-    return [
-      { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', default: true },
-      { id: 'gemini-3.6-pro', name: 'Gemini 3.6 Pro' },
-      { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet' }
-    ];
   }
 
-  /**
-   * 기능 지원 상태 반환
-   */
   getCapabilities() {
     return {
       authPersistence: 'SUPPORTED',
@@ -132,30 +76,15 @@ export class AntigravityAdapter extends ProviderAdapter {
     };
   }
 
-  /**
-   * 프롬프트 실행 (agy 공식 플래그 매핑)
-   */
   async executePrompt(options = {}) {
-    const { prompt, model, cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
+    const { prompt, model, nativeSessionRef, cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
 
     return new Promise((resolve, reject) => {
-      // agy 1.1.20 공식 비대화형 플래그 매핑 (--effort medium 기본 적용)
-      const args = [
-        '--print', prompt,
-        '--dangerously-skip-permissions',
-        '--effort', 'medium'
-      ];
+      const args = ['--print', prompt, '--output-format', 'json', '--dangerously-skip-permissions', '--effort', 'medium'];
+      if (model && model !== 'default') args.push('--model', model);
+      if (nativeSessionRef) args.push('--conversation', nativeSessionRef);
 
-      if (model && model !== 'default') {
-        args.push('--model', model);
-      }
-
-      const child = spawn('agy', args, {
-        cwd,
-        env: { ...process.env, CI: 'true' },
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-
+      const child = spawn('agy', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = '';
       let stderr = '';
       let isFinished = false;
@@ -168,49 +97,48 @@ export class AntigravityAdapter extends ProviderAdapter {
         }
       }, timeoutMs);
 
-      if (signal) {
-        signal.addEventListener('abort', () => {
-          if (!isFinished) {
-            isFinished = true;
-            clearTimeout(timer);
-            child.kill('SIGKILL');
-            reject(new Error('Antigravity 작업이 사용자에 의해 중단되었습니다.'));
-          }
-        });
-      }
+      if (signal) signal.addEventListener('abort', () => {
+        if (!isFinished) {
+          isFinished = true;
+          clearTimeout(timer);
+          child.kill('SIGKILL');
+          reject(new Error('Antigravity 작업이 사용자에 의해 중단되었습니다.'));
+        }
+      }, { once: true });
 
-      child.stdout.on('data', (chunk) => {
-        stdout += chunk.toString();
-      });
-
-      child.stderr.on('data', (chunk) => {
-        stderr += chunk.toString();
-      });
-
+      child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+      child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
       child.on('error', (err) => {
         if (isFinished) return;
         isFinished = true;
         clearTimeout(timer);
         reject(new Error(`Antigravity 프로세스 시작 실패: ${err.message}`));
       });
-
       child.on('close', (code) => {
         if (isFinished) return;
         isFinished = true;
         clearTimeout(timer);
-
-        const trimmedStdout = stdout.trim();
-        const trimmedStderr = stderr.trim();
-
+        const raw = stdout.trim();
+        const diagnostic = stderr.trim();
         if (code !== 0) {
-          const errorMsg = trimmedStderr || trimmedStdout || `Exit code: ${code}`;
-          reject(new Error(`Antigravity 실행 실패 (Exit code: ${code}):\n${errorMsg}`));
+          reject(new Error(`Antigravity 실행 실패 (Exit code: ${code}):\n${diagnostic || raw || `Exit code: ${code}`}`));
           return;
         }
-
-        resolve({
-          response: trimmedStdout || 'Antigravity로부터 빈 응답을 받았습니다.'
-        });
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed.status && parsed.status !== 'SUCCESS') throw new Error(parsed.error || `status=${parsed.status}`);
+          resolve({
+            response: parsed.response ?? parsed.result ?? '',
+            nativeSessionRef: parsed.conversation_id ?? parsed.conversationId ?? parsed.session_id ?? parsed.sessionId ?? nativeSessionRef ?? null,
+            usage: parsed.usage ?? null
+          });
+        } catch (error) {
+          if (error instanceof SyntaxError) {
+            resolve({ response: raw || 'Antigravity로부터 빈 응답을 받았습니다.', nativeSessionRef: nativeSessionRef ?? null });
+            return;
+          }
+          reject(new Error(`Antigravity 응답 상태 오류: ${error.message}`));
+        }
       });
     });
   }
