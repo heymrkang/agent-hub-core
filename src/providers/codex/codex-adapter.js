@@ -37,33 +37,105 @@ export class CodexAdapter extends ProviderAdapter {
       : { authenticated: false, state: 'LOGIN_REQUIRED', details: 'Codex 로그인 필요 (컨테이너 내 `codex login`)' };
   }
 
+  async queryAppServerModels() {
+    return new Promise((resolve, reject) => {
+      const child = spawn('codex', ['app-server', '--stdio'], {
+        cwd: this.workspaceDir,
+        env: { ...process.env, CI: 'true' },
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let buffer = '';
+      let stderr = '';
+      let settled = false;
+      const timer = setTimeout(() => finish(new Error(`Codex app-server model/list 타임아웃: ${stderr.trim() || '응답 없음'}`)), 15000);
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        if (!child.killed) child.kill('SIGTERM');
+      };
+      const finish = (error, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) reject(error);
+        else resolve(value);
+      };
+      const send = (payload) => child.stdin.write(`${JSON.stringify(payload)}\n`);
+
+      child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+      child.on('error', (error) => finish(new Error(`Codex app-server 시작 실패: ${error.message}`)));
+      child.on('close', (code) => {
+        if (!settled) finish(new Error(`Codex app-server 조기 종료 (code=${code}): ${stderr.trim() || '상세 오류 없음'}`));
+      });
+
+      child.stdout.on('data', (chunk) => {
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines.map((l) => l.trim()).filter(Boolean)) {
+          let message;
+          try { message = JSON.parse(line); } catch { continue; }
+
+          if (message.id === 1) {
+            if (message.error) {
+              finish(new Error(`Codex app-server initialize 실패: ${message.error.message || JSON.stringify(message.error)}`));
+              return;
+            }
+            send({ method: 'initialized', params: {} });
+            send({ id: 2, method: 'model/list', params: { limit: 100, includeHidden: false } });
+          } else if (message.id === 2) {
+            if (message.error) {
+              finish(new Error(`Codex model/list 실패: ${message.error.message || JSON.stringify(message.error)}`));
+              return;
+            }
+            finish(null, message.result);
+            return;
+          }
+        }
+      });
+
+      send({
+        id: 1,
+        method: 'initialize',
+        params: {
+          clientInfo: {
+            name: 'agent_hub',
+            title: 'Agent Hub',
+            version: '1.0.0'
+          }
+        }
+      });
+    });
+  }
+
   async discoverModels(forceRefresh = false) {
     const now = Date.now();
     if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels;
 
     try {
-      const { stdout } = await execFileAsync('codex', ['doctor', '--json'], { timeout: 15000 });
-      const report = JSON.parse(stdout);
-      const discovered = Array.isArray(report.models)
-        ? report.models.filter(Boolean).map((m) => ({
-            id: typeof m === 'string' ? m : m.id,
-            name: typeof m === 'string' ? m : m.name || m.id,
-            default: Boolean(typeof m === 'object' && m.default)
-          })).filter((m) => m.id)
-        : [];
-      if (discovered.length > 0) {
-        this.cachedModels = discovered;
-        this.lastModelCheck = now;
-        return discovered;
-      }
-    } catch (error) {
-      console.warn(`[CodexAdapter] 동적 모델 조회 불가: ${error.message}`);
-    }
+      const result = await this.queryAppServerModels();
+      const rows = Array.isArray(result?.data) ? result.data : [];
+      const discovered = rows
+        .filter((m) => m && !m.hidden)
+        .map((m) => ({
+          id: m.model || m.id,
+          name: m.displayName || m.display_name || m.model || m.id,
+          default: Boolean(m.isDefault ?? m.is_default),
+          description: m.description || null
+        }))
+        .filter((m) => m.id);
 
-    // 하드코딩된 모델 이름을 절대 반환하지 않는다. CLI default 슬롯만 제공한다.
-    this.cachedModels = [{ id: 'default', name: 'Codex 기본 모델 (CLI Default)', default: true }];
-    this.lastModelCheck = now;
-    return this.cachedModels;
+      if (discovered.length === 0) throw new Error('model/list가 표시 가능한 모델을 반환하지 않았습니다.');
+
+      this.cachedModels = discovered;
+      this.lastModelCheck = now;
+      return discovered;
+    } catch (error) {
+      this.cachedModels = null;
+      throw new Error(`Codex 모델 동적 조회 실패 (app-server model/list): ${error.message}`);
+    }
   }
 
   getCapabilities() {
@@ -73,7 +145,7 @@ export class CodexAdapter extends ProviderAdapter {
       jsonOutput: 'SUPPORTED',
       nativeSessionResume: 'PARTIAL',
       modelSwitching: 'SUPPORTED',
-      dynamicModelDiscovery: 'PARTIAL',
+      dynamicModelDiscovery: 'SUPPORTED',
       multiImage: 'SUPPORTED',
       nativeCompact: 'UNSUPPORTED',
       usageMetrics: 'PARTIAL'
