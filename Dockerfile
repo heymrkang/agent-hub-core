@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     openssh-client \
     tzdata \
+    util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 # 타임존 설정 (Asia/Seoul)
