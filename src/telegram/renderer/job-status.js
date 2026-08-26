@@ -23,18 +23,17 @@ export class JobStatusRenderer {
 
   /**
    * 상태 메시지를 실시간 갱신한다.
-   * @param {import('node-telegram-bot-api')} bot
-   * @param {number} chatId
-   * @param {number} messageId
-   * @param {object} job
-   * @param {string} currentStatus
-   * @param {number} elapsedSec
+   * 정상 완료(COMPLETED) 시에는 최종 답변과 혼동되지 않도록 상태 메시지를 제거한다.
    */
   static async updateStatus(bot, chatId, messageId, job, currentStatus, elapsedSec = 0) {
     try {
+      if (currentStatus === JobStatus.COMPLETED) {
+        await bot.deleteMessage(chatId, messageId);
+        return;
+      }
+
       const text = this.formatStatusText(job, currentStatus, elapsedSec);
       const isTerminal =
-        currentStatus === JobStatus.COMPLETED ||
         currentStatus === JobStatus.FAILED ||
         currentStatus === JobStatus.CANCELLED ||
         currentStatus === JobStatus.INTERRUPTED;
@@ -54,7 +53,7 @@ export class JobStatusRenderer {
         reply_markup: replyMarkup
       });
     } catch {
-      // 텔레그램 메시지 내용 동일 등의 에러 무시
+      // 삭제/수정 대상이 이미 사라졌거나 메시지 내용이 동일한 경우 등은 무시한다.
     }
   }
 
