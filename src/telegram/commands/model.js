@@ -2,9 +2,6 @@ import { SessionManager } from '../../sessions/session-manager.js';
 import { providerManager } from '../../providers/provider-manager.js';
 import { HandoffManager } from '../../context/handoff-manager.js';
 
-/**
- * /model 명령어 처리: 프로바이더 및 모델 선택 2단계 UI 제공
- */
 export async function handleModelCommand(bot, msg) {
   const chatId = msg.chat ? msg.chat.id : msg.message.chat.id;
   const userId = msg.from.id;
@@ -19,33 +16,18 @@ export async function handleModelCommand(bot, msg) {
     text += `• 현재 Model: \`${activeSession.active_model || '기본 모델 (CLI Default)'}\`\n\n`;
     text += `변경할 Provider를 선택하세요:`;
 
-    const buttons = [];
-    for (const p of providers) {
-      const isSelected = p === activeSession.active_provider;
-      buttons.push([
-        {
-          text: isSelected ? `🟢 ${p.toUpperCase()} (선택됨)` : `⚪ ${p.toUpperCase()}`,
-          callback_data: `model_provider:${p}`
-        }
-      ]);
-    }
+    const buttons = providers.map((p) => [{
+      text: p === activeSession.active_provider ? `🟢 ${p.toUpperCase()} (선택됨)` : `⚪ ${p.toUpperCase()}`,
+      callback_data: `model_provider:${p}`
+    }]);
 
-    const options = {
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: buttons }
-    };
+    const options = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: buttons } };
 
     if (msg.message_id && !msg.chat) {
       try {
-        await bot.editMessageText(text, {
-          chat_id: chatId,
-          message_id: msg.message.message_id,
-          ...options
-        });
+        await bot.editMessageText(text, { chat_id: chatId, message_id: msg.message.message_id, ...options });
       } catch (err) {
-        if (!err.message.includes('message is not modified')) {
-          throw err;
-        }
+        if (!err.message.includes('message is not modified')) throw err;
       }
     } else {
       await bot.sendMessage(chatId, text, options);
@@ -56,38 +38,47 @@ export async function handleModelCommand(bot, msg) {
   }
 }
 
-/**
- * 특정 프로바이더의 모델 목록 표시 (2단계)
- */
-async function showModelsForProvider(bot, callbackQuery, providerName) {
+async function showModelsForProvider(bot, callbackQuery, providerName, forceRefresh = false) {
   const chatId = callbackQuery.message.chat.id;
   const messageId = callbackQuery.message.message_id;
   const userId = callbackQuery.from.id;
 
+  // Telegram callback query는 오래 기다리면 만료되므로 discovery 전에 즉시 ACK한다.
+  await bot.answerCallbackQuery(callbackQuery.id, { text: `${providerName.toUpperCase()} 모델 조회 중...` }).catch(() => {});
+
+  const loadingText =
+    `⏳ **[${providerName.toUpperCase()}] 모델 목록 조회 중...**\n\n` +
+    `CLI에서 현재 사용 가능한 모델을 확인하고 있습니다.`;
+
+  await bot.editMessageText(loadingText, {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: [[{ text: '🔙 Provider 목록으로', callback_data: 'model_back_to_providers' }]] }
+  }).catch(() => {});
+
   try {
     const activeSession = SessionManager.getActiveSession(userId);
     const adapter = providerManager.getAdapter(providerName);
-    const models = await adapter.discoverModels();
+    const models = await adapter.discoverModels(forceRefresh);
+
+    if (!Array.isArray(models) || models.length === 0) {
+      throw new Error('사용 가능한 모델이 없습니다.');
+    }
 
     let text = `🎛️ **[${providerName.toUpperCase()}] 지원 모델 목록**\n\n`;
     text += `📌 **활성 세션**: **${activeSession.title}**\n`;
-    text += `원하는 모델을 선택하면 현재 활성 세션에 즉시 적용됩니다:`;
+    text += `원하는 모델을 선택하면 현재 활성 세션에 적용됩니다:`;
 
     const buttons = [];
     for (const m of models) {
-      const isCurrent =
-        activeSession.active_provider === providerName &&
+      const isCurrent = activeSession.active_provider === providerName &&
         (activeSession.active_model === m.id || (!activeSession.active_model && m.id === 'default'));
 
-      const prefix = isCurrent ? '🟢 ' : '⚪ ';
-      const label = `${prefix}${m.name}`;
-
-      buttons.push([
-        {
-          text: label,
-          callback_data: `model_select:${providerName}:${m.id}`
-        }
-      ]);
+      buttons.push([{
+        text: `${isCurrent ? '🟢 ' : '⚪ '}${m.name}`,
+        callback_data: `model_select:${providerName}:${m.id}`
+      }]);
     }
 
     buttons.push([
@@ -95,38 +86,40 @@ async function showModelsForProvider(bot, callbackQuery, providerName) {
       { text: '🔙 Provider 목록으로', callback_data: 'model_back_to_providers' }
     ]);
 
-    try {
-      await bot.editMessageText(text, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: buttons }
-      });
-    } catch (err) {
-      if (err.message.includes('message is not modified')) {
-        await bot.answerCallbackQuery(callbackQuery.id, { text: '이미 최신 모델 목록입니다.' });
-        return;
-      }
-      throw err;
-    }
-    await bot.answerCallbackQuery(callbackQuery.id);
+    await bot.editMessageText(text, {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: buttons }
+    });
   } catch (error) {
-    console.error(`[Model Discovery Error] ${error.message}`);
-    await bot.answerCallbackQuery(callbackQuery.id, {
-      text: `모델 조회 실패: ${error.message}`,
-      show_alert: true
+    console.error(`[Model Discovery Error] ${providerName}: ${error.message}`);
+
+    const errorText =
+      `❌ **[${providerName.toUpperCase()}] 모델 목록 조회 실패**\n\n` +
+      `${error.message}\n\n` +
+      `CLI 인증 상태나 \`agy models\` 실행 결과를 확인해주세요.`;
+
+    await bot.editMessageText(errorText, {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 다시 시도', callback_data: `model_refresh:${providerName}` }],
+          [{ text: '🔙 Provider 목록으로', callback_data: 'model_back_to_providers' }]
+        ]
+      }
+    }).catch(async () => {
+      await bot.sendMessage(chatId, `❌ ${providerName} 모델 조회 실패: ${error.message}`).catch(() => {});
     });
   }
 }
 
-/**
- * 모델 선택 완료 안내 화면 (UX 개선)
- */
 async function showModelSelectedSuccess(bot, callbackQuery, providerName, modelId) {
   const chatId = callbackQuery.message.chat.id;
   const messageId = callbackQuery.message.message_id;
   const userId = callbackQuery.from.id;
-
   const activeSession = SessionManager.getActiveSession(userId);
 
   const text =
@@ -149,44 +142,36 @@ async function showModelSelectedSuccess(bot, callbackQuery, providerName, modelI
       reply_markup: { inline_keyboard: buttons }
     });
   } catch (err) {
-    if (!err.message.includes('message is not modified')) {
-      throw err;
-    }
+    if (!err.message.includes('message is not modified')) throw err;
   }
 }
 
-/**
- * Model Callback Query 라우터
- */
 export async function handleModelCallback(bot, callbackQuery) {
   const data = callbackQuery.data;
   const userId = callbackQuery.from.id;
 
   if (data === 'model_back_to_providers') {
     await handleModelCommand(bot, callbackQuery);
-    await bot.answerCallbackQuery(callbackQuery.id);
+    await bot.answerCallbackQuery(callbackQuery.id).catch(() => {});
     return;
   }
 
   if (data.startsWith('model_provider:')) {
     const providerName = data.replace('model_provider:', '');
-    await showModelsForProvider(bot, callbackQuery, providerName);
+    await showModelsForProvider(bot, callbackQuery, providerName, false);
     return;
   }
 
   if (data.startsWith('model_refresh:')) {
     const providerName = data.replace('model_refresh:', '');
-    const adapter = providerManager.getAdapter(providerName);
-    await adapter.discoverModels(true); // 강제 새로고침
-    await showModelsForProvider(bot, callbackQuery, providerName);
+    await showModelsForProvider(bot, callbackQuery, providerName, true);
     return;
   }
 
   if (data.startsWith('model_select:')) {
     const parts = data.replace('model_select:', '').split(':');
     const providerName = parts[0];
-    const modelId = parts[1];
-
+    const modelId = parts.slice(1).join(':');
     const activeSession = SessionManager.getActiveSession(userId);
     const targetModel = modelId === 'default' ? null : modelId;
 
@@ -200,15 +185,15 @@ export async function handleModelCallback(bot, callbackQuery) {
 
       await bot.answerCallbackQuery(callbackQuery.id, {
         text: `[${providerName.toUpperCase()} / ${modelId}] 적용 완료!`
-      });
+      }).catch(() => {});
 
-      // 선택 완료 화면으로 깔끔하게 전환
       await showModelSelectedSuccess(bot, callbackQuery, providerName, modelId);
     } catch (err) {
       await bot.answerCallbackQuery(callbackQuery.id, {
         text: `변경 실패: ${err.message}`,
         show_alert: true
-      });
+      }).catch(() => {});
+      await bot.sendMessage(callbackQuery.message.chat.id, `❌ 모델 변경 실패: ${err.message}`).catch(() => {});
     }
   }
 }
