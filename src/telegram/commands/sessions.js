@@ -18,6 +18,19 @@ function tabLabel(status, current) {
   return status === current ? `✓ ${labels[status]}` : labels[status];
 }
 
+function isMessageNotModified(error) {
+  return /message is not modified/i.test(String(error?.message || ''));
+}
+
+async function editMessageIfChanged(bot, text, options) {
+  try {
+    return await bot.editMessageText(text, options);
+  } catch (error) {
+    if (isMessageNotModified(error)) return null;
+    throw error;
+  }
+}
+
 async function renderSessions(bot, source, status = 'ACTIVE', page = 0) {
   status = normalizeStatus(status);
   const chatId = source.chat ? source.chat.id : source.message.chat.id;
@@ -72,7 +85,7 @@ async function renderSessions(bot, source, status = 'ACTIVE', page = 0) {
 
   const options = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: keyboard } };
   if (!source.chat && source.message?.message_id) {
-    await bot.editMessageText(text, { chat_id: chatId, message_id: source.message.message_id, ...options });
+    await editMessageIfChanged(bot, text, { chat_id: chatId, message_id: source.message.message_id, ...options });
   } else {
     await bot.sendMessage(chatId, text, options);
   }
@@ -126,7 +139,7 @@ async function showSessionDetail(bot, callbackQuery, sessionId, returnStatus = n
   }
   buttons.push([{ text: '← 세션 목록', callback_data: `session_page:${status}:${page}` }]);
 
-  await bot.editMessageText(text, {
+  await editMessageIfChanged(bot, text, {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown',
@@ -143,7 +156,8 @@ async function confirmTrashEmpty(bot, callbackQuery) {
     await renderSessions(bot, callbackQuery, 'DELETED', 0);
     return;
   }
-  await bot.editMessageText(
+  await editMessageIfChanged(
+    bot,
     `⚠️ **휴지통 비우기**\n\n휴지통의 세션 **${count}개**를 영구 삭제합니다.\n대화 기록과 해당 세션의 첨부파일도 함께 제거되며 복구할 수 없습니다.`,
     {
       chat_id: callbackQuery.message.chat.id,
@@ -229,7 +243,8 @@ export async function handleSessionsCallback(bot, callbackQuery) {
         await bot.answerCallbackQuery(callbackQuery.id, { text: '삭제할 세션을 찾을 수 없습니다.' });
         return;
       }
-      await bot.editMessageText(
+      await editMessageIfChanged(
+        bot,
         `⚠️ **세션 영구 삭제**\n\n**${shortTitle(session.title, 50)}**\n\n대화 기록과 해당 세션의 첨부파일을 영구 삭제합니다. 이 작업은 복구할 수 없습니다.`,
         {
           chat_id: chatId,
