@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { SessionManager } from '../../sessions/session-manager.js';
 import { providerManager } from '../../providers/provider-manager.js';
 import { modelCatalog } from '../../providers/model-catalog.js';
@@ -46,9 +47,10 @@ async function renderModelsForProvider(bot, { chatId, messageId, userId, provide
 
   const age = state.last_success_at ? formatAge(state.last_success_at) : '알 수 없음';
   const text = `🎛️ **[${providerName.toUpperCase()}] 지원 모델 목록**\n\n📌 **활성 세션**: **${active.title}**\n📦 캐시: \`${state.status}\` · 마지막 갱신: \`${age}\`\n\n원하는 모델을 선택하세요:`;
+
   const buttons = models.map((m) => [{
     text: `${active.active_provider === providerName && active.active_model === m.id ? '🟢 ' : '⚪ '}${m.name}${m.isDefault ? ' · Default' : ''}`,
-    callback_data: `model_select:${providerName}:${m.id}`
+    callback_data: `model_pick:${providerName}:${modelToken(m.id)}`
   }]);
   buttons.push([
     { text: '🔄 모델 목록 새로고침', callback_data: `model_refresh:${providerName}` },
@@ -91,9 +93,6 @@ async function refreshModels(bot, q, providerName) {
   try {
     const result = await modelCatalog.refresh(providerName, { force: true });
     console.log(`[Model Refresh] ${providerName}: 갱신 성공, ${result.models.length}개 모델 UI 렌더링 시작.`);
-
-    // Callback Query는 위에서 이미 ACK했다. 다시 answerCallbackQuery를 호출하지 않고
-    // 동일 Telegram message를 캐시 결과로 직접 렌더링한다.
     await renderModelsForProvider(bot, { chatId, messageId, userId, providerName });
     console.log(`[Model Refresh] ${providerName}: Telegram 모델 목록 렌더링 완료.`);
   } catch (error) {
@@ -136,24 +135,36 @@ export async function handleModelCallback(bot, q) {
   }
   if (data.startsWith('model_provider:')) return showModelsForProvider(bot, q, data.replace('model_provider:', ''));
   if (data.startsWith('model_refresh:')) return refreshModels(bot, q, data.replace('model_refresh:', ''));
-  if (data.startsWith('model_select:')) {
-    const parts = data.replace('model_select:', '').split(':');
-    const providerName = parts.shift();
-    const modelId = parts.join(':');
+
+  if (data.startsWith('model_pick:')) {
+    const [, providerName, token] = data.split(':');
     const cached = modelCatalog.getModels(providerName);
-    if (!cached.some((m) => m.id === modelId)) {
-      return bot.answerCallbackQuery(q.id, { text: '캐시에 없는 모델입니다. 새로고침 후 다시 선택해주세요.', show_alert: true }).catch(() => {});
+    const selected = cached.find((m) => modelToken(m.id) === token);
+    if (!selected) {
+      return bot.answerCallbackQuery(q.id, {
+        text: '모델 캐시가 갱신되었습니다. 목록을 다시 열어 선택해주세요.',
+        show_alert: true
+      }).catch(() => {});
     }
 
     const active = SessionManager.getActiveSession(userId);
     try {
-      await HandoffManager.executeHandoff({ sessionId: active.id, fromProvider: active.active_provider, toProvider: providerName, targetModel: modelId });
+      await HandoffManager.executeHandoff({
+        sessionId: active.id,
+        fromProvider: active.active_provider,
+        toProvider: providerName,
+        targetModel: selected.id
+      });
       await bot.answerCallbackQuery(q.id, { text: '모델 적용 완료' }).catch(() => {});
-      return showSuccess(bot, q, providerName, modelId);
+      return showSuccess(bot, q, providerName, selected.id);
     } catch (error) {
-      await bot.answerCallbackQuery(q.id, { text: `변경 실패: ${error.message}`, show_alert: true }).catch(() => {});
+      return bot.answerCallbackQuery(q.id, { text: `변경 실패: ${error.message}`.slice(0, 180), show_alert: true }).catch(() => {});
     }
   }
+}
+
+function modelToken(modelId) {
+  return crypto.createHash('sha256').update(String(modelId)).digest('hex').slice(0, 16);
 }
 
 async function editModelMessage(bot, chatId, messageId, text, replyMarkup) {
