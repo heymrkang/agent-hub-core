@@ -12,6 +12,7 @@ export class AntigravityAdapter extends ProviderAdapter {
     super('antigravity');
     this.workspaceDir = process.env.WORKSPACE_DIR || path.resolve(process.cwd(), 'workspace');
     this.defaultTimeoutMs = parseInt(process.env.ANTIGRAVITY_TIMEOUT_MS || '120000', 10);
+    this.modelDiscoveryTimeoutMs = parseInt(process.env.ANTIGRAVITY_MODEL_DISCOVERY_TIMEOUT_MS || '60000', 10);
     this.cachedModels = null;
     this.lastModelCheck = 0;
   }
@@ -41,11 +42,12 @@ export class AntigravityAdapter extends ProviderAdapter {
     if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels;
 
     try {
-      // agy models는 독립 서브커맨드다. --skip-trust 같은 대화 실행용 플래그를 붙이지 않는다.
+      // 수동 shell에서 정상 동작하는 `agy models`와 최대한 동일한 환경으로 실행한다.
+      // CI=true는 일부 CLI에서 비대화형 동작을 바꾸거나 대기를 유발할 수 있어 model discovery에는 강제하지 않는다.
       const { stdout, stderr } = await execFileAsync('agy', ['models'], {
-        timeout: 20000,
+        timeout: this.modelDiscoveryTimeoutMs,
         cwd: this.workspaceDir,
-        env: { ...process.env, CI: 'true' }
+        env: { ...process.env }
       });
 
       const raw = `${stdout || ''}\n${stderr || ''}`;
@@ -105,10 +107,9 @@ export class AntigravityAdapter extends ProviderAdapter {
     } catch (error) {
       this.cachedModels = null;
 
-      // 민감정보를 출력하지 않는 범위에서 child_process 실행 환경과 실제 실패 원인을 남긴다.
-      // env 전체는 절대 로그하지 않는다. PATH/HOME/cwd는 CLI 실행 차이 진단에 필요한 값만 기록한다.
       const diagnostic = {
         command: 'agy models',
+        timeoutMs: this.modelDiscoveryTimeoutMs,
         code: error?.code ?? null,
         exitCode: error?.code ?? null,
         signal: error?.signal ?? null,
