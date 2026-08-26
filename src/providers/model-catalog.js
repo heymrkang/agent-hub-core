@@ -48,7 +48,12 @@ class ModelCatalog {
       if (!Array.isArray(models) || models.length === 0) throw new Error('Provider가 유효한 모델 목록을 반환하지 않았습니다.');
       const normalized = models
         .filter((m) => m && m.id && (m.name || m.id))
-        .map((m) => ({ id: String(m.id), name: String(m.name || m.id), isDefault: Boolean(m.isDefault), metadata: m.metadata || null }));
+        .map((m) => ({
+          id: String(m.id),
+          name: String(m.name || m.id),
+          isDefault: Boolean(m.isDefault ?? m.default),
+          metadata: m.metadata || null
+        }));
       if (normalized.length === 0) throw new Error('Provider 모델 목록 파싱 결과가 비어 있습니다.');
 
       const replace = db.transaction(() => {
