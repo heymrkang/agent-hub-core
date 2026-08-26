@@ -25,6 +25,25 @@ export function initTelegramBot() {
   const token=process.env.TELEGRAM_BOT_TOKEN;if(!token)throw new Error('TELEGRAM_BOT_TOKEN 환경변수가 설정되지 않았습니다.');
   const bot=new TelegramBot(token,{polling:true});
 
+  // Telegram의 '/' 명령어 자동완성 메뉴를 Bot API에 등록한다.
+  // 명령어가 늘어나면 이 목록도 함께 갱신한다.
+  bot.setMyCommands([
+    { command:'start', description:'Agent Hub 도움말 및 현재 상태' },
+    { command:'help', description:'사용 가능한 명령어 도움말' },
+    { command:'new', description:'새 세션 생성' },
+    { command:'sessions', description:'세션 목록 / 전환 / 보관 / 복구' },
+    { command:'rename', description:'현재 세션 제목 변경' },
+    { command:'model', description:'Provider / Model 선택' },
+    { command:'providers', description:'Provider 상태 확인' },
+    { command:'schedule', description:'예약 작업 목록 / 자연어 등록' },
+    { command:'queue', description:'작업 큐 상태 확인' },
+    { command:'stop', description:'현재 실행 중인 작업 중단' },
+    { command:'compact', description:'현재 세션 컨텍스트 압축' },
+    { command:'files', description:'현재 세션 첨부 파일 목록' },
+    { command:'download', description:'첨부 파일 다운로드' },
+    { command:'memory', description:'장기 메모리 확인 / 관리' }
+  ]).then(()=>console.log('[Telegram] Slash command menu 등록 완료.')).catch((error)=>console.warn(`[Telegram] Slash command menu 등록 실패: ${error.message}`));
+
   async function processPromptJob(chatId,userId,userText,attachedFiles=[]){
     const activeSession=SessionManager.getActiveSession(userId);const canonicalUserText=userText||`[첨부 파일 ${attachedFiles.length}건 전송]`;
     const userMessageId=SessionManager.saveMessage({sessionId:activeSession.id,role:'user',text:canonicalUserText});const memoryBlock=MemoryManager.getMemoryForPrompt();let promptWithAttachments=userText;
