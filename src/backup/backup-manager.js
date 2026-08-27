@@ -1,0 +1,101 @@
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { getDb } from '../database/index.js';
+import { redactSecrets } from '../utils/redact.js';
+import { Logger } from '../logging/logger.js';
+
+const execFileAsync = promisify(execFile);
+const DATA_DIR = process.env.DATA_DIR || '/data';
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/workspace';
+const CORE_DIR = path.join(DATA_DIR, 'backups', 'core');
+const FULL_DIR = path.join(DATA_DIR, 'backups', 'full');
+const RETAIN_CORE = 7;
+
+function stamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
+function ensureDirs() { fs.mkdirSync(CORE_DIR, { recursive: true }); fs.mkdirSync(FULL_DIR, { recursive: true }); }
+function sizeOf(file) { try { return fs.statSync(file).size; } catch { return null; } }
+
+export class BackupManager {
+  static async createCoreBackup({ reason = 'manual' } = {}) {
+    ensureDirs();
+    const id = crypto.randomUUID();
+    const file = path.join(CORE_DIR, `core_${stamp()}.db`);
+    const db = getDb();
+    db.prepare(`INSERT INTO backups(id,type,path,status,metadata) VALUES(?, 'CORE', ?, 'RUNNING', ?)`)
+      .run(id, file, JSON.stringify({ reason, retention: RETAIN_CORE, excludes: ['ssh private keys', 'logs'] }));
+    try {
+      await db.backup(file);
+      const check = (await import('better-sqlite3')).default;
+      const probe = new check(file, { readonly: true });
+      const quick = Object.values(probe.prepare('PRAGMA quick_check').get() || {})[0];
+      probe.close();
+      if (quick !== 'ok') throw new Error(`backup quick_check=${quick}`);
+      const bytes = sizeOf(file);
+      db.prepare(`UPDATE backups SET status='COMPLETED',size_bytes=?,completed_at=datetime('now') WHERE id=?`).run(bytes, id);
+      await this.enforceCoreRetention();
+      Logger.info('backup', 'core_backup_completed', { id, reason, bytes });
+      return { id, type: 'CORE', path: file, sizeBytes: bytes, valid: true };
+    } catch (error) {
+      try { if (fs.existsSync(file)) fs.rmSync(file, { force: true }); } catch {}
+      db.prepare(`UPDATE backups SET status='FAILED',error_message=?,completed_at=datetime('now') WHERE id=?`).run(redactSecrets(error.message).slice(0, 2000), id);
+      Logger.error('backup', 'core_backup_failed', error.message, { errorCode: 'BACKUP_CORE' });
+      throw error;
+    }
+  }
+
+  static async createFullBackup({ reason = 'manual' } = {}) {
+    ensureDirs();
+    const id = crypto.randomUUID();
+    const file = path.join(FULL_DIR, `full_${stamp()}.tar.gz`);
+    const db = getDb();
+    const metadata = {
+      reason,
+      includes: [DATA_DIR, WORKSPACE_DIR],
+      excludes: [`${DATA_DIR}/ssh/keys`, `${DATA_DIR}/logs`, `${DATA_DIR}/backups`, `${DATA_DIR}/agent-hub.db-wal`, `${DATA_DIR}/agent-hub.db-shm`],
+      note: 'SSH private keys are excluded by policy.'
+    };
+    db.prepare(`INSERT INTO backups(id,type,path,status,metadata) VALUES(?, 'FULL', ?, 'RUNNING', ?)`).run(id, file, JSON.stringify(metadata));
+    try {
+      const core = await this.createCoreBackup({ reason: 'full-backup-snapshot' });
+      const args = ['-czf', file,
+        '--exclude=data/ssh/keys', '--exclude=data/logs', '--exclude=data/backups', '--exclude=data/agent-hub.db', '--exclude=data/agent-hub.db-wal', '--exclude=data/agent-hub.db-shm',
+        '-C', '/', 'data', 'workspace', '-C', path.dirname(core.path), path.basename(core.path)];
+      await execFileAsync('tar', args, { timeout: 10 * 60 * 1000 });
+      const bytes = sizeOf(file);
+      db.prepare(`UPDATE backups SET status='COMPLETED',size_bytes=?,completed_at=datetime('now') WHERE id=?`).run(bytes, id);
+      Logger.info('backup', 'full_backup_completed', { id, reason, bytes });
+      return { id, type: 'FULL', path: file, sizeBytes: bytes, metadata };
+    } catch (error) {
+      try { if (fs.existsSync(file)) fs.rmSync(file, { force: true }); } catch {}
+      db.prepare(`UPDATE backups SET status='FAILED',error_message=?,completed_at=datetime('now') WHERE id=?`).run(redactSecrets(error.message).slice(0, 2000), id);
+      Logger.error('backup', 'full_backup_failed', error.message, { errorCode: 'BACKUP_FULL' });
+      throw error;
+    }
+  }
+
+  static async enforceCoreRetention() {
+    ensureDirs();
+    const rows = getDb().prepare(`SELECT id,path FROM backups WHERE type='CORE' AND status='COMPLETED' ORDER BY created_at DESC, rowid DESC`).all();
+    for (const row of rows.slice(RETAIN_CORE)) {
+      try { if (fs.existsSync(row.path)) fs.rmSync(row.path, { force: true }); } catch {}
+      getDb().prepare('DELETE FROM backups WHERE id=?').run(row.id);
+    }
+  }
+
+  static list(limit = 20) {
+    return getDb().prepare(`SELECT id,type,path,size_bytes,status,metadata,error_message,created_at,completed_at FROM backups ORDER BY created_at DESC LIMIT ?`).all(limit);
+  }
+
+  static getStatus() {
+    const db = getDb();
+    return {
+      latestCore: db.prepare(`SELECT * FROM backups WHERE type='CORE' ORDER BY created_at DESC LIMIT 1`).get() || null,
+      latestFull: db.prepare(`SELECT * FROM backups WHERE type='FULL' ORDER BY created_at DESC LIMIT 1`).get() || null,
+      coreCompleted: db.prepare(`SELECT COUNT(*) AS c FROM backups WHERE type='CORE' AND status='COMPLETED'`).get().c,
+      retention: RETAIN_CORE
+    };
+  }
+}
