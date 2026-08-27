@@ -6,6 +6,8 @@ const PAGE_SIZE = 5;
 const VALID_STATUSES = new Set(['ACTIVE', 'ARCHIVED', 'DELETED']);
 function normalizeStatus(value) { return VALID_STATUSES.has(value) ? value : 'ACTIVE'; }
 function shortTitle(title, max = 30) { const value = String(title || '새 채팅').replace(/\s+/g, ' ').trim(); return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
+function escapeMarkdown(value) { return String(value ?? '').replace(/([_*`\[])/g, '\\$1'); }
+function md(value, max = null) { const text = max ? shortTitle(value, max) : String(value ?? ''); return escapeMarkdown(text); }
 function tabLabel(status, current) { const labels = { ACTIVE: '활성', ARCHIVED: '보관함', DELETED: '휴지통' }; return status === current ? `✓ ${labels[status]}` : labels[status]; }
 function nav(label, icon) { return `${isStealthMode() ? '' : `${icon} `}${label}`; }
 function statusMark(enabled) { return enabled ? uiStatusIcon('active') : uiStatusIcon('inactive'); }
@@ -24,8 +26,8 @@ async function renderSessions(bot, source, status = 'ACTIVE', page = 0) {
   const statusNames = { ACTIVE: '활성', ARCHIVED: '보관함', DELETED: '휴지통' };
 
   let text = `${uiTitle('📁', `세션 · ${statusNames[status]}`)}\n\n`;
-  text += `현재: **${shortTitle(activeSession.title, 36)}**\n`;
-  text += `Provider: ${activeSession.active_provider}${activeSession.active_model ? ` · ${activeSession.active_model}` : ''}\n\n`;
+  text += `현재: **${md(activeSession.title, 36)}**\n`;
+  text += `Provider: ${md(activeSession.active_provider)}${activeSession.active_model ? ` · ${md(activeSession.active_model)}` : ''}\n\n`;
   if (!pageItems.length) text += `_${statusNames[status]}에 세션이 없습니다._`;
   else { text += `세션 ${sessions.length}개 · ${page + 1}/${totalPages} 페이지\n`; text += `_세션을 선택하면 관리 메뉴가 열립니다._`; }
 
@@ -71,11 +73,11 @@ async function showSessionDetail(bot, callbackQuery, sessionId, returnStatus = n
   const status = normalizeStatus(returnStatus || session.status); const page = Math.max(Number(returnPage) || 0, 0);
   const statusNames = { ACTIVE: '활성', ARCHIVED: '보관함', DELETED: '휴지통' };
 
-  let text = `${uiTitle('📄', shortTitle(session.title, 50))}\n\n`;
-  text += `상태: ${statusNames[session.status] || session.status}${isCurrent ? ' · 현재 세션' : ''}\n`;
-  text += `Provider: ${session.active_provider}${session.active_model ? ` · ${session.active_model}` : ''}\n`;
-  text += `Profile: ${session.execution_profile}\n`;
-  text += `최근 활동: ${formatKST(session.updated_at)}\n`;
+  let text = `${uiTitle('📄', md(session.title, 50))}\n\n`;
+  text += `상태: ${statusNames[session.status] || md(session.status)}${isCurrent ? ' · 현재 세션' : ''}\n`;
+  text += `Provider: ${md(session.active_provider)}${session.active_model ? ` · ${md(session.active_model)}` : ''}\n`;
+  text += `Profile: ${md(session.execution_profile)}\n`;
+  text += `최근 활동: ${md(formatKST(session.updated_at))}\n`;
   if (session.title_locked) text += `제목: 사용자 지정${isStealthMode() ? ' [LOCK]' : ' 🔒'}\n`;
 
   const buttons = [];
@@ -115,7 +117,7 @@ export async function handleSessionsCallback(bot, callbackQuery) {
     if (data.startsWith('session_purge_confirm:')) {
       const [, sessionId, page = '0'] = data.split(':'); const session = SessionManager.getSession(sessionId);
       if (!session || session.user_id !== userId || session.status !== 'DELETED') { await bot.answerCallbackQuery(callbackQuery.id, { text: '삭제할 세션을 찾을 수 없습니다.' }); return; }
-      await editMessageIfChanged(bot, `${uiStatusIcon('warning')} **세션 영구 삭제**\n\n**${shortTitle(session.title, 50)}**\n\n대화 기록과 해당 세션의 첨부파일을 영구 삭제합니다. 이 작업은 복구할 수 없습니다.`, {
+      await editMessageIfChanged(bot, `${uiStatusIcon('warning')} **세션 영구 삭제**\n\n**${md(session.title, 50)}**\n\n대화 기록과 해당 세션의 첨부파일을 영구 삭제합니다. 이 작업은 복구할 수 없습니다.`, {
         chat_id: chatId, message_id: callbackQuery.message.message_id, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: `${isStealthMode() ? '[DEL] ' : '🗑 '}영구 삭제`, callback_data: `session_purge:${session.id}:${page}` }],[{ text: '취소', callback_data: `session_info:${session.id}:DELETED:${page}` }]] }
       });
       await bot.answerCallbackQuery(callbackQuery.id); return;
