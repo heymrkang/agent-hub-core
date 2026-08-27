@@ -14,9 +14,13 @@ services:
       - ./data/providers/codex:/root/.codex
       # Antigravity 인증 세션 영속화 (/data 하위로 수렴)
       - ./data/providers/antigravity:/root/.gemini
-      # 작업 컨텍스트 / 워크스페이스
+      # 작업 컨텍스트 / Git repository workspace
       - ./workspace:/workspace
+      # Host Docker daemon 접근 (강력한 권한 — trusted single-owner deployment 전제)
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Asia/Seoul
       - WORKSPACE_DIR=/workspace
+      - REPOS_ROOT=/workspace/repos
       - DATA_DIR=/data
+      - SSH_DATA_DIR=/data/ssh
