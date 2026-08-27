@@ -30,6 +30,11 @@ export class GitManager {
     let authenticated = false;
     let authState = tokenConfigured ? 'TOKEN_PRESENT' : 'NOT_CONFIGURED';
 
+    if (git.available) {
+      if (process.env.GIT_USER_NAME) await execFileAsync('git', ['config', '--global', 'user.name', process.env.GIT_USER_NAME], { timeout: 10000 });
+      if (process.env.GIT_USER_EMAIL) await execFileAsync('git', ['config', '--global', 'user.email', process.env.GIT_USER_EMAIL], { timeout: 10000 });
+    }
+
     if (tokenConfigured && gh.available) {
       try {
         const env = { ...process.env, GH_TOKEN: process.env.GH_TOKEN || process.env.GITHUB_TOKEN };
@@ -42,7 +47,7 @@ export class GitManager {
       }
     }
 
-    console.log(`[Git] git=${git.available ? git.version : 'unavailable'} gh=${gh.available ? gh.version : 'unavailable'} auth=${authState}`);
+    console.log(`[Git] git=${git.available ? git.version : 'unavailable'} gh=${gh.available ? gh.version : 'unavailable'} auth=${authState} identity=${process.env.GIT_USER_NAME && process.env.GIT_USER_EMAIL ? 'configured' : 'not-configured'}`);
     return { git, gh, tokenConfigured, authenticated, authState, reposRoot: REPOS_ROOT };
   }
 
@@ -67,7 +72,7 @@ export class GitManager {
         authenticated = true;
       } catch {}
     }
-    return { git, gh, tokenConfigured, authenticated, reposRoot: REPOS_ROOT };
+    return { git, gh, tokenConfigured, authenticated, reposRoot: REPOS_ROOT, identityConfigured: Boolean(process.env.GIT_USER_NAME && process.env.GIT_USER_EMAIL) };
   }
 
   static listRepositories() {
