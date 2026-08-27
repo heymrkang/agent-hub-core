@@ -132,17 +132,20 @@ export class CodexAdapter extends ProviderAdapter {
     const codexArgs = ['exec'];
     if (model && model !== 'default') codexArgs.push('-m', model);
     codexArgs.push('--skip-git-repo-check');
-    // The sibling container is the outer isolation boundary. Inside it Codex keeps
-    // its native read-only/workspace-write sandbox. seccomp=unconfined is scoped
-    // only to this short-lived helper so bubblewrap can create user namespaces.
-    // The helper never receives docker.sock, SSH keys, GH_TOKEN or the full /data tree.
-    codexArgs.push('-c', 'features.use_legacy_landlock=false');
-    codexArgs.push('--sandbox', profile === 'READ_ONLY' ? 'read-only' : 'workspace-write');
-    codexArgs.push(prompt);
+
+    // The short-lived sibling container is the restricted execution boundary.
+    // Codex's nested Linux sandbox (bubblewrap/Landlock) is intentionally bypassed
+    // here because ordinary Docker/Coolify does not allow the mount namespace
+    // operations bwrap requires. The helper receives only the workspace mount and
+    // Codex auth state — never docker.sock, SSH keys, GH_TOKEN, or the full /data.
+    // READ_ONLY is enforced by Docker's :ro bind mount; WORKSPACE gets only :rw
+    // access to /workspace. Everything else written in the helper is ephemeral.
+    codexArgs.push('--dangerously-bypass-approvals-and-sandbox', prompt);
 
     const dockerArgs = [
       'run', '--rm', '--name', helperName,
-      '--security-opt', 'seccomp=unconfined',
+      '--cap-drop', 'ALL',
+      '--security-opt', 'no-new-privileges',
       '-e', 'HOME=/root', '-e', 'CI=true',
       '-v', `${runtime.workspaceSource}:/workspace:${workspaceMode}`,
       '-v', `${runtime.codexHomeSource}:/root/.codex:rw`
@@ -153,7 +156,11 @@ export class CodexAdapter extends ProviderAdapter {
     dockerArgs.push('-w', normalizedCwd, '--entrypoint', 'codex', runtime.image, ...codexArgs);
 
     return new Promise((resolve, reject) => {
-      const child = spawn('docker', dockerArgs, { env: { ...process.env, GH_TOKEN: undefined, GITHUB_TOKEN: undefined }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const env = { ...process.env };
+      delete env.GH_TOKEN;
+      delete env.GITHUB_TOKEN;
+      delete env.TELEGRAM_BOT_TOKEN;
+      const child = spawn('docker', dockerArgs, { env, stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = ''; let stderr = ''; let isFinished = false;
       const finishError = async (error) => {
         if (isFinished) return;
