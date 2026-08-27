@@ -87,8 +87,17 @@ export class CodexAdapter extends ProviderAdapter {
       const args = ['exec'];
       if (model && model !== 'default') args.push('-m', model);
       args.push('--skip-git-repo-check');
-      if (normalizedProfile === 'FULL_ACCESS') args.push('--dangerously-bypass-approvals-and-sandbox');
-      else args.push('--sandbox', normalizedProfile === 'READ_ONLY' ? 'read-only' : 'workspace-write');
+      if (normalizedProfile === 'FULL_ACCESS') {
+        args.push('--dangerously-bypass-approvals-and-sandbox');
+      } else {
+        // Agent Hub itself already runs inside Docker. Recent Codex Linux builds default to
+        // bubblewrap, which needs nested user namespaces that ordinary Coolify/Docker
+        // containers intentionally do not expose. Codex provides the legacy Landlock path
+        // specifically as a sandbox fallback that does not require bwrap namespaces.
+        // Keep the requested sandbox policy intact; never silently fall back to FULL_ACCESS.
+        args.push('-c', 'features.use_legacy_landlock=true');
+        args.push('--sandbox', normalizedProfile === 'READ_ONLY' ? 'read-only' : 'workspace-write');
+      }
       args.push(prompt);
 
       const child = spawn('codex', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
