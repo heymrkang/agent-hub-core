@@ -1,4 +1,5 @@
 import { getSettingsManager } from '../../settings/settings-manager.js';
+import { isStealthMode } from '../renderer/ui-theme.js';
 
 const TIMEZONES = ['Asia/Seoul', 'UTC', 'Asia/Tokyo', 'America/New_York'];
 const CONCURRENCY = [1, 2, 4, 8];
@@ -15,6 +16,10 @@ function mark(selected, label) {
   return `${selected ? '✓ ' : ''}${label}`;
 }
 
+function heading(label) {
+  return `${isStealthMode() ? '■' : '⚙️'} **${label}**`;
+}
+
 async function render(bot, source, view = 'root') {
   const settings = getSettingsManager();
   const values = settings.getAll();
@@ -23,7 +28,7 @@ async function render(bot, source, view = 'root') {
   let keyboard;
 
   if (view === 'agent') {
-    text = `⚙️ **Settings · Agent 기본값**\n\n새 세션 생성 시 적용됩니다.\n\nProvider: \`${values.default_provider}\`\nProfile: \`${values.default_execution_profile}\`\nCodex Model: \`${values.default_model_codex || 'CLI Default'}\`\nAntigravity Model: \`${values.default_model_antigravity || 'CLI Default'}\``;
+    text = `${heading('Settings · Agent 기본값')}\n\n새 세션 생성 시 적용됩니다.\n\nProvider: \`${values.default_provider}\`\nProfile: \`${values.default_execution_profile}\`\nCodex Model: \`${values.default_model_codex || 'CLI Default'}\`\nAntigravity Model: \`${values.default_model_antigravity || 'CLI Default'}\``;
     keyboard = [
       [
         { text: mark(values.default_provider === 'codex', 'CODEX'), callback_data: 'settings_set:default_provider:codex' },
@@ -36,7 +41,7 @@ async function render(bot, source, view = 'root') {
       [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
     ];
   } else if (view === 'execution') {
-    text = `⚙️ **Settings · 실행 설정**\n\nConcurrency: \`${values.concurrency_limit}\`\nAuto Compact: \`${values.auto_compact_threshold}%\`\nAuto Session Title: \`${values.auto_session_title ? 'ON' : 'OFF'}\``;
+    text = `${heading('Settings · 실행 설정')}\n\nConcurrency: \`${values.concurrency_limit}\`\nAuto Compact: \`${values.auto_compact_threshold}%\`\nAuto Session Title: \`${values.auto_session_title ? 'ON' : 'OFF'}\``;
     keyboard = [
       CONCURRENCY.map((value) => ({ text: mark(values.concurrency_limit === value, `동시 ${value}`), callback_data: `settings_set:concurrency_limit:${value}` })),
       COMPACT_THRESHOLDS.map((value) => ({ text: mark(values.auto_compact_threshold === value, `${value}%`), callback_data: `settings_set:auto_compact_threshold:${value}` })),
@@ -44,7 +49,7 @@ async function render(bot, source, view = 'root') {
       [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
     ];
   } else if (view === 'telegram') {
-    text = `⚙️ **Settings · Telegram UI**\n\nNotifications: \`${values.notifications_enabled ? 'ON' : 'OFF'}\`\nUI Mode: \`${values.stealth_mode}\`\n\nSTEALTH는 Agent Hub 명령/UI를 단색 기호와 텍스트 중심으로 표시합니다.`;
+    text = `${heading('Settings · Telegram UI')}\n\nNotifications: \`${values.notifications_enabled ? 'ON' : 'OFF'}\`\nUI Mode: \`${values.stealth_mode}\`\n\nSTEALTH는 Agent Hub 명령/UI를 단색 기호와 텍스트 중심으로 표시합니다.`;
     keyboard = [
       [{ text: `Notifications ${values.notifications_enabled ? 'ON' : 'OFF'}`, callback_data: `settings_set:notifications_enabled:${!values.notifications_enabled}` }],
       [
@@ -54,7 +59,7 @@ async function render(bot, source, view = 'root') {
       [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
     ];
   } else if (view === 'scheduler') {
-    text = `⚙️ **Settings · Scheduler**\n\nTimezone: \`${values.timezone}\`\n\nTimezone 변경은 신규 시간 해석/표시의 기본값으로 사용됩니다.`;
+    text = `${heading('Settings · Scheduler')}\n\nTimezone: \`${values.timezone}\`\n\nTimezone 변경은 신규 시간 해석/표시의 기본값으로 사용됩니다.`;
     keyboard = [
       ...TIMEZONES.map((timezone) => ([{
         text: mark(values.timezone === timezone, timezone),
@@ -63,19 +68,19 @@ async function render(bot, source, view = 'root') {
       [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
     ];
   } else if (view === 'system') {
-    text = `⚙️ **Settings · 시스템 설정**\n\nProvider: \`${values.default_provider}\`\nProfile: \`${values.default_execution_profile}\`\nConcurrency: \`${values.concurrency_limit}\`\nCompact: \`${values.auto_compact_threshold}%\`\nNotifications: \`${values.notifications_enabled ? 'ON' : 'OFF'}\`\nUI: \`${values.stealth_mode}\`\nTimezone: \`${values.timezone}\`\n\n전체 기본값 복원은 확인 후 실행됩니다.`;
+    text = `${heading('Settings · 시스템 설정')}\n\nProvider: \`${values.default_provider}\`\nProfile: \`${values.default_execution_profile}\`\nConcurrency: \`${values.concurrency_limit}\`\nCompact: \`${values.auto_compact_threshold}%\`\nNotifications: \`${values.notifications_enabled ? 'ON' : 'OFF'}\`\nUI: \`${values.stealth_mode}\`\nTimezone: \`${values.timezone}\`\n\n전체 기본값 복원은 확인 후 실행됩니다.`;
     keyboard = [
       [{ text: '기본값 복원', callback_data: 'settings_reset_confirm' }],
       [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
     ];
   } else if (view === 'reset_confirm') {
-    text = `⚠️ **Settings 초기화 확인**\n\nPhase 10에서 관리하는 설정을 모두 기본값으로 복원합니다.\n세션/메시지/스케줄/SSH 정보는 삭제하지 않습니다.`;
+    text = `${isStealthMode() ? '!' : '⚠️'} **Settings 초기화 확인**\n\nPhase 10에서 관리하는 설정을 모두 기본값으로 복원합니다.\n세션/메시지/스케줄/SSH 정보는 삭제하지 않습니다.`;
     keyboard = [
       [{ text: '초기화 실행', callback_data: 'settings_reset_all' }],
       [{ text: '취소', callback_data: 'settings_view:system' }]
     ];
   } else {
-    text = `⚙️ **Agent Hub Settings**\n\n영속 설정을 관리합니다. 변경 내용은 SQLite에 저장되어 재배포 후에도 유지됩니다.`;
+    text = `${heading('Agent Hub Settings')}\n\n영속 설정을 관리합니다. 변경 내용은 SQLite에 저장되어 재배포 후에도 유지됩니다.`;
     keyboard = [
       [{ text: 'Agent 기본값', callback_data: 'settings_view:agent' }],
       [{ text: '실행 설정', callback_data: 'settings_view:execution' }],
@@ -99,7 +104,7 @@ export async function handleSettingsCommand(bot, msg) {
     await render(bot, msg, 'root');
   } catch (error) {
     console.error(`[Command /settings Error] ${error.message}`);
-    await bot.sendMessage(msg.chat.id, `❌ Settings 조회 실패: ${error.message}`);
+    await bot.sendMessage(msg.chat.id, `${isStealthMode() ? '×' : '❌'} Settings 조회 실패: ${error.message}`);
   }
 }
 
