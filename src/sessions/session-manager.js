@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { getDb } from '../database/index.js';
 
+const EXECUTION_PROFILES = new Set(['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS']);
+
 export class SessionManager {
   static ensureUser(userId, role = 'OWNER') {
     const db = getDb();
@@ -19,7 +21,7 @@ export class SessionManager {
     const title = options.title || '새 채팅';
     const provider = options.provider || 'codex';
     const model = options.model || null;
-    const profile = options.profile || 'WORKSPACE';
+    const profile = EXECUTION_PROFILES.has(options.profile) ? options.profile : 'WORKSPACE';
     const isSystem = options.isSystem ? 1 : 0;
     const status = options.status || (isSystem ? 'ARCHIVED' : 'ACTIVE');
     db.prepare(`INSERT INTO sessions (id,user_id,title,title_locked,active_provider,active_model,execution_profile,status,is_system) VALUES (?,?,?,0,?,?,?,?,?)`)
@@ -50,6 +52,14 @@ export class SessionManager {
     if (!session || session.is_system) throw new Error('시스템 실행 세션은 활성 세션으로 선택할 수 없습니다.');
     const key = `active_session_${userId}`;
     db.prepare(`INSERT INTO settings(key,value,updated_at) VALUES(?,?,datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`).run(key, sessionId);
+  }
+
+  static setExecutionProfile(sessionId, profile) {
+    const normalized = String(profile || '').toUpperCase();
+    if (!EXECUTION_PROFILES.has(normalized)) throw new Error(`지원하지 않는 Execution Profile: ${profile}`);
+    const result = getDb().prepare(`UPDATE sessions SET execution_profile=?,updated_at=datetime('now') WHERE id=? AND is_system=0`).run(normalized, sessionId);
+    if (!result.changes) throw new Error('세션을 찾을 수 없습니다.');
+    return this.getSession(sessionId);
   }
 
   static listSessions(userId, status = 'ACTIVE') {
@@ -127,3 +137,5 @@ export class SessionManager {
     return getDb().prepare(`SELECT * FROM (SELECT * FROM messages WHERE session_id=? ORDER BY created_at DESC LIMIT ?) ORDER BY created_at ASC`).all(sessionId, limit);
   }
 }
+
+export { EXECUTION_PROFILES };
