@@ -27,11 +27,9 @@ export class CodexAdapter extends ProviderAdapter {
   async checkAuth() {
     const health = await this.checkHealth();
     if (!health.healthy) return { authenticated: false, state: 'CLI_UNAVAILABLE', details: `CLI 실행 불가: ${health.error}` };
-
     const codexDir = path.join(process.env.HOME || '/root', '.codex');
     const authFile = path.join(codexDir, 'auth.json');
     const hasCredential = fs.existsSync(authFile);
-
     return hasCredential
       ? { authenticated: null, state: 'CREDENTIAL_PRESENT', details: 'Codex 인증 파일 존재. 실제 인증 유효성은 첫 실행 결과로 검증됩니다.' }
       : { authenticated: false, state: 'LOGIN_REQUIRED', details: 'Codex 로그인 필요 (컨테이너 내 `codex login`)' };
@@ -39,166 +37,71 @@ export class CodexAdapter extends ProviderAdapter {
 
   async queryAppServerModels() {
     return new Promise((resolve, reject) => {
-      const child = spawn('codex', ['app-server', '--stdio'], {
-        cwd: this.workspaceDir,
-        env: { ...process.env, CI: 'true' },
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      let buffer = '';
-      let stderr = '';
-      let settled = false;
+      const child = spawn('codex', ['app-server', '--stdio'], { cwd: this.workspaceDir, env: { ...process.env, CI: 'true' }, stdio: ['pipe', 'pipe', 'pipe'] });
+      let buffer = ''; let stderr = ''; let settled = false;
       const timer = setTimeout(() => finish(new Error(`Codex app-server model/list 타임아웃: ${stderr.trim() || '응답 없음'}`)), 15000);
-
-      const cleanup = () => {
-        clearTimeout(timer);
-        if (!child.killed) child.kill('SIGTERM');
-      };
-      const finish = (error, value) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        if (error) reject(error);
-        else resolve(value);
-      };
+      const cleanup = () => { clearTimeout(timer); if (!child.killed) child.kill('SIGTERM'); };
+      const finish = (error, value) => { if (settled) return; settled = true; cleanup(); if (error) reject(error); else resolve(value); };
       const send = (payload) => child.stdin.write(`${JSON.stringify(payload)}\n`);
-
       child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
       child.on('error', (error) => finish(new Error(`Codex app-server 시작 실패: ${error.message}`)));
-      child.on('close', (code) => {
-        if (!settled) finish(new Error(`Codex app-server 조기 종료 (code=${code}): ${stderr.trim() || '상세 오류 없음'}`));
-      });
-
+      child.on('close', (code) => { if (!settled) finish(new Error(`Codex app-server 조기 종료 (code=${code}): ${stderr.trim() || '상세 오류 없음'}`)); });
       child.stdout.on('data', (chunk) => {
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
+        buffer += chunk.toString(); const lines = buffer.split('\n'); buffer = lines.pop() || '';
         for (const line of lines.map((l) => l.trim()).filter(Boolean)) {
-          let message;
-          try { message = JSON.parse(line); } catch { continue; }
-
+          let message; try { message = JSON.parse(line); } catch { continue; }
           if (message.id === 1) {
-            if (message.error) {
-              finish(new Error(`Codex app-server initialize 실패: ${message.error.message || JSON.stringify(message.error)}`));
-              return;
-            }
+            if (message.error) return finish(new Error(`Codex app-server initialize 실패: ${message.error.message || JSON.stringify(message.error)}`));
             send({ method: 'initialized', params: {} });
             send({ id: 2, method: 'model/list', params: { limit: 100, includeHidden: false } });
           } else if (message.id === 2) {
-            if (message.error) {
-              finish(new Error(`Codex model/list 실패: ${message.error.message || JSON.stringify(message.error)}`));
-              return;
-            }
-            finish(null, message.result);
-            return;
+            if (message.error) return finish(new Error(`Codex model/list 실패: ${message.error.message || JSON.stringify(message.error)}`));
+            return finish(null, message.result);
           }
         }
       });
-
-      send({
-        id: 1,
-        method: 'initialize',
-        params: {
-          clientInfo: {
-            name: 'agent_hub',
-            title: 'Agent Hub',
-            version: '1.0.0'
-          }
-        }
-      });
+      send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'agent_hub', title: 'Agent Hub', version: '1.0.0' } } });
     });
   }
 
   async discoverModels(forceRefresh = false) {
     const now = Date.now();
     if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels;
-
     try {
       const result = await this.queryAppServerModels();
       const rows = Array.isArray(result?.data) ? result.data : [];
-      const discovered = rows
-        .filter((m) => m && !m.hidden)
-        .map((m) => ({
-          id: m.model || m.id,
-          name: m.displayName || m.display_name || m.model || m.id,
-          default: Boolean(m.isDefault ?? m.is_default),
-          description: m.description || null
-        }))
-        .filter((m) => m.id);
-
+      const discovered = rows.filter((m) => m && !m.hidden).map((m) => ({ id: m.model || m.id, name: m.displayName || m.display_name || m.model || m.id, default: Boolean(m.isDefault ?? m.is_default), description: m.description || null })).filter((m) => m.id);
       if (discovered.length === 0) throw new Error('model/list가 표시 가능한 모델을 반환하지 않았습니다.');
-
-      this.cachedModels = discovered;
-      this.lastModelCheck = now;
-      return discovered;
-    } catch (error) {
-      this.cachedModels = null;
-      throw new Error(`Codex 모델 동적 조회 실패 (app-server model/list): ${error.message}`);
-    }
+      this.cachedModels = discovered; this.lastModelCheck = now; return discovered;
+    } catch (error) { this.cachedModels = null; throw new Error(`Codex 모델 동적 조회 실패 (app-server model/list): ${error.message}`); }
   }
 
   getCapabilities() {
-    return {
-      authPersistence: 'SUPPORTED',
-      nonInteractive: 'SUPPORTED',
-      jsonOutput: 'SUPPORTED',
-      nativeSessionResume: 'PARTIAL',
-      modelSwitching: 'SUPPORTED',
-      dynamicModelDiscovery: 'SUPPORTED',
-      multiImage: 'SUPPORTED',
-      nativeCompact: 'UNSUPPORTED',
-      usageMetrics: 'PARTIAL'
-    };
+    return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'PARTIAL', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'SUPPORTED' };
   }
 
   async executePrompt(options = {}) {
-    const { prompt, model, cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
-
+    const { prompt, model, profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
     return new Promise((resolve, reject) => {
+      const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
       const args = ['exec'];
       if (model && model !== 'default') args.push('-m', model);
-      args.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', prompt);
+      args.push('--skip-git-repo-check');
+      if (normalizedProfile === 'FULL_ACCESS') args.push('--dangerously-bypass-approvals-and-sandbox');
+      else args.push('--sandbox', normalizedProfile === 'READ_ONLY' ? 'read-only' : 'workspace-write');
+      args.push(prompt);
 
       const child = spawn('codex', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
-      let stdout = '';
-      let stderr = '';
-      let isFinished = false;
-
-      const finishError = (error) => {
-        if (isFinished) return;
-        isFinished = true;
-        clearTimeout(timer);
-        reject(error);
-      };
-
-      const timer = setTimeout(() => {
-        if (!isFinished) {
-          child.kill('SIGKILL');
-          finishError(new Error(`Codex 실행 타임아웃 (${timeoutMs / 1000}초 초과)`));
-        }
-      }, timeoutMs);
-
-      if (signal) signal.addEventListener('abort', () => {
-        if (!isFinished) {
-          child.kill('SIGKILL');
-          finishError(new Error('Codex 작업이 사용자에 의해 중단되었습니다.'));
-        }
-      }, { once: true });
-
-      child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-      child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+      let stdout = ''; let stderr = ''; let isFinished = false;
+      const finishError = (error) => { if (isFinished) return; isFinished = true; clearTimeout(timer); reject(error); };
+      const timer = setTimeout(() => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error(`Codex 실행 타임아웃 (${timeoutMs / 1000}초 초과)`)); } }, timeoutMs);
+      if (signal) signal.addEventListener('abort', () => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error('Codex 작업이 사용자에 의해 중단되었습니다.')); } }, { once: true });
+      child.stdout.on('data', (chunk) => { stdout += chunk.toString(); }); child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
       child.on('error', (err) => finishError(new Error(`Codex 프로세스 시작 실패: ${err.message}`)));
       child.on('close', (code) => {
-        if (isFinished) return;
-        isFinished = true;
-        clearTimeout(timer);
-        const response = stdout.trim();
-        const diagnostic = stderr.trim();
-        if (code !== 0) {
-          reject(new Error(`Codex 실행 실패 (Exit code: ${code}):\n${diagnostic || response || `Exit code: ${code}`}`));
-          return;
-        }
+        if (isFinished) return; isFinished = true; clearTimeout(timer);
+        const response = stdout.trim(); const diagnostic = stderr.trim();
+        if (code !== 0) { reject(new Error(`Codex 실행 실패 (Exit code: ${code}):\n${diagnostic || response || `Exit code: ${code}`}`)); return; }
         resolve({ response: response || 'Codex로부터 빈 응답을 받았습니다.' });
       });
     });
