@@ -13,6 +13,33 @@ function redact(value) {
   return text.replace(/gh[pousr]_[A-Za-z0-9_]+/g, '[REDACTED]');
 }
 
+function githubEnv() {
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  return token ? { ...process.env, GH_TOKEN: token } : { ...process.env };
+}
+
+async function validateGitHubToken() {
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (!token) return { authenticated: false, state: 'NOT_CONFIGURED' };
+
+  try {
+    // Fine-grained PAT은 classic PAT의 read:org 같은 scope를 요구하지 않는다.
+    // gh auth status의 scope 판정 대신 실제 authenticated API request로 유효성을 검증한다.
+    const { stdout } = await execFileAsync('gh', ['api', 'user', '--jq', '.login'], {
+      timeout: 15000,
+      env: githubEnv()
+    });
+    const login = stdout.trim();
+    if (!login) return { authenticated: false, state: 'ERROR: GitHub user validation returned empty response' };
+    return { authenticated: true, state: `READY(${login})` };
+  } catch (error) {
+    return {
+      authenticated: false,
+      state: `ERROR: ${redact(error.stderr || error.message).replace(/\s+/g, ' ').trim().slice(0, 300)}`
+    };
+  }
+}
+
 function safeRepoPath(repoName) {
   const name = path.basename(String(repoName || '').trim());
   if (!/^[A-Za-z0-9._-]{1,120}$/.test(name)) throw new Error('Repository 디렉터리 이름이 올바르지 않습니다.');
@@ -37,13 +64,13 @@ export class GitManager {
 
     if (tokenConfigured && gh.available) {
       try {
-        const env = { ...process.env, GH_TOKEN: process.env.GH_TOKEN || process.env.GITHUB_TOKEN };
-        await execFileAsync('gh', ['auth', 'setup-git'], { timeout: 10000, env });
-        await execFileAsync('gh', ['auth', 'status'], { timeout: 10000, env });
-        authenticated = true;
-        authState = 'READY';
+        // setup-git은 GH_TOKEN을 credential helper를 통해 일반 git HTTPS 작업에 연결한다.
+        await execFileAsync('gh', ['auth', 'setup-git'], { timeout: 10000, env: githubEnv() });
+        const validation = await validateGitHubToken();
+        authenticated = validation.authenticated;
+        authState = validation.state;
       } catch (error) {
-        authState = `ERROR: ${redact(error.stderr || error.message).slice(0, 300)}`;
+        authState = `ERROR: ${redact(error.stderr || error.message).replace(/\s+/g, ' ').trim().slice(0, 300)}`;
       }
     }
 
@@ -65,14 +92,13 @@ export class GitManager {
     const gh = await this.commandVersion('gh', ['--version']);
     const tokenConfigured = Boolean(process.env.GH_TOKEN || process.env.GITHUB_TOKEN);
     let authenticated = false;
+    let authState = tokenConfigured ? 'TOKEN_PRESENT' : 'NOT_CONFIGURED';
     if (tokenConfigured && gh.available) {
-      try {
-        const env = { ...process.env, GH_TOKEN: process.env.GH_TOKEN || process.env.GITHUB_TOKEN };
-        await execFileAsync('gh', ['auth', 'status'], { timeout: 10000, env });
-        authenticated = true;
-      } catch {}
+      const validation = await validateGitHubToken();
+      authenticated = validation.authenticated;
+      authState = validation.state;
     }
-    return { git, gh, tokenConfigured, authenticated, reposRoot: REPOS_ROOT, identityConfigured: Boolean(process.env.GIT_USER_NAME && process.env.GIT_USER_EMAIL) };
+    return { git, gh, tokenConfigured, authenticated, authState, reposRoot: REPOS_ROOT, identityConfigured: Boolean(process.env.GIT_USER_NAME && process.env.GIT_USER_EMAIL) };
   }
 
   static listRepositories() {
@@ -90,9 +116,8 @@ export class GitManager {
     const derived = path.basename(remote.replace(/\.git$/, ''));
     const target = safeRepoPath(directory || derived);
     if (fs.existsSync(target)) throw new Error(`이미 디렉터리가 존재합니다: ${target}`);
-    const env = { ...process.env, GH_TOKEN: process.env.GH_TOKEN || process.env.GITHUB_TOKEN };
     try {
-      await execFileAsync('git', ['clone', remote, target], { cwd: REPOS_ROOT, timeout: 120000, env });
+      await execFileAsync('git', ['clone', remote, target], { cwd: REPOS_ROOT, timeout: 120000, env: githubEnv() });
       return target;
     } catch (error) {
       throw new Error(redact(error.stderr || error.message).slice(0, 1500));
@@ -102,8 +127,7 @@ export class GitManager {
   static async inspect(repoName) {
     const cwd = safeRepoPath(repoName);
     if (!fs.existsSync(path.join(cwd, '.git'))) throw new Error('Git repository가 아닙니다.');
-    const env = { ...process.env, GH_TOKEN: process.env.GH_TOKEN || process.env.GITHUB_TOKEN };
-    const run = async (args) => (await execFileAsync('git', args, { cwd, timeout: 15000, env })).stdout.trim();
+    const run = async (args) => (await execFileAsync('git', args, { cwd, timeout: 15000, env: githubEnv() })).stdout.trim();
     const [branch, status, remote, upstream] = await Promise.all([
       run(['branch', '--show-current']).catch(() => ''),
       run(['status', '--short']).catch(() => ''),
