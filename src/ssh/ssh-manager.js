@@ -20,8 +20,20 @@ function resolveIdentityFile(input) {
 export class SshManager {
   static init() {
     ensureSshLayout();
+    for (const key of this.listKeyFiles()) {
+      try { fs.chmodSync(path.join(SSH_KEYS_DIR, key), 0o600); } catch (error) { console.warn(`[SSH] Key permission 보정 실패: ${key}: ${error.message}`); }
+    }
     this.regenerateConfig();
     return this.getSummary();
+  }
+
+  static listKeyFiles() {
+    ensureSshLayout();
+    return fs.readdirSync(SSH_KEYS_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .filter((name) => !name.endsWith('.pub'))
+      .sort((a, b) => a.localeCompare(b));
   }
 
   static listHosts(userId, { includeDisabled = true } = {}) {
@@ -65,16 +77,19 @@ export class SshManager {
     const current = this.getHost(userId, alias);
     if (!current) throw new Error(`SSH Host를 찾을 수 없습니다: ${alias}`);
     const next = {
-      host: patch.host ?? current.host,
-      port: patch.port ?? current.port,
-      username: patch.username ?? current.username,
+      host: String(patch.host ?? current.host).trim(),
+      port: Number(patch.port ?? current.port),
+      username: String(patch.username ?? current.username).trim(),
       identity_file: patch.identityFile ? resolveIdentityFile(patch.identityFile) : current.identity_file,
       enabled: patch.enabled === undefined ? current.enabled : (patch.enabled ? 1 : 0)
     };
+    if (!next.host || /[\s\r\n]/.test(next.host)) throw new Error('올바른 Host를 입력해야 합니다.');
+    if (!next.username || /[\s\r\n]/.test(next.username)) throw new Error('올바른 SSH User를 입력해야 합니다.');
+    if (!Number.isInteger(next.port) || next.port < 1 || next.port > 65535) throw new Error('SSH Port는 1~65535 범위여야 합니다.');
     if (!fs.existsSync(next.identity_file)) throw new Error(`SSH Key가 없습니다: ${path.basename(next.identity_file)}`);
     fs.chmodSync(next.identity_file, 0o600);
     getDb().prepare(`UPDATE ssh_hosts SET host=?,port=?,username=?,identity_file=?,enabled=?,updated_at=datetime('now') WHERE user_id=? AND alias=?`)
-      .run(next.host, Number(next.port), next.username, next.identity_file, next.enabled, userId, alias);
+      .run(next.host, next.port, next.username, next.identity_file, next.enabled, userId, alias);
     this.regenerateConfig();
     return this.getHost(userId, alias);
   }
@@ -114,6 +129,6 @@ export class SshManager {
   static getSummary() {
     ensureSshLayout();
     const row = getDb().prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN enabled=1 THEN 1 ELSE 0 END) AS enabled FROM ssh_hosts').get();
-    return { total: row?.total || 0, enabled: row?.enabled || 0, keysDir: SSH_KEYS_DIR };
+    return { total: row?.total || 0, enabled: row?.enabled || 0, keys: this.listKeyFiles().length, keysDir: SSH_KEYS_DIR };
   }
 }
