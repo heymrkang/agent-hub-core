@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import fs from 'fs';
+import path from 'path';
 import { getDb } from '../database/index.js';
 import { BackupManager } from '../backup/backup-manager.js';
 import { NotificationManager } from '../notifications/notification-manager.js';
@@ -7,6 +8,7 @@ import { Logger } from '../logging/logger.js';
 import { redactSecrets } from '../utils/redact.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * DAY_MS;
 
 class SystemJobsImpl {
   constructor() { this.timer = null; this.ownerUserId = null; }
@@ -19,7 +21,12 @@ class SystemJobsImpl {
   }
   stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
   lastSuccess(name) { return getDb().prepare(`SELECT finished_at FROM system_job_runs WHERE job_name=? AND status='COMPLETED' ORDER BY started_at DESC LIMIT 1`).get(name)?.finished_at || null; }
-  due(name, everyMs = DAY_MS) { const last = this.lastSuccess(name); return !last || Date.now() - new Date(`${last}Z`).getTime() >= everyMs; }
+  due(name, everyMs = DAY_MS) {
+    const last = this.lastSuccess(name);
+    if (!last) return true;
+    const parsed = Date.parse(String(last).replace(' ', 'T') + 'Z');
+    return !Number.isFinite(parsed) || Date.now() - parsed >= everyMs;
+  }
 
   async runRecorded(name, fn, { notifyFailure = true } = {}) {
     const id = crypto.randomUUID(); const start = Date.now(); const db = getDb();
@@ -43,6 +50,21 @@ class SystemJobsImpl {
     if (this.due('cleanup_30d')) await this.runRecorded('cleanup_30d', () => this.cleanup30d());
   }
 
+  cleanupLogDirectory() {
+    const logDir = path.join(process.env.DATA_DIR || '/data', 'logs');
+    if (!fs.existsSync(logDir)) return 0;
+    const cutoff = Date.now() - THIRTY_DAYS_MS;
+    let deleted = 0;
+    for (const entry of fs.readdirSync(logDir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const file = path.join(logDir, entry.name);
+      try {
+        if (fs.statSync(file).mtimeMs < cutoff) { fs.rmSync(file, { force: true }); deleted++; }
+      } catch {}
+    }
+    return deleted;
+  }
+
   async cleanup30d() {
     const db = getDb();
     const sessions = db.prepare(`SELECT id FROM sessions WHERE status='DELETED' AND deleted_at IS NOT NULL AND deleted_at < datetime('now','-30 days')`).all();
@@ -62,7 +84,8 @@ class SystemJobsImpl {
     }
     const oldLogs = db.prepare(`DELETE FROM structured_logs WHERE timestamp < datetime('now','-30 days')`).run().changes;
     const oldRuns = db.prepare(`DELETE FROM system_job_runs WHERE finished_at IS NOT NULL AND finished_at < datetime('now','-30 days')`).run().changes;
-    return { deletedSessions: ids.length, deletedUploadFiles: removedFiles, deletedStructuredLogs: oldLogs, deletedSystemJobRuns: oldRuns };
+    const oldLogFiles = this.cleanupLogDirectory();
+    return { deletedSessions: ids.length, deletedUploadFiles: removedFiles, deletedStructuredLogs: oldLogs, deletedSystemJobRuns: oldRuns, deletedLogFiles: oldLogFiles };
   }
 }
 
