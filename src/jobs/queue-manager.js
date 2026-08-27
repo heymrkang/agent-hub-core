@@ -2,6 +2,7 @@ import { JobRuntime } from './job-runtime.js';
 import { JobStatus, ErrorCategory } from './types.js';
 import { providerManager } from '../providers/provider-manager.js';
 import { ContextManager } from '../context/context-manager.js';
+import { getSettingsManager } from '../settings/settings-manager.js';
 
 class QueueManager {
   constructor() {
@@ -14,6 +15,14 @@ class QueueManager {
     this.activeExecutions = new Map();
   }
 
+  getConcurrencyLimit(providerName) {
+    try {
+      return getSettingsManager().get('concurrency_limit');
+    } catch {
+      return this.providerConcurrencyLimits.get(providerName.toLowerCase()) || 2;
+    }
+  }
+
   enqueueJob({ sessionId, sessionTitle, provider, model, prompt, profile, onStatusUpdate, type = 'CHAT', timeoutMs = null, queueGraceMs = null }) {
     const jobRecord = JobRuntime.createJob({ sessionId, type, provider, model });
     const abortController = new AbortController();
@@ -23,15 +32,10 @@ class QueueManager {
     };
     const promise = new Promise((resolve, reject) => { queueItem.resolve = resolve; queueItem.reject = reject; });
     promise.jobId = jobRecord.id;
-
     if (!this.sessionQueues.has(sessionId)) this.sessionQueues.set(sessionId, []);
     this.sessionQueues.get(sessionId).push(queueItem);
     onStatusUpdate?.(JobStatus.QUEUED, 0);
-
-    if (queueGraceMs && queueGraceMs > 0) {
-      queueItem.queueTimer = setTimeout(() => this.expireQueuedItem(queueItem), queueGraceMs);
-    }
-
+    if (queueGraceMs && queueGraceMs > 0) queueItem.queueTimer = setTimeout(() => this.expireQueuedItem(queueItem), queueGraceMs);
     this.processNext(provider);
     return promise;
   }
@@ -53,7 +57,7 @@ class QueueManager {
 
   processNext(providerName = 'codex') {
     const pName = providerName.toLowerCase();
-    const limit = this.providerConcurrencyLimits.get(pName) || 2;
+    const limit = this.getConcurrencyLimit(pName);
     while ((this.providerRunningCounts.get(pName) || 0) < limit) {
       let candidate = null;
       for (const [sessionId, queue] of this.sessionQueues.entries()) {
@@ -80,7 +84,6 @@ class QueueManager {
     const timeoutTimer = timeoutMs && timeoutMs > 0 ? setTimeout(() => abortController.abort(new Error('작업 타임아웃')), timeoutMs) : null;
     onStatusUpdate?.(JobStatus.RUNNING, 0);
     this.activeExecutions.set(job.id, { sessionId: job.session_id, provider: providerName, abortController, intervalTimer, timeoutTimer, startTime });
-
     try {
       const adapter = providerManager.getAdapter(job.provider);
       const providerSession = ContextManager.getProviderSession(job.session_id, providerName);
@@ -95,15 +98,8 @@ class QueueManager {
       const durationMs = Date.now() - startTime;
       if (abortController.signal.aborted) {
         const timedOut = timeoutMs && durationMs >= timeoutMs - 50;
-        if (timedOut) {
-          JobRuntime.markFailed(job.id, ErrorCategory.TIMEOUT, '작업 타임아웃', 1, durationMs);
-          onStatusUpdate?.(JobStatus.FAILED, Math.floor(durationMs / 1000));
-          reject(new Error('작업 타임아웃'));
-        } else {
-          JobRuntime.markCancelled(job.id, durationMs);
-          onStatusUpdate?.(JobStatus.CANCELLED, Math.floor(durationMs / 1000));
-          reject(new Error('작업이 취소되었습니다.'));
-        }
+        if (timedOut) { JobRuntime.markFailed(job.id, ErrorCategory.TIMEOUT, '작업 타임아웃', 1, durationMs); onStatusUpdate?.(JobStatus.FAILED, Math.floor(durationMs / 1000)); reject(new Error('작업 타임아웃')); }
+        else { JobRuntime.markCancelled(job.id, durationMs); onStatusUpdate?.(JobStatus.CANCELLED, Math.floor(durationMs / 1000)); reject(new Error('작업이 취소되었습니다.')); }
       } else {
         const category = error.message.includes('타임아웃') ? ErrorCategory.TIMEOUT : ErrorCategory.PROVIDER_EXEC;
         JobRuntime.markFailed(job.id, category, error.message, 1, durationMs);
@@ -145,8 +141,15 @@ class QueueManager {
 
   hasActiveSession(sessionId) { return Array.from(this.activeExecutions.values()).some((e) => e.sessionId === sessionId); }
   getQueueStats() {
-    let totalQueued = 0; for (const q of this.sessionQueues.values()) totalQueued += q.length;
-    return { activeExecutionsCount: this.activeExecutions.size, totalQueued, providerRunning: Object.fromEntries(this.providerRunningCounts), providerLimits: Object.fromEntries(this.providerConcurrencyLimits) };
+    let totalQueued = 0;
+    for (const q of this.sessionQueues.values()) totalQueued += q.length;
+    const configuredLimit = (() => { try { return getSettingsManager().get('concurrency_limit'); } catch { return null; } })();
+    return {
+      activeExecutionsCount: this.activeExecutions.size,
+      totalQueued,
+      providerRunning: Object.fromEntries(this.providerRunningCounts),
+      providerLimits: Object.fromEntries(['codex', 'antigravity'].map((p) => [p, configuredLimit ?? this.providerConcurrencyLimits.get(p) ?? 2]))
+    };
   }
 }
 export const queueManager = new QueueManager();
