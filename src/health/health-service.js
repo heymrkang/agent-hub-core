@@ -34,8 +34,11 @@ export class HealthService {
 
   static scheduler() {
     try {
-      const db = getDb(); const enabled = db.prepare('SELECT COUNT(*) AS c FROM schedules WHERE enabled=1').get().c; const failed = db.prepare("SELECT COUNT(*) AS c FROM schedule_runs WHERE status='FAILED' AND created_at >= datetime('now','-24 hours')").get().c;
-      return check('Scheduler', failed > 0 ? HealthState.DEGRADED : HealthState.HEALTHY, `enabled=${enabled}, failed24h=${failed}`);
+      const db = getDb();
+      const enabled = db.prepare('SELECT COUNT(*) AS c FROM schedules WHERE enabled=1').get().c;
+      const failed = db.prepare("SELECT COUNT(*) AS c FROM schedule_runs WHERE status='FAILED' AND created_at >= datetime('now','-24 hours')").get().c;
+      const running = db.prepare("SELECT COUNT(*) AS c FROM schedule_runs WHERE status='RUNNING'").get().c;
+      return check('Scheduler', failed > 0 ? HealthState.DEGRADED : HealthState.HEALTHY, `enabled=${enabled}, running=${running}, failed24h=${failed}`);
     } catch (e) { return check('Scheduler', HealthState.ERROR, e.message); }
   }
 
@@ -54,6 +57,11 @@ export class HealthService {
   static async docker() { const d = await DockerClient.getSummary(); return check('Docker', d.available ? HealthState.HEALTHY : HealthState.DEGRADED, d.available ? `daemon ${d.serverVersion || 'unknown'} / running=${d.running ?? '?'}` : (d.error || 'daemon unavailable')); }
   static async git() { try { const g = await GitManager.status(); const state = !g.git.available ? HealthState.ERROR : (g.tokenConfigured && !g.authenticated) ? HealthState.DEGRADED : HealthState.HEALTHY; return check('Git/GitHub', state, `git=${g.git.available ? 'OK' : 'ERROR'} / gh=${g.gh.available ? 'OK' : 'N/A'} / auth=${g.authState}`); } catch (e) { return check('Git/GitHub', HealthState.ERROR, e.message); } }
   static ssh() { try { const s = SshManager.getSummary(); return check('SSH', s.enabled > 0 && s.keys === 0 ? HealthState.DEGRADED : HealthState.HEALTHY, `hosts=${s.enabled}/${s.total} enabled / keys=${s.keys}`); } catch (e) { return check('SSH', HealthState.ERROR, e.message); } }
-  static storage() { const paths = [process.env.DATA_DIR || '/data', process.env.WORKSPACE_DIR || '/workspace']; const failures = []; for (const p of paths) { try { fs.accessSync(p, fs.constants.R_OK); } catch { failures.push(p); } } return check('Storage', failures.length ? HealthState.ERROR : HealthState.HEALTHY, failures.length ? `unreadable: ${failures.join(', ')}` : paths.join(', ')); }
+  static storage() {
+    const paths = [process.env.DATA_DIR || '/data', process.env.WORKSPACE_DIR || '/workspace'];
+    const failures = [];
+    for (const p of paths) { try { fs.accessSync(p, fs.constants.R_OK | fs.constants.W_OK); } catch { failures.push(p); } }
+    return check('Storage', failures.length ? HealthState.ERROR : HealthState.HEALTHY, failures.length ? `read/write unavailable: ${failures.join(', ')}` : `read/write OK: ${paths.join(', ')}`);
+  }
   static jobs() { try { const s = queueManager.getQueueStats(); return check('Jobs', s.totalQueued > 20 ? HealthState.DEGRADED : HealthState.HEALTHY, `active=${s.activeExecutionsCount}, queued=${s.totalQueued}`); } catch (e) { return check('Jobs', HealthState.ERROR, e.message); } }
 }
