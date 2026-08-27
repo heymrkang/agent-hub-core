@@ -6,6 +6,7 @@ import { schedulerEngine } from './scheduler/engine.js';
 import { SshManager } from './ssh/ssh-manager.js';
 import { GitManager } from './git/git-manager.js';
 import { DockerClient } from './docker/docker-client.js';
+import { initSettingsManager } from './settings/settings-manager.js';
 
 console.log('==========================================');
 console.log('            Agent Hub Core V1');
@@ -15,7 +16,9 @@ process.on('uncaughtException', (err) => console.error('[FATAL] Uncaught Excepti
 process.on('unhandledRejection', (reason, promise) => console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason));
 
 try {
-  initDatabase();
+  const db = initDatabase();
+  initSettingsManager(db);
+  console.log('[Settings] persistent settings 준비 완료.');
   JobRuntime.recoverInterruptedJobs();
 
   const sshSummary = SshManager.init();
