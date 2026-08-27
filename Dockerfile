@@ -7,11 +7,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     git \
-    gh \
     docker.io \
     openssh-client \
     tzdata \
     util-linux \
+    gpg \
+    && rm -rf /var/lib/apt/lists/*
+
+# GitHub CLI는 Debian 기본 저장소의 오래된 버전 대신 공식 패키지 저장소에서 설치한다.
+RUN mkdir -p -m 755 /etc/apt/keyrings \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
 # 타임존 설정 (Asia/Seoul)
