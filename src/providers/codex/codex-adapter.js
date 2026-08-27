@@ -2,6 +2,7 @@ import { spawn, execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { ProviderAdapter } from '../provider-adapter.js';
 
 const execFileAsync = promisify(execFile);
@@ -13,6 +14,7 @@ export class CodexAdapter extends ProviderAdapter {
     this.defaultTimeoutMs = parseInt(process.env.CODEX_TIMEOUT_MS || '120000', 10);
     this.cachedModels = null;
     this.lastModelCheck = 0;
+    this.restrictedRuntime = null;
   }
 
   async checkHealth() {
@@ -80,25 +82,128 @@ export class CodexAdapter extends ProviderAdapter {
     return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'PARTIAL', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'SUPPORTED' };
   }
 
+  async getRestrictedRuntime() {
+    if (this.restrictedRuntime) return this.restrictedRuntime;
+    const self = process.env.HOSTNAME;
+    if (!self) throw new Error('Restricted Codex 실행을 위한 현재 컨테이너 ID(HOSTNAME)를 확인할 수 없습니다.');
+
+    try {
+      const [{ stdout: imageOut }, { stdout: mountsOut }] = await Promise.all([
+        execFileAsync('docker', ['inspect', self, '--format', '{{.Config.Image}}'], { timeout: 10000 }),
+        execFileAsync('docker', ['inspect', self, '--format', '{{json .Mounts}}'], { timeout: 10000 })
+      ]);
+      const image = imageOut.trim();
+      const mounts = JSON.parse(mountsOut.trim());
+      const findMount = (destination) => mounts.find((m) => m.Destination === destination);
+      const workspace = findMount('/workspace');
+      const codexHome = findMount('/root/.codex');
+      const data = findMount('/data');
+      if (!image) throw new Error('현재 Agent Hub 이미지 이름을 찾지 못했습니다.');
+      if (!workspace?.Source) throw new Error('/workspace host mount source를 찾지 못했습니다.');
+      if (!codexHome?.Source) throw new Error('/root/.codex host mount source를 찾지 못했습니다.');
+
+      this.restrictedRuntime = {
+        image,
+        workspaceSource: workspace.Source,
+        codexHomeSource: codexHome.Source,
+        uploadsSource: data?.Source ? path.join(data.Source, 'uploads') : null
+      };
+      console.log(`[CodexAdapter] Restricted profile runtime 준비 완료: image=${image}`);
+      return this.restrictedRuntime;
+    } catch (error) {
+      throw new Error(`Restricted Codex 실행 환경 확인 실패: ${error.stderr || error.message}`);
+    }
+  }
+
+  async removeHelperContainer(name) {
+    try { await execFileAsync('docker', ['rm', '-f', name], { timeout: 10000 }); } catch {}
+  }
+
+  async executeRestrictedPrompt({ prompt, model, profile, cwd, timeoutMs, signal }) {
+    const runtime = await this.getRestrictedRuntime();
+    const normalizedCwd = path.resolve(cwd || this.workspaceDir);
+    const workspaceRoot = path.resolve(this.workspaceDir);
+    if (normalizedCwd !== workspaceRoot && !normalizedCwd.startsWith(`${workspaceRoot}${path.sep}`)) {
+      throw new Error(`${profile} Profile은 /workspace 밖의 cwd에서 실행할 수 없습니다.`);
+    }
+
+    const helperName = `agent-hub-codex-${crypto.randomUUID().slice(0, 12)}`;
+    const workspaceMode = profile === 'READ_ONLY' ? 'ro' : 'rw';
+    const codexArgs = ['exec'];
+    if (model && model !== 'default') codexArgs.push('-m', model);
+    codexArgs.push('--skip-git-repo-check');
+    // The sibling container is the outer isolation boundary. Inside it Codex keeps
+    // its native read-only/workspace-write sandbox. seccomp=unconfined is scoped
+    // only to this short-lived helper so bubblewrap can create user namespaces.
+    // The helper never receives docker.sock, SSH keys, GH_TOKEN or the full /data tree.
+    codexArgs.push('-c', 'features.use_legacy_landlock=false');
+    codexArgs.push('--sandbox', profile === 'READ_ONLY' ? 'read-only' : 'workspace-write');
+    codexArgs.push(prompt);
+
+    const dockerArgs = [
+      'run', '--rm', '--name', helperName,
+      '--security-opt', 'seccomp=unconfined',
+      '-e', 'HOME=/root', '-e', 'CI=true',
+      '-v', `${runtime.workspaceSource}:/workspace:${workspaceMode}`,
+      '-v', `${runtime.codexHomeSource}:/root/.codex:rw`
+    ];
+    if (runtime.uploadsSource && fs.existsSync('/data/uploads')) {
+      dockerArgs.push('-v', `${runtime.uploadsSource}:/data/uploads:ro`);
+    }
+    dockerArgs.push('-w', normalizedCwd, '--entrypoint', 'codex', runtime.image, ...codexArgs);
+
+    return new Promise((resolve, reject) => {
+      const child = spawn('docker', dockerArgs, { env: { ...process.env, GH_TOKEN: undefined, GITHUB_TOKEN: undefined }, stdio: ['ignore', 'pipe', 'pipe'] });
+      let stdout = ''; let stderr = ''; let isFinished = false;
+      const finishError = async (error) => {
+        if (isFinished) return;
+        isFinished = true;
+        clearTimeout(timer);
+        await this.removeHelperContainer(helperName);
+        reject(error);
+      };
+      const timer = setTimeout(() => {
+        if (!isFinished) {
+          child.kill('SIGKILL');
+          finishError(new Error(`Codex ${profile} 실행 타임아웃 (${timeoutMs / 1000}초 초과)`));
+        }
+      }, timeoutMs);
+      if (signal) signal.addEventListener('abort', () => {
+        if (!isFinished) {
+          child.kill('SIGKILL');
+          finishError(new Error('Codex 작업이 사용자에 의해 중단되었습니다.'));
+        }
+      }, { once: true });
+      child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+      child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+      child.on('error', (err) => finishError(new Error(`Codex restricted helper 시작 실패: ${err.message}`)));
+      child.on('close', (code) => {
+        if (isFinished) return;
+        isFinished = true;
+        clearTimeout(timer);
+        const response = stdout.trim();
+        const diagnostic = stderr.trim();
+        if (code !== 0) {
+          reject(new Error(`Codex ${profile} 실행 실패 (Exit code: ${code}):\n${diagnostic || response || `Exit code: ${code}`}`));
+          return;
+        }
+        resolve({ response: response || 'Codex로부터 빈 응답을 받았습니다.' });
+      });
+    });
+  }
+
   async executePrompt(options = {}) {
     const { prompt, model, profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
+    const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
+
+    if (normalizedProfile !== 'FULL_ACCESS') {
+      return this.executeRestrictedPrompt({ prompt, model, profile: normalizedProfile, cwd, timeoutMs, signal });
+    }
+
     return new Promise((resolve, reject) => {
-      const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
       const args = ['exec'];
       if (model && model !== 'default') args.push('-m', model);
-      args.push('--skip-git-repo-check');
-      if (normalizedProfile === 'FULL_ACCESS') {
-        args.push('--dangerously-bypass-approvals-and-sandbox');
-      } else {
-        // Agent Hub itself already runs inside Docker. Recent Codex Linux builds default to
-        // bubblewrap, which needs nested user namespaces that ordinary Coolify/Docker
-        // containers intentionally do not expose. Codex provides the legacy Landlock path
-        // specifically as a sandbox fallback that does not require bwrap namespaces.
-        // Keep the requested sandbox policy intact; never silently fall back to FULL_ACCESS.
-        args.push('-c', 'features.use_legacy_landlock=true');
-        args.push('--sandbox', normalizedProfile === 'READ_ONLY' ? 'read-only' : 'workspace-write');
-      }
-      args.push(prompt);
+      args.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', prompt);
 
       const child = spawn('codex', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = ''; let stderr = ''; let isFinished = false;
