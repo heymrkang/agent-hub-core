@@ -2,6 +2,10 @@ import { SessionManager } from '../../sessions/session-manager.js';
 import { getSettingsManager } from '../../settings/settings-manager.js';
 import { isStealthMode, uiStatusIcon } from '../renderer/ui-theme.js';
 
+function escapeMarkdown(value) {
+  return String(value ?? '').replace(/([_*`\[])/g, '\\$1');
+}
+
 export async function handleNewCommand(bot, msg) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
@@ -12,9 +16,13 @@ export async function handleNewCommand(bot, msg) {
     const model = settings.get(`default_model_${provider}`) || null;
     const newSession = SessionManager.createSession(userId, { title: '새 채팅', provider, model, profile });
     const stealth = isStealthMode();
+    const title = escapeMarkdown(newSession.title);
+    const activeProvider = escapeMarkdown(newSession.active_provider);
+    const activeModel = escapeMarkdown(newSession.active_model || 'CLI Default');
+    const executionProfile = escapeMarkdown(newSession.execution_profile);
     const text = stealth
-      ? `${uiStatusIcon('success')} **새 세션이 생성되었습니다.**\n\n**제목**: ${newSession.title}\n**Provider**: ${newSession.active_provider}\n**Model**: ${newSession.active_model || 'CLI Default'}\n**Profile**: ${newSession.execution_profile}\n\n이제 메시지를 입력하시면 이 세션에 기록됩니다.`
-      : `✨ **새 세션이 생성되었습니다.**\n\n📌 **제목**: ${newSession.title}\n🤖 **Provider**: ${newSession.active_provider}\n🧠 **Model**: ${newSession.active_model || 'CLI Default'}\n⚙️ **Profile**: ${newSession.execution_profile}\n\n이제 메시지를 입력하시면 이 세션에 기록됩니다.`;
+      ? `${uiStatusIcon('success')} **새 세션이 생성되었습니다.**\n\n**제목**: ${title}\n**Provider**: ${activeProvider}\n**Model**: ${activeModel}\n**Profile**: ${executionProfile}\n\n이제 메시지를 입력하시면 이 세션에 기록됩니다.`
+      : `✨ **새 세션이 생성되었습니다.**\n\n📌 **제목**: ${title}\n🤖 **Provider**: ${activeProvider}\n🧠 **Model**: ${activeModel}\n⚙️ **Profile**: ${executionProfile}\n\n이제 메시지를 입력하시면 이 세션에 기록됩니다.`;
     await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
   } catch (error) {
     console.error(`[Command /new Error] ${error.message}`);
