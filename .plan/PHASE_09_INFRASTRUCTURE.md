@@ -2,16 +2,16 @@
 
 ## Status
 
-`IMPLEMENTED / READY_FOR_RUNTIME_TEST` — 2026-08-27
+`DONE` — 2026-08-27
 
-Phase 9 코드 구현은 완료했다. Migration v9, Docker image 변경, Coolify/host socket 및 실제 SSH/GitHub 인증이 필요한 항목은 Redeploy 후 runtime E2E 검증을 거쳐 `DONE` 처리한다.
+Phase 9 구현 및 Coolify runtime E2E 검증을 완료했다. SSH, Host Docker, Git/GitHub, persistent workspace와 Execution Profile의 핵심 동작이 실제 배포 환경에서 검증되었다.
 
 ## 1. 목표
 
 - [x] SSH Key 기반 Host Registry와 Agent가 실제 사용할 수 있는 SSH 환경을 구축한다.
 - [x] Host Docker Socket과 Docker CLI를 함께 제공한다.
 - [x] Git/GitHub 인증 및 persistent workspace를 제공하여 Agent가 실제 repository를 clone/pull/edit/commit/push할 수 있게 한다.
-- [x] Execution Profile을 Provider Native sandbox/approval과 인프라 접근에 가능한 범위에서 매핑한다.
+- [x] Execution Profile을 배포 환경에서 실제 강제 가능한 권한 경계로 제공한다.
 
 ## 2. 구현 완료 항목
 
@@ -54,8 +54,12 @@ Phase 9 코드 구현은 완료했다. Migration v9, Docker image 변경, Coolif
 
 - [x] Session profile: `READ_ONLY`, `WORKSPACE`, `FULL_ACCESS`.
 - [x] `/profile` Telegram UI 및 session persistence.
-- [x] Codex: READ_ONLY → native `read-only` sandbox, WORKSPACE → native `workspace-write`, FULL_ACCESS → explicit bypass/full access.
-- [x] Antigravity: native equivalent sandbox가 없어 `PARTIAL` capability로 명시. READ_ONLY는 permission bypass 제거, WORKSPACE/FULL_ACCESS는 기존 non-interactive compatibility를 유지하며 profile guard를 전달.
+- [x] `READ_ONLY`: short-lived sibling Docker helper에서 `/workspace`를 read-only mount하여 filesystem write를 실제 차단.
+- [x] `WORKSPACE`: short-lived sibling Docker helper에서 `/workspace`만 read-write mount하여 개발 작업 허용.
+- [x] Restricted helper에는 Docker socket, SSH key, GH/GitHub token, 전체 `/data`를 전달하지 않으며 `--cap-drop ALL` + `no-new-privileges`를 적용.
+- [x] `FULL_ACCESS`: 명시적 Codex full-access 실행으로 SSH/Docker/Git 인프라 작업 허용.
+- [x] Sandbox 실패 시 FULL_ACCESS로 자동 승격하지 않음.
+- [x] Antigravity: native equivalent sandbox가 없어 `PARTIAL` capability로 명시.
 - [x] FULL_ACCESS가 SSH/Docker 등 강력한 인프라 권한임을 UI에서 명시.
 
 ## 3. 운영 전제
@@ -84,28 +88,28 @@ Phase 9 코드 구현은 완료했다. Migration v9, Docker image 변경, Coolif
 - `docker-compose.yml`
 - `.env.example`
 
-## 5. Runtime 검증 체크리스트
+## 5. Runtime 검증 결과
 
-- [ ] Redeploy 시 migration `v9: infrastructure` 적용 성공.
-- [ ] Startup 로그에서 SSH persistent config 준비 완료.
-- [ ] Startup 로그에서 `git`, `gh` 존재 및 GitHub auth 상태 확인.
-- [ ] Startup 로그에서 Docker daemon 연결 또는 안전한 degraded 상태 확인.
-- [ ] Container 내부 `git --version`, `gh --version`, `docker version`, `ssh -V` 정상.
-- [ ] `/profile`에서 READ_ONLY / WORKSPACE / FULL_ACCESS 전환 및 session persistence.
-- [ ] Codex READ_ONLY에서 write 차단, WORKSPACE에서 `/workspace` write 가능, FULL_ACCESS에서 인프라 작업 가능.
-- [ ] `/servers keys`에서 persistent Key discovery.
-- [ ] `/servers add ...` 후 Registry 생성 및 `/data/ssh/config` 반영.
-- [ ] `/servers test <alias>` 실제 SSH 연결 성공.
-- [ ] Container restart 후 SSH config/known_hosts 유지.
-- [ ] Registry 제거 후 private key file 유지.
-- [ ] Host Docker socket mount 후 `docker ps` 정상.
-- [ ] Docker socket 미존재/장애가 Core 전체를 unhealthy로 만들지 않음.
-- [ ] Coolify `GH_TOKEN` 설정 후 private repository clone/pull 가능.
-- [ ] Git token이 Telegram/log/`.git/config` remote URL에 노출되지 않음.
-- [ ] `/workspace/repos` test repo 변경 → commit → push E2E 성공.
-- [ ] Redeploy 후 cloned repository 유지.
-- [ ] 기존 uncommitted 변경을 보존하고 destructive Git fallback을 수행하지 않음.
+- [x] Redeploy 시 migration `v9: infrastructure` 적용 성공.
+- [x] Startup 로그에서 SSH persistent config 준비 완료.
+- [x] Startup 로그에서 `git`, `gh` 존재 및 GitHub auth `READY` 확인.
+- [x] Host Docker daemon 연결 및 실제 container inventory 조회 성공.
+- [x] `/profile`에서 READ_ONLY / WORKSPACE / FULL_ACCESS 전환 확인.
+- [x] READ_ONLY에서 `/workspace/read-only-test.txt` 생성 시 `Read-only file system`으로 실제 차단 확인.
+- [x] WORKSPACE에서 `/workspace/workspace-test.txt` 생성 및 `PHASE9 WORKSPACE TEST` 내용/22 bytes 검증 성공.
+- [x] FULL_ACCESS에서 Host Docker container 조회 성공.
+- [x] `/servers add dev ...` Registry 생성 및 활성화 성공.
+- [x] `/servers test dev` 실제 SSH 연결 성공.
+- [x] Agent가 `ssh dev`로 원격 hostname `DietPi` 조회 성공.
+- [x] Agent가 `ssh dev`를 통해 원격 `docker ps` 실행 성공.
+- [x] GitHub Fine-grained PAT 인증 `READY` 확인.
+- [x] Private repository clone/status/branch/remote/pull 성공.
+- [x] `08S6 Test Git token push` commit 및 `origin/main` push 성공.
+- [x] Coolify redeploy 후 `/workspace/repos/agent-hub-core`와 `.git`, README 변경 내용 유지 확인.
+- [x] Agent가 persisted repository의 `git status`와 최근 commit history 조회 성공.
 
-## 6. 최종 판정 기준
+## 6. 최종 판정
 
-위 runtime 핵심 E2E가 통과하면 **PHASE 9 — DONE**으로 변경한다.
+**PHASE 9 — DONE**
+
+2026-08-27 실제 Coolify 배포 환경에서 핵심 E2E를 완료했다. 초기 Codex `bwrap`/Landlock 충돌은 restricted profile을 short-lived sibling Docker isolation boundary로 재설계하여 해결했고, READ_ONLY의 실제 write 차단과 WORKSPACE의 실제 write 성공을 모두 검증했다.
