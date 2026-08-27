@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     git \
+    gh \
+    docker.io \
     openssh-client \
     tzdata \
     util-linux \
@@ -28,18 +30,18 @@ RUN curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cl
     && rm -rf /tmp/agy.tar.gz \
     && agy --version
 
-# 작업 디렉토리 설정
+# Phase 9 CLI 존재 여부를 build 단계에서 검증
+RUN git --version && gh --version | head -n 1 && docker --version && ssh -V
+
 WORKDIR /app
 
-# Node 의존성 설치
 COPY package*.json ./
 RUN npm install --omit=dev
 
-# 소스코드 복사
 COPY src/ ./src/
 
 # 영속 데이터 및 볼륨 마운트 표준 디렉토리 구조 생성
-RUN mkdir -p /workspace \
+RUN mkdir -p /workspace/repos \
     /data/providers/codex \
     /data/providers/antigravity \
     /data/memory \
@@ -50,9 +52,14 @@ RUN mkdir -p /workspace \
     /data/backups/full \
     /data/backups/migrations \
     /root/.codex \
-    /root/.gemini
+    /root/.gemini \
+    /root/.ssh \
+    && chmod 700 /data/ssh /data/ssh/keys /root/.ssh
 
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
+ENV WORKSPACE_DIR=/workspace
+ENV REPOS_ROOT=/workspace/repos
+ENV SSH_DATA_DIR=/data/ssh
 
 CMD ["node", "src/index.js"]
