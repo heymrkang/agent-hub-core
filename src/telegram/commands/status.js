@@ -27,7 +27,7 @@ export async function handleStatusCommand(bot, msg) {
     const mark = (state) => stealth ? PLAIN[state] : ICONS[state];
     const session = SessionManager.getActiveSession(userId);
     const activeJob = getDb().prepare(`SELECT id,status,provider,model,type,started_at,queued_at FROM jobs WHERE session_id=? AND status IN ('QUEUED','RUNNING') ORDER BY created_at DESC LIMIT 1`).get(session.id);
-    const recentFailure = getDb().prepare(`SELECT error_category,error_message,created_at FROM jobs j JOIN sessions s ON s.id=j.session_id WHERE s.user_id=? AND j.status='FAILED' ORDER BY j.created_at DESC LIMIT 1`).get(userId);
+    const recentFailure = getDb().prepare(`SELECT j.error_category,j.error_message,j.created_at AS created_at FROM jobs j JOIN sessions s ON s.id=j.session_id WHERE s.user_id=? AND j.status='FAILED' ORDER BY j.created_at DESC LIMIT 1`).get(userId);
 
     let text = `${uiTitle('🩺', 'Agent Hub Health')}\n\n`;
     text += `App: \`v${escapeMd(appVersion())}\` · DB schema: \`v${schemaVersion()}\`\n`;
