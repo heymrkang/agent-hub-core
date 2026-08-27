@@ -43,20 +43,26 @@ export class HealthService {
   }
 
   static async providers() {
-    try { return (await providerManager.getProvidersStatus()).map((p) => check(`Provider:${p.name}`, !p.healthy ? HealthState.ERROR : !p.authenticated ? HealthState.DEGRADED : HealthState.HEALTHY, `${p.healthy ? 'CLI OK' : 'CLI ERROR'} / ${p.authenticated ? 'AUTH OK' : 'AUTH REQUIRED'}${p.version ? ` / ${p.version}` : ''}`)); }
-    catch (e) { return [check('Providers', HealthState.ERROR, e.message)]; }
+    try {
+      return (await providerManager.getProvidersStatus()).map((p) => {
+        if (!p.healthy) return check(`Provider:${p.name}`, HealthState.DEGRADED, `CLI ERROR${p.version ? ` / ${p.version}` : ''}`);
+        if (p.authenticated === false) return check(`Provider:${p.name}`, HealthState.DEGRADED, `CLI OK / AUTH REQUIRED${p.version ? ` / ${p.version}` : ''}`);
+        const authLabel = p.authenticated === true ? 'AUTH OK' : 'AUTH PRESENT';
+        return check(`Provider:${p.name}`, HealthState.HEALTHY, `CLI OK / ${authLabel}${p.version ? ` / ${p.version}` : ''}`);
+      });
+    } catch (e) { return [check('Providers', HealthState.DEGRADED, e.message)]; }
   }
 
   static modelCatalog() {
     return providerManager.listProviderNames().map((provider) => {
-      try { const state = modelCatalog.getCacheState(provider); const models = modelCatalog.getModels(provider); const health = state.status === 'FRESH' ? HealthState.HEALTHY : models.length ? HealthState.DEGRADED : HealthState.ERROR; return check(`Models:${provider}`, health, `${state.status} / ${models.length} models`); }
-      catch (e) { return check(`Models:${provider}`, HealthState.ERROR, e.message); }
+      try { const state = modelCatalog.getCacheState(provider); const models = modelCatalog.getModels(provider); const health = state.status === 'FRESH' ? HealthState.HEALTHY : HealthState.DEGRADED; return check(`Models:${provider}`, health, `${state.status} / ${models.length} models`); }
+      catch (e) { return check(`Models:${provider}`, HealthState.DEGRADED, e.message); }
     });
   }
 
   static async docker() { const d = await DockerClient.getSummary(); return check('Docker', d.available ? HealthState.HEALTHY : HealthState.DEGRADED, d.available ? `daemon ${d.serverVersion || 'unknown'} / running=${d.running ?? '?'}` : (d.error || 'daemon unavailable')); }
-  static async git() { try { const g = await GitManager.status(); const state = !g.git.available ? HealthState.ERROR : (g.tokenConfigured && !g.authenticated) ? HealthState.DEGRADED : HealthState.HEALTHY; return check('Git/GitHub', state, `git=${g.git.available ? 'OK' : 'ERROR'} / gh=${g.gh.available ? 'OK' : 'N/A'} / auth=${g.authState}`); } catch (e) { return check('Git/GitHub', HealthState.ERROR, e.message); } }
-  static ssh() { try { const s = SshManager.getSummary(); return check('SSH', s.enabled > 0 && s.keys === 0 ? HealthState.DEGRADED : HealthState.HEALTHY, `hosts=${s.enabled}/${s.total} enabled / keys=${s.keys}`); } catch (e) { return check('SSH', HealthState.ERROR, e.message); } }
+  static async git() { try { const g = await GitManager.status(); const state = !g.git.available || (g.tokenConfigured && !g.authenticated) ? HealthState.DEGRADED : HealthState.HEALTHY; return check('Git/GitHub', state, `git=${g.git.available ? 'OK' : 'ERROR'} / gh=${g.gh.available ? 'OK' : 'N/A'} / auth=${g.authState}`); } catch (e) { return check('Git/GitHub', HealthState.DEGRADED, e.message); } }
+  static ssh() { try { const s = SshManager.getSummary(); return check('SSH', s.enabled > 0 && s.keys === 0 ? HealthState.DEGRADED : HealthState.HEALTHY, `hosts=${s.enabled}/${s.total} enabled / keys=${s.keys}`); } catch (e) { return check('SSH', HealthState.DEGRADED, e.message); } }
   static storage() {
     const paths = [process.env.DATA_DIR || '/data', process.env.WORKSPACE_DIR || '/workspace'];
     const failures = [];
