@@ -4,7 +4,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
-const REPOS_ROOT = process.env.REPOS_ROOT || '/dev/workspace';
+const REPOS_ROOT = process.env.REPOS_ROOT || '/home/dev/workspace';
 
 function redact(value) { const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN; let text = String(value || ''); if (token) text = text.split(token).join('[REDACTED]'); return text.replace(/gh[pousr]_[A-Za-z0-9_]+/g, '[REDACTED]'); }
 function githubEnv() { const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN; return token ? { ...process.env, GH_TOKEN: token } : { ...process.env }; }
