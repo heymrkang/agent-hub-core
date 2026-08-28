@@ -75,7 +75,7 @@ export function runMigrations(db, dbPath, backupDir) {
 
   // 6. 마이그레이션 적용 전 안전 스냅샷 생성
   if (appliedRows.length > 0) {
-    createPreMigrationBackup(dbPath, backupDir);
+    createPreMigrationBackup(db, dbPath, backupDir);
   }
 
   // 7. 각 마이그레이션을 순차적으로 트랜잭션 내에서 실행
