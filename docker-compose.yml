@@ -11,12 +11,12 @@ services:
       - ./data:/data
       - ./data/providers/codex:/root/.codex
       - ./data/providers/antigravity:/root/.gemini
-      # 범용 개발 공간. Git 프로젝트는 관례적으로 /dev/workspace 아래에 둔다.
-      - ./dev:/dev
+      # 호스트의 dev 디렉토리는 유지하되 Linux 예약 경로 /dev를 덮어쓰지 않는다.
+      - ./dev:/home/dev
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Asia/Seoul
-      - WORKSPACE_DIR=/dev
-      - REPOS_ROOT=/dev/workspace
+      - WORKSPACE_DIR=/home/dev
+      - REPOS_ROOT=/home/dev/workspace
       - DATA_DIR=/data
       - SSH_DATA_DIR=/data/ssh
