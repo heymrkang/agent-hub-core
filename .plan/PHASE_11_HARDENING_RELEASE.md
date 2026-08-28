@@ -59,10 +59,11 @@
   - Telegram authorization fail-closed regression.
   - secret redaction / SSH private-key backup 제외 정책 재확인.
   - provider auth는 persistent native CLI state로 분리.
-  - repository code search에서 명시적 secret logging 패턴 미검출.
+  - repository review에서 release-blocking secret exposure 미확인.
 - [x] **Documentation / Release**
-  - `README.md`에 install/deploy, persistent mounts, execution profiles, provider login, SSH key, docker.sock warning, backup/restore, health, CLI update 절차 반영.
+  - `README.md`에 persistent mounts, execution profiles, provider login, SSH key, docker.sock warning, backup/restore, health, CLI update 절차 반영.
   - `/profile` UI와 `ROADMAP.md`를 `/home/dev` 기준으로 동기화.
+  - 실제 Telegram `/profile` 반영 확인.
   - V1 release baseline 확정.
 
 ## 4. 생성 / 수정 파일
@@ -87,13 +88,14 @@
 - [x] Provider Isolation 검토/실행 검증.
 - [x] Execution Profile filesystem isolation runtime 검증.
 - [x] Secret leakage 정책 및 repository review 통과.
+- [x] `/profile` 최종 UI runtime 반영 확인.
 - [x] 운영 문서와 구현 baseline 동기화.
 - [x] Phase 0 ~ 11 모두 `DONE`.
 
 ## 6. Phase 11 최종 검증 기록 — 2026-08-29
 
 - Node 20 built-in `node:test` 기반 `npm test` regression baseline을 구축했다.
-- GitHub Actions `Phase 11 Regression` main baseline run `33185074907`이 `success`로 완료됐다.
+- GitHub Actions `Phase 11 Regression` 최신 감사 대상 main run `33217103349`가 commit `26975db2c82d470258b3415bb14fa39a8597a70b`에서 `success`로 완료됐다.
 - `package-lock.json` drift를 동기화하여 deterministic `npm ci` regression을 복구했다.
 - Telegram authorization fail-closed/allowed-user regression을 추가했다.
 - WAL SQLite pre-migration snapshot을 FULL checkpoint 후 standalone copy + `PRAGMA quick_check` 검증 방식으로 hardening했다.
@@ -101,14 +103,31 @@
 - queue concurrency regression을 추가했고 settings 초기화까지 포함해 regression에서 통과했다.
 - Coolify runtime에서 DB v11, health endpoint/container health, Codex/Antigravity, model catalog, Docker, Git/GitHub, SSH, `/data`, backup 기능을 확인했다.
 - development root는 `/home/dev`, Git repository 기본 root는 `/home/dev/workspace`로 정리했다.
+- Dockerfile, docker-compose, `.env.example`, Codex adapter, Antigravity adapter의 development-root baseline이 `/home/dev`로 일치한다.
+- Coolify/Docker persistent development mount는 host development storage를 `/home/dev`로 연결하며 Linux device namespace `/dev`를 덮어쓰지 않는다.
 - Codex restricted helper는 immutable root filesystem을 사용하고 `/home/dev`만 READ_ONLY=`ro`, WORKSPACE=`rw`로 mount한다.
 - 실제 Telegram 검증에서 WORKSPACE는 `/home`에 파일/디렉토리를 만들지 못하고 `/home/dev`에는 쓸 수 있으며, READ_ONLY는 `/home/dev`의 기존 파일을 읽을 수 있지만 신규 파일 생성은 `Read-only file system`으로 차단됐다.
+- `/profile`은 `READ_ONLY=/home/dev 읽기 전용`, `WORKSPACE=/home/dev 읽기/쓰기`, `FULL_ACCESS=/home/dev + 인프라` 의미로 동기화됐고 실제 Telegram 배포 반영까지 확인했다.
 - 실제 Telegram에서 Codex ↔ Antigravity handoff/incremental return 및 background session completion notification이 동작함을 확인했다.
 - Full Backup의 SSH key/log/existing backup 제외, Core retention 7, 30-day cleanup, secret redaction은 Phase 10 최종 감사 결과를 release evidence로 승계했다.
 - Telegram `409 Conflict: terminated by other getUpdates request`는 동일 Bot Token의 중복 polling instance가 있을 때 발생하는 운영 이슈다. Core/provider release blocker로 분류하지 않으며, 지속 발생 시 Coolify에서 polling instance를 1개로 유지한다.
 - 단발성 Antigravity `status=CANCELED`는 이후 정상 요청 성공으로 재현되지 않았고 원인을 단정하지 않는다. 재발 시 provider output/context를 수집해 별도 결함으로 추적한다.
 
-## 7. Release Baseline
+## 7. Final Audit — PASS
+
+2026-08-29 최종 감사 결과 **PASS**.
+
+- Release-blocking 미완료 체크리스트 없음.
+- 최신 감사 대상 main regression `33217103349` success.
+- runtime execution-profile isolation과 `/profile` UI가 동일한 `/home/dev` 계약을 사용함.
+- `/dev` device namespace masking 회귀 없음.
+- V1 release 문서와 현재 runtime/deployment baseline의 핵심 경로가 동기화됨.
+
+### 비차단 후속 정리
+
+`.plan/PHASE_11_SYSTEM_RESOURCES.md`는 V1 Release Gate의 Phase 11과 별개의 후속 기능 초안인데 번호가 중복되어 있다. 이 문서는 V1 Phase 11 완료를 막지 않으며, 실제 착수 전에 후속 Phase 번호로 재지정한다.
+
+## 8. Release Baseline
 
 Phase 11을 `DONE`으로 종료한다. Agent Hub Core는 **V1 Released baseline**으로 간주한다.
 
