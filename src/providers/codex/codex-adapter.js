@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 export class CodexAdapter extends ProviderAdapter {
   constructor() {
     super('codex');
-    this.workspaceDir = process.env.WORKSPACE_DIR || '/dev';
+    this.workspaceDir = process.env.WORKSPACE_DIR || '/home/dev';
     this.defaultTimeoutMs = parseInt(process.env.CODEX_TIMEOUT_MS || '120000', 10);
     this.cachedModels = null;
     this.lastModelCheck = 0;
