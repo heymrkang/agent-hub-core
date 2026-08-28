@@ -70,7 +70,10 @@ export class AntigravityAdapter extends ProviderAdapter {
         : normalizedProfile === 'WORKSPACE'
           ? '[Execution Profile: WORKSPACE] 파일 변경은 /workspace 아래로 제한하세요. SSH/Docker 등 외부 인프라 변경은 수행하지 마세요.'
           : '[Execution Profile: FULL_ACCESS] 사용자가 요청한 범위에서 인프라 도구 사용이 허용됩니다.';
-      const args = ['--print', `${profileGuard}\n\n${prompt}`, '--output-format', 'json', '--effort', 'medium'];
+      const args = ['--print', `${profileGuard}\n\n${prompt}`, '--output-format', 'json'];
+      // agy의 명시적 --model 선택은 --effort와 상호 배타적일 수 있다.
+      // CLI Default 실행에서만 effort를 지정하고, 특정 모델 선택 시에는 모델 자체 설정을 존중한다.
+      if (!model || model === 'default') args.push('--effort', 'medium');
       // Antigravity CLI는 Codex와 동일한 native sandbox profile을 제공하지 않는다.
       // READ_ONLY에서는 permission bypass를 제거해 보수적으로 실패하도록 하고,
       // WORKSPACE/FULL_ACCESS는 기존 non-interactive 실행 호환성을 유지한다.
