@@ -3,7 +3,6 @@ import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import crypto from 'crypto';
 import { ProviderAdapter } from '../provider-adapter.js';
 
 const execFileAsync = promisify(execFile);
@@ -16,7 +15,6 @@ export class AntigravityAdapter extends ProviderAdapter {
     this.modelDiscoveryTimeoutMs = parseInt(process.env.ANTIGRAVITY_MODEL_DISCOVERY_TIMEOUT_MS || '60000', 10);
     this.cachedModels = null;
     this.lastModelCheck = 0;
-    this.restrictedRuntime = null;
   }
 
   async checkHealth() {
@@ -60,144 +58,23 @@ export class AntigravityAdapter extends ProviderAdapter {
   }
 
   getCapabilities() {
-    return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'SUPPORTED', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'SUPPORTED' };
-  }
-
-  async getRestrictedRuntime() {
-    if (this.restrictedRuntime) return this.restrictedRuntime;
-    const self = process.env.HOSTNAME;
-    if (!self) throw new Error('Restricted Antigravity 실행을 위한 현재 컨테이너 ID(HOSTNAME)를 확인할 수 없습니다.');
-
-    try {
-      const [{ stdout: imageOut }, { stdout: mountsOut }] = await Promise.all([
-        execFileAsync('docker', ['inspect', self, '--format', '{{.Config.Image}}'], { timeout: 10000 }),
-        execFileAsync('docker', ['inspect', self, '--format', '{{json .Mounts}}'], { timeout: 10000 })
-      ]);
-      const image = imageOut.trim();
-      const mounts = JSON.parse(mountsOut.trim());
-      const findMount = (destination) => mounts.find((m) => m.Destination === destination);
-      const workspace = findMount('/workspace');
-      const geminiHome = findMount('/root/.gemini');
-      const data = findMount('/data');
-      if (!image) throw new Error('현재 Agent Hub 이미지 이름을 찾지 못했습니다.');
-      if (!workspace?.Source) throw new Error('/workspace host mount source를 찾지 못했습니다.');
-      if (!geminiHome?.Source) throw new Error('/root/.gemini host mount source를 찾지 못했습니다.');
-
-      this.restrictedRuntime = {
-        image,
-        workspaceSource: workspace.Source,
-        geminiHomeSource: geminiHome.Source,
-        uploadsSource: data?.Source ? path.join(data.Source, 'uploads') : null
-      };
-      console.log(`[AntigravityAdapter] Restricted profile runtime 준비 완료: image=${image}`);
-      return this.restrictedRuntime;
-    } catch (error) {
-      throw new Error(`Restricted Antigravity 실행 환경 확인 실패: ${error.stderr || error.message}`);
-    }
-  }
-
-  async removeHelperContainer(name) {
-    try { await execFileAsync('docker', ['rm', '-f', name], { timeout: 10000 }); } catch {}
-  }
-
-  parseExecutionResult(raw, nativeSessionRef) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed.status && parsed.status !== 'SUCCESS') throw new Error(parsed.error || `status=${parsed.status}`);
-      return {
-        response: parsed.response ?? parsed.result ?? '',
-        nativeSessionRef: parsed.conversation_id ?? parsed.conversationId ?? parsed.session_id ?? parsed.sessionId ?? nativeSessionRef ?? null,
-        usage: parsed.usage ?? null
-      };
-    } catch (error) {
-      if (error instanceof SyntaxError) return { response: raw || 'Antigravity로부터 빈 응답을 받았습니다.', nativeSessionRef: nativeSessionRef ?? null };
-      throw new Error(`Antigravity 응답 상태 오류: ${error.message}`);
-    }
-  }
-
-  async executeRestrictedPrompt({ prompt, model, nativeSessionRef, profile, cwd, timeoutMs, signal }) {
-    const runtime = await this.getRestrictedRuntime();
-    const normalizedCwd = path.resolve(cwd || this.workspaceDir);
-    const workspaceRoot = path.resolve(this.workspaceDir);
-    if (normalizedCwd !== workspaceRoot && !normalizedCwd.startsWith(`${workspaceRoot}${path.sep}`)) {
-      throw new Error(`${profile} Profile은 /workspace 밖의 cwd에서 실행할 수 없습니다.`);
-    }
-
-    const helperName = `agent-hub-antigravity-${crypto.randomUUID().slice(0, 12)}`;
-    const workspaceMode = profile === 'READ_ONLY' ? 'ro' : 'rw';
-    const profileGuard = profile === 'READ_ONLY'
-      ? '[Execution Profile: READ_ONLY] 파일/설정/외부 시스템을 변경하지 말고 읽기와 분석만 수행하세요.'
-      : '[Execution Profile: WORKSPACE] 파일 변경은 /workspace 아래로 제한하세요. SSH/Docker 등 외부 인프라 변경은 수행하지 마세요.';
-    const agyArgs = ['--print', `${profileGuard}\n\n${prompt}`, '--output-format', 'json', '--effort', 'medium', '--dangerously-skip-permissions'];
-    if (model && model !== 'default') agyArgs.push('--model', model);
-    if (nativeSessionRef) agyArgs.push('--conversation', nativeSessionRef);
-
-    const dockerArgs = [
-      'run', '--rm', '--name', helperName,
-      '--cap-drop', 'ALL',
-      '--security-opt', 'no-new-privileges',
-      '-e', 'HOME=/root', '-e', 'CI=true',
-      '-v', `${runtime.workspaceSource}:/workspace:${workspaceMode}`,
-      '-v', `${runtime.geminiHomeSource}:/root/.gemini:rw`
-    ];
-    if (runtime.uploadsSource && fs.existsSync('/data/uploads')) dockerArgs.push('-v', `${runtime.uploadsSource}:/data/uploads:ro`);
-    dockerArgs.push('-w', normalizedCwd, '--entrypoint', 'agy', runtime.image, ...agyArgs);
-
-    return new Promise((resolve, reject) => {
-      const env = { ...process.env };
-      delete env.GH_TOKEN;
-      delete env.GITHUB_TOKEN;
-      delete env.TELEGRAM_BOT_TOKEN;
-      const child = spawn('docker', dockerArgs, { env, stdio: ['ignore', 'pipe', 'pipe'] });
-      let stdout = ''; let stderr = ''; let isFinished = false;
-      const finishError = async (error) => {
-        if (isFinished) return;
-        isFinished = true;
-        clearTimeout(timer);
-        await this.removeHelperContainer(helperName);
-        reject(error);
-      };
-      const timer = setTimeout(() => {
-        if (!isFinished) {
-          child.kill('SIGKILL');
-          finishError(new Error(`Antigravity ${profile} 실행 타임아웃 (${timeoutMs / 1000}초 초과)`));
-        }
-      }, timeoutMs);
-      if (signal) signal.addEventListener('abort', () => {
-        if (!isFinished) {
-          child.kill('SIGKILL');
-          finishError(new Error('Antigravity 작업이 사용자에 의해 중단되었습니다.'));
-        }
-      }, { once: true });
-      child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-      child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-      child.on('error', (err) => finishError(new Error(`Antigravity restricted helper 시작 실패: ${err.message}`)));
-      child.on('close', (code) => {
-        if (isFinished) return;
-        isFinished = true;
-        clearTimeout(timer);
-        const raw = stdout.trim();
-        const diagnostic = stderr.trim();
-        if (code !== 0) {
-          reject(new Error(`Antigravity ${profile} 실행 실패 (Exit code: ${code}):\n${diagnostic || raw || `Exit code: ${code}`}`));
-          return;
-        }
-        try { resolve(this.parseExecutionResult(raw, nativeSessionRef)); }
-        catch (error) { reject(error); }
-      });
-    });
+    return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'SUPPORTED', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'PARTIAL' };
   }
 
   async executePrompt(options = {}) {
     const { prompt, model, nativeSessionRef, profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
-    const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
-    if (normalizedProfile !== 'FULL_ACCESS') {
-      return this.executeRestrictedPrompt({ prompt, model, nativeSessionRef, profile: normalizedProfile, cwd, timeoutMs, signal });
-    }
-
     return new Promise((resolve, reject) => {
-      const profileGuard = '[Execution Profile: FULL_ACCESS] 사용자가 요청한 범위에서 인프라 도구 사용이 허용됩니다.';
-      const args = ['--print', `${profileGuard}\n\n${prompt}`, '--output-format', 'json', '--effort', 'medium', '--dangerously-skip-permissions'];
+      const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
+      const profileGuard = normalizedProfile === 'READ_ONLY'
+        ? '[Execution Profile: READ_ONLY] 파일/설정/외부 시스템을 변경하지 말고 읽기와 분석만 수행하세요.'
+        : normalizedProfile === 'WORKSPACE'
+          ? '[Execution Profile: WORKSPACE] 파일 변경은 /workspace 아래로 제한하세요. SSH/Docker 등 외부 인프라 변경은 수행하지 마세요.'
+          : '[Execution Profile: FULL_ACCESS] 사용자가 요청한 범위에서 인프라 도구 사용이 허용됩니다.';
+      const args = ['--print', `${profileGuard}\n\n${prompt}`, '--output-format', 'json', '--effort', 'medium'];
+      // Antigravity CLI는 Codex와 동일한 native sandbox profile을 제공하지 않는다.
+      // READ_ONLY에서는 permission bypass를 제거해 보수적으로 실패하도록 하고,
+      // WORKSPACE/FULL_ACCESS는 기존 non-interactive 실행 호환성을 유지한다.
+      if (normalizedProfile !== 'READ_ONLY') args.push('--dangerously-skip-permissions');
       if (model && model !== 'default') args.push('--model', model);
       if (nativeSessionRef) args.push('--conversation', nativeSessionRef);
 
@@ -211,8 +88,13 @@ export class AntigravityAdapter extends ProviderAdapter {
         if (isFinished) return; isFinished = true; clearTimeout(timer);
         const raw = stdout.trim(); const diagnostic = stderr.trim();
         if (code !== 0) { reject(new Error(`Antigravity 실행 실패 (Exit code: ${code}):\n${diagnostic || raw || `Exit code: ${code}`}`)); return; }
-        try { resolve(this.parseExecutionResult(raw, nativeSessionRef)); }
-        catch (error) { reject(error); }
+        try {
+          const parsed = JSON.parse(raw); if (parsed.status && parsed.status !== 'SUCCESS') throw new Error(parsed.error || `status=${parsed.status}`);
+          resolve({ response: parsed.response ?? parsed.result ?? '', nativeSessionRef: parsed.conversation_id ?? parsed.conversationId ?? parsed.session_id ?? parsed.sessionId ?? nativeSessionRef ?? null, usage: parsed.usage ?? null });
+        } catch (error) {
+          if (error instanceof SyntaxError) { resolve({ response: raw || 'Antigravity로부터 빈 응답을 받았습니다.', nativeSessionRef: nativeSessionRef ?? null }); return; }
+          reject(new Error(`Antigravity 응답 상태 오류: ${error.message}`));
+        }
       });
     });
   }
