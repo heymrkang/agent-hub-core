@@ -8,19 +8,15 @@ services:
     env_file:
       - .env
     volumes:
-      # 영속 데이터 전체 마운트
       - ./data:/data
-      # Codex 인증 세션 영속화 (/data 하위로 수렴)
       - ./data/providers/codex:/root/.codex
-      # Antigravity 인증 세션 영속화 (/data 하위로 수렴)
       - ./data/providers/antigravity:/root/.gemini
-      # 작업 컨텍스트 / Git repository workspace
-      - ./workspace:/workspace
-      # Host Docker daemon 접근 (강력한 권한 — trusted single-owner deployment 전제)
+      # 범용 개발 공간. Git 프로젝트는 관례적으로 /dev/workspace 아래에 둔다.
+      - ./dev:/dev
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Asia/Seoul
-      - WORKSPACE_DIR=/workspace
-      - REPOS_ROOT=/workspace/repos
+      - WORKSPACE_DIR=/dev
+      - REPOS_ROOT=/dev/workspace
       - DATA_DIR=/data
       - SSH_DATA_DIR=/data/ssh
