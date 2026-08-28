@@ -9,7 +9,7 @@ import { Logger } from '../logging/logger.js';
 
 const execFileAsync = promisify(execFile);
 const DATA_DIR = process.env.DATA_DIR || '/data';
-const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/dev';
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/home/dev';
 const CORE_DIR = path.join(DATA_DIR, 'backups', 'core');
 const FULL_DIR = path.join(DATA_DIR, 'backups', 'full');
 const RETAIN_CORE = 7;
