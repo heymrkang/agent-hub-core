@@ -36,30 +36,34 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ## 2. V1 Release Baseline — 2026-08-29
 
-- GitHub Actions Phase 11 regression 최신 main run `33185074907`: `success`.
+- GitHub Actions Phase 11 regression main baseline `33185074907`: `success`.
 - deterministic `npm ci` dependency lockfile baseline 복구 완료.
 - Telegram authorization, WAL-safe migration snapshot, newer-schema abort, restart interruption/no-auto-rerun, redeploy persistence, Core Backup restore, queue concurrency 자동 regression 구축.
 - Coolify runtime health, DB v11, persistent storage, Codex/Antigravity, Docker, Git/GitHub, SSH, backup 확인.
 - 실제 Telegram provider lifecycle 및 Codex ↔ Antigravity handoff/incremental return 확인.
+- READ_ONLY/WORKSPACE restricted filesystem 경계를 `/home/dev` 기준으로 runtime 검증했다.
 - Phase 10 scheduler/notification/backup/cleanup/secret-redaction runtime 및 감사 결과를 release evidence로 승계.
 - README에 운영/복구/보안 주의사항과 deploy checklist 문서화.
 
 ## 3. V1 운영 원칙
 
-1. `/data`, `/workspace`, provider auth 디렉토리는 persistent mount를 유지한다.
-2. 동일 Telegram Bot Token의 polling instance는 하나만 실행한다.
-3. deploy 후 container health와 `/status`를 확인한다.
-4. Provider 모델 목록/기능은 capability-driven discovery를 유지하고 임의 hardcode/fallback하지 않는다.
-5. Token/API Key/OAuth Credential/SSH Private Key는 로그/DB/일반 backup에 노출하지 않는다.
-6. DB migration은 WAL-safe pre-migration snapshot과 safe-abort 원칙을 유지한다.
-7. V1 변경은 `npm test` regression을 통과해야 한다.
-8. 신규 기능은 V1 baseline을 유지한 채 후속 Phase에서 진행한다.
+1. `/data`, `/home/dev`, provider auth 디렉토리는 persistent mount를 유지한다. `/home/dev/workspace`는 Git repository의 기본 영역이다.
+2. Linux device namespace `/dev`를 일반 persistent storage로 덮어쓰지 않는다.
+3. `READ_ONLY`는 `/home/dev`를 읽기 전용으로, `WORKSPACE`는 `/home/dev`를 읽기/쓰기로 제한하고, `FULL_ACCESS`만 SSH/Docker/Git 등 인프라 권한을 허용한다.
+4. 동일 Telegram Bot Token의 polling instance는 하나만 실행한다.
+5. deploy 후 container health와 `/status`를 확인한다.
+6. Provider 모델 목록/기능은 capability-driven discovery를 유지하고 임의 hardcode/fallback하지 않는다.
+7. Token/API Key/OAuth Credential/SSH Private Key는 로그/DB/일반 backup에 노출하지 않는다.
+8. DB migration은 WAL-safe pre-migration snapshot과 safe-abort 원칙을 유지한다.
+9. V1 변경은 `npm test` regression을 통과해야 한다.
+10. 신규 기능은 V1 baseline을 유지한 채 후속 Phase에서 진행한다.
 
 ## 4. Known Operational Notes
 
 - Telegram `409 Conflict: terminated by other getUpdates request`가 지속되면 Coolify에서 동일 Bot Token을 polling하는 instance/process가 둘 이상인지 확인한다.
 - 단발성 Antigravity `status=CANCELED`는 원인을 추정하지 않는다. 반복 재현될 때 provider output/context를 수집해 별도 결함으로 추적한다.
 - Provider CLI 버전 변경 시 Dockerfile pin/checksum과 regression baseline을 함께 갱신한다.
+- `WORKSPACE`라는 Profile 이름은 권한 단계의 명칭이며 경로 `/workspace`를 뜻하지 않는다. 현재 development root는 `/home/dev`이다.
 
 ## 5. 다음 단계
 
