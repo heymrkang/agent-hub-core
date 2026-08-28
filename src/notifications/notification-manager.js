@@ -21,6 +21,20 @@ class NotificationManagerImpl {
     }
   }
 
+  async backgroundSessionCompleted(userId, title) {
+    return this.send(userId, {
+      normal: `🔔 **백그라운드 세션 완료**\n\n**${title}**`,
+      stealth: `백그라운드 세션 완료\n\n${title}`
+    });
+  }
+
+  async backgroundSessionFailed(userId, title, error) {
+    return this.send(userId, {
+      normal: `❌ **백그라운드 세션 실패**\n\n**${title}**\n${error}`,
+      stealth: `백그라운드 세션 실패\n\n${title}\n${error}`
+    });
+  }
+
   async schedulerCompleted(userId, name, output) { return this.send(userId, { normal: `⏰ **예약 작업 완료**\n\n**${name}**\n\n${output.slice(0, 3500)}`, stealth: `예약 작업 완료\n\n${name}\n\n${output.slice(0, 3500)}` }); }
   async schedulerFailed(userId, name, error, skipped = false) { return this.send(userId, { normal: `${skipped ? '⏭️ **예약 작업 스킵됨**' : '❌ **예약 작업 실패**'}\n\n**${name}**\n${error}`, stealth: `${skipped ? '예약 작업 스킵됨' : '예약 작업 실패'}\n\n${name}\n${error}` }); }
   async systemFailure(userId, title, error) { return this.send(userId, { normal: `❌ **${title}**\n${error}`, stealth: `${title}\n${error}` }); }
