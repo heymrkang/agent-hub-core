@@ -1,8 +1,10 @@
 # Phase 11: Hardening, Verification & V1 Release
 
+**Status: IN PROGRESS**
+
 ## 1. 목표
 
--   Phase 0 \~ 10에서 이미 작성한 Unit/Integration Test를 기반으로 최종
+-   Phase 0 ~ 10에서 이미 작성한 Unit/Integration Test를 기반으로 최종
     통합 검증한다.
 -   Restart/Redeploy/Provider Failure/DB Failure/Concurrency/Backup
     Restore를 실제 환경에서 검증한다.
@@ -10,7 +12,7 @@
 
 ## 2. 선행 조건
 
--   Phase 0 \~ Phase 10 모두 `DONE`.
+-   Phase 0 ~ Phase 10 모두 `DONE`.
 -   각 Phase 자체 Unit/Integration Test 통과.
 -   `PROJECT_PLAN.md`와 구현 상태 동기화.
 
@@ -114,5 +116,15 @@
 -   [ ] Secret leakage 검토 통과.
 -   [ ] `PROJECT_PLAN.md`와 구현이 일치.
 -   [ ] 모든 Phase 상태 `DONE`.
+
+## 6. 초기 감사 메모 — 2026-08-28
+
+- Phase 11을 `IN PROGRESS`로 전환했다.
+- 현재 repository에는 `tests/` 디렉토리와 `npm test` script가 없어, 계획서가 전제한 자동 Unit/Integration Regression baseline은 아직 존재하지 않는다. Phase 11 Release Gate blocker로 취급한다.
+- Restart 시 `JobRuntime.recoverInterruptedJobs()`가 `RUNNING` job을 `INTERRUPTED` + `AGENT_HUB_RESTART`로 전환하고 startup에서 호출되는 구현은 확인했다.
+- Telegram authorization은 허용 ID가 없으면 fail-closed이며 비인가 update를 차단하는 구현을 확인했다.
+- DB가 application code보다 높은 schema version이면 startup abort하는 guard를 확인했다.
+- WAL 모드 SQLite에서 기존 pre-migration snapshot이 메인 `.db` 파일만 복사하던 위험을 발견했다. Phase 11 감사 중 FULL WAL checkpoint 후 standalone snapshot 복사 + `PRAGMA quick_check` 검증으로 hardening했다.
+- Docker HEALTHCHECK와 내부 `/health` endpoint wiring은 존재한다. 실제 Docker build/clean startup 및 redeploy persistence는 런타임 검증이 필요하다.
 
 **코드 작성 완료만으로 V1 완료로 간주하지 않는다.**
