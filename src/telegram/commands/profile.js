@@ -15,7 +15,7 @@ async function render(bot, source) {
   const title = escapeMarkdown(session.title);
   const profile = escapeMarkdown(session.execution_profile);
   const stealth = isStealthMode();
-  const text = `${stealth ? '■' : '⚙️'} **Execution Profile**\n\n현재 세션: **${title}**\n현재 Profile: \`${profile}\`\n\n\`READ_ONLY\`: 코드/상태 확인 위주\n\`WORKSPACE\`: /workspace 내 개발 작업 기본\n\`FULL_ACCESS\`: SSH/Docker/Git 등 인프라 작업용\n\n*FULL_ACCESS는 Docker socket/SSH를 사용할 수 있는 강력한 권한입니다.*`;
+  const text = `${stealth ? '■' : '⚙️'} **Execution Profile**\n\n현재 세션: **${title}**\n현재 Profile: \`${profile}\`\n\n\`READ_ONLY\`: /home/dev 읽기 전용 · 파일 생성/수정 차단\n\`WORKSPACE\`: /home/dev 내 개발 작업 · 읽기/쓰기 허용\n\`FULL_ACCESS\`: /home/dev + SSH/Docker/Git 등 인프라 작업용\n\n*FULL_ACCESS는 Docker socket/SSH를 사용할 수 있는 강력한 권한입니다.*`;
   const keyboard = Object.keys(LABELS).map((profileName) => ([{
     text: `${session.execution_profile === profileName ? '✓ ' : ''}${LABELS[profileName]}`,
     callback_data: `profile_set:${profileName}`
