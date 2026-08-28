@@ -29,6 +29,13 @@
   - Provider별 adapter/health/auth 상태 독립 처리.
   - 한 Provider 오류가 Core/다른 Provider를 종료하지 않는 구조 확인.
   - Codex/Antigravity 실제 Telegram 실행 및 handoff 검증.
+- [x] **Execution Profile Isolation**
+  - persistent development root를 `/home/dev`로 확정.
+  - `READ_ONLY`: `/home/dev` read-only, container root read-only.
+  - `WORKSPACE`: `/home/dev` read-write, `/home/dev` 밖 container root write 차단.
+  - `FULL_ACCESS`: SSH/Docker/Git 등 인프라 권한 허용.
+  - Linux device namespace `/dev`를 persistent volume으로 덮어쓰지 않음.
+  - 실제 Telegram runtime에서 `/home` write 차단, WORKSPACE의 `/home/dev` write 성공, READ_ONLY의 `/home/dev` 신규 write 차단 확인.
 - [x] **DB Failure / Migration**
   - Migration failure → safe startup abort.
   - WAL-safe pre-migration snapshot + `PRAGMA quick_check`.
@@ -54,8 +61,8 @@
   - provider auth는 persistent native CLI state로 분리.
   - repository code search에서 명시적 secret logging 패턴 미검출.
 - [x] **Documentation / Release**
-  - `README.md`에 install/deploy, persistent mounts, provider login, SSH key, docker.sock warning, backup/restore, health, CLI update 절차 반영.
-  - `ROADMAP.md` Phase 11/V1 상태 동기화.
+  - `README.md`에 install/deploy, persistent mounts, execution profiles, provider login, SSH key, docker.sock warning, backup/restore, health, CLI update 절차 반영.
+  - `/profile` UI와 `ROADMAP.md`를 `/home/dev` 기준으로 동기화.
   - V1 release baseline 확정.
 
 ## 4. 생성 / 수정 파일
@@ -67,6 +74,7 @@
 - `tests/e2e/backup-restore.test.js`
 - `.github/workflows/phase11-regression.yml`
 - `README.md`
+- `src/telegram/commands/profile.js`
 - `.plan/PHASE_11_HARDENING_RELEASE.md`
 - `.plan/ROADMAP.md`
 
@@ -77,6 +85,7 @@
 - [x] Backup Restore rehearsal 통과.
 - [x] Restart/Redeploy 복구 검증.
 - [x] Provider Isolation 검토/실행 검증.
+- [x] Execution Profile filesystem isolation runtime 검증.
 - [x] Secret leakage 정책 및 repository review 통과.
 - [x] 운영 문서와 구현 baseline 동기화.
 - [x] Phase 0 ~ 11 모두 `DONE`.
@@ -84,13 +93,16 @@
 ## 6. Phase 11 최종 검증 기록 — 2026-08-29
 
 - Node 20 built-in `node:test` 기반 `npm test` regression baseline을 구축했다.
-- GitHub Actions `Phase 11 Regression`을 구축했고 최신 main regression run `33185074907`이 `success`로 완료됐다.
+- GitHub Actions `Phase 11 Regression` main baseline run `33185074907`이 `success`로 완료됐다.
 - `package-lock.json` drift를 동기화하여 deterministic `npm ci` regression을 복구했다.
 - Telegram authorization fail-closed/allowed-user regression을 추가했다.
 - WAL SQLite pre-migration snapshot을 FULL checkpoint 후 standalone copy + `PRAGMA quick_check` 검증 방식으로 hardening했다.
 - newer-schema startup abort, restart interruption/no-auto-rerun, persistent DATA_DIR redeploy simulation, Core Backup restore를 자동 검증한다.
-- queue concurrency regression을 추가했고 settings 초기화까지 포함해 최신 regression에서 통과했다.
-- Coolify runtime에서 DB v11, health endpoint/container health, Codex/Antigravity, model catalog, Docker, Git/GitHub, SSH, `/data`, `/workspace`, backup 기능을 확인했다.
+- queue concurrency regression을 추가했고 settings 초기화까지 포함해 regression에서 통과했다.
+- Coolify runtime에서 DB v11, health endpoint/container health, Codex/Antigravity, model catalog, Docker, Git/GitHub, SSH, `/data`, backup 기능을 확인했다.
+- development root는 `/home/dev`, Git repository 기본 root는 `/home/dev/workspace`로 정리했다.
+- Codex restricted helper는 immutable root filesystem을 사용하고 `/home/dev`만 READ_ONLY=`ro`, WORKSPACE=`rw`로 mount한다.
+- 실제 Telegram 검증에서 WORKSPACE는 `/home`에 파일/디렉토리를 만들지 못하고 `/home/dev`에는 쓸 수 있으며, READ_ONLY는 `/home/dev`의 기존 파일을 읽을 수 있지만 신규 파일 생성은 `Read-only file system`으로 차단됐다.
 - 실제 Telegram에서 Codex ↔ Antigravity handoff/incremental return 및 background session completion notification이 동작함을 확인했다.
 - Full Backup의 SSH key/log/existing backup 제외, Core retention 7, 30-day cleanup, secret redaction은 Phase 10 최종 감사 결과를 release evidence로 승계했다.
 - Telegram `409 Conflict: terminated by other getUpdates request`는 동일 Bot Token의 중복 polling instance가 있을 때 발생하는 운영 이슈다. Core/provider release blocker로 분류하지 않으며, 지속 발생 시 Coolify에서 polling instance를 1개로 유지한다.
