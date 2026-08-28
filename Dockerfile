@@ -24,10 +24,10 @@ COPY package*.json ./
 RUN npm install --omit=dev
 COPY src/ ./src/
 
-# /dev is the persistent user development root. /dev/workspace is the conventional Git project area,
-# while notes, ideas and other user-authored development material may live anywhere under /dev.
-# Agent Hub's own state and SSH keys remain isolated under /data.
-RUN mkdir -p /dev/workspace \
+# /home/dev is the persistent user development root. The host directory may still be named "dev".
+# /home/dev/workspace is the conventional Git project area; notes, ideas and other user-authored
+# development material may live anywhere under /home/dev. Agent Hub state and SSH keys stay in /data.
+RUN mkdir -p /home/dev/workspace \
     /data/providers/codex /data/providers/antigravity /data/memory /data/ssh/keys /data/uploads \
     /data/logs /data/backups/core /data/backups/full /data/backups/migrations \
     /root/.codex /root/.gemini /root/.ssh \
@@ -35,8 +35,8 @@ RUN mkdir -p /dev/workspace \
 
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
-ENV WORKSPACE_DIR=/dev
-ENV REPOS_ROOT=/dev/workspace
+ENV WORKSPACE_DIR=/home/dev
+ENV REPOS_ROOT=/home/dev/workspace
 ENV SSH_DATA_DIR=/data/ssh
 ENV HEALTH_HOST=127.0.0.1
 ENV HEALTH_PORT=8787
