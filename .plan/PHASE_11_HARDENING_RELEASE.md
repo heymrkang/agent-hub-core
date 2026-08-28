@@ -127,4 +127,19 @@
 - WAL 모드 SQLite에서 기존 pre-migration snapshot이 메인 `.db` 파일만 복사하던 위험을 발견했다. Phase 11 감사 중 FULL WAL checkpoint 후 standalone snapshot 복사 + `PRAGMA quick_check` 검증으로 hardening했다.
 - Docker HEALTHCHECK와 내부 `/health` endpoint wiring은 존재한다. 실제 Docker build/clean startup 및 redeploy persistence는 런타임 검증이 필요하다.
 
+## 7. 자동 Regression 진행 — 2026-08-28
+
+- Node 20 built-in `node:test` 기반 `npm test` regression baseline을 추가했다.
+- GitHub Actions `Phase 11 Regression` workflow를 추가했다.
+- Telegram authorization fail-closed/allowed user regression을 추가했다.
+- WAL pre-migration snapshot이 committed WAL data를 포함하고 `PRAGMA quick_check=ok`인지 자동 검증한다.
+- DB schema가 application migration보다 높은 경우 startup exit code 1 + 명확한 fatal message를 자동 검증한다.
+- process restart simulation에서 `RUNNING` job이 `INTERRUPTED` + `AGENT_HUB_RESTART`로 전환되고 `QUEUED` job은 자동 재실행되지 않는 것을 자동 검증한다.
+- redeploy simulation에서 동일 persistent `DATA_DIR`를 두 process가 순차 사용했을 때 Session/Message/Memory/Schedule/SSH Registry가 유지되는 것을 자동 검증한다.
+- Core Backup을 빈 restore target에 복사해 `PRAGMA quick_check`, Session/Settings/Memory/Schedule 복원을 자동 검증한다.
+- `tests/e2e/v1-lifecycle.test.js`, `redeploy-recovery.test.js`, `backup-restore.test.js`를 생성했다. 실제 Telegram/provider/Coolify lifecycle은 `PHASE11_LIVE_E2E` release gate로 분리했다.
+- README를 현재 V1 architecture 기준으로 갱신하고 persistent mounts, provider login, SSH key, docker.sock warning, backup/restore, health, CLI update 절차를 문서화했다.
+- GitHub Actions run `33173685741`에서 현재 Unit/Integration/local E2E suite가 성공했다. 실제 Coolify Docker build/clean startup/provider isolation/live lifecycle은 아직 별도 runtime 검증이 필요하다.
+- 기존 `package-lock.json`이 `better-sqlite3`/`sharp` 추가 전 상태라 `npm ci`가 실패하는 legacy lockfile drift를 발견했다. CI는 우선 `npm install`로 regression을 실행하며, lockfile 동기화는 release hygiene 잔여 작업으로 유지한다.
+
 **코드 작성 완료만으로 V1 완료로 간주하지 않는다.**
