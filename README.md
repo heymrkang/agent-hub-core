@@ -2,7 +2,7 @@
 
 Telegram을 중심으로 Codex CLI와 Antigravity CLI를 실행하고, 세션·메모리·스케줄러·Git/SSH/Docker 작업을 하나의 persistent runtime에서 관리하는 개인용 Agent Hub입니다.
 
-> 현재 Phase 11 release verification 진행 중입니다. 코드가 동작한다고 해서 검증되지 않은 항목을 V1 release 완료로 표시하지 않습니다.
+> Phase 11 hardening 및 release verification을 완료했으며 현재 V1 Released baseline입니다.
 
 ## Runtime
 
@@ -16,7 +16,7 @@ Telegram을 중심으로 Codex CLI와 Antigravity CLI를 실행하고, 세션·�
 - Docker socket integration
 - Internal health endpoint: `http://127.0.0.1:8787/health`
 
-Dockerfile 기준 provider CLI는 Codex `0.149.1`, Antigravity `1.1.20`으로 고정되어 있습니다. 버전을 올릴 때는 Dockerfile의 버전과 Antigravity archive checksum을 함께 갱신하고 Phase 11 regression을 다시 통과시켜야 합니다.
+Dockerfile 기준 provider CLI는 Codex `0.149.1`, Antigravity `1.1.20`으로 고정되어 있습니다. 버전을 올릴 때는 Dockerfile의 버전과 Antigravity archive checksum을 함께 갱신하고 regression을 다시 통과시켜야 합니다.
 
 ## Required persistent mounts
 
@@ -24,10 +24,12 @@ Coolify/Docker 재배포 후에도 상태를 유지하려면 다음 경로를 pe
 
 ```text
 /data           -> Agent Hub SQLite, backup, SSH registry, uploads, logs
-/workspace      -> Agent 작업 workspace / repositories
+/home/dev       -> Agent의 persistent development root
 /root/.codex    -> Codex authentication state
 /root/.gemini   -> Antigravity authentication state
 ```
+
+`/home/dev/workspace`는 Git repository를 두는 기본 영역이며, notes/ideas/docs/scripts 등 다른 개발 자료도 `/home/dev` 아래에 둘 수 있습니다. Linux의 `/dev`는 device namespace이므로 일반 persistent volume으로 덮어쓰지 않습니다.
 
 Docker 기능을 사용할 경우 추가로 host socket을 연결합니다.
 
@@ -53,8 +55,8 @@ ANTIGRAVITY_TIMEOUT_MS
 CODEX_CONCURRENCY
 ANTIGRAVITY_CONCURRENCY
 DATA_DIR=/data
-WORKSPACE_DIR=/workspace
-REPOS_ROOT=/workspace/repos
+WORKSPACE_DIR=/home/dev
+REPOS_ROOT=/home/dev/workspace
 SSH_DATA_DIR=/data/ssh
 GH_TOKEN
 GIT_USER_NAME
@@ -63,6 +65,14 @@ DOCKER_HOST=unix:///var/run/docker.sock
 ```
 
 `TELEGRAM_ADMIN_USER_ID`가 없으면 Telegram 요청은 fail-closed 방식으로 차단됩니다.
+
+## Execution Profiles
+
+- `READ_ONLY`: `/home/dev`를 읽기 전용으로 제공하며 파일 생성/수정을 차단합니다.
+- `WORKSPACE`: `/home/dev` 전체에서 일반 개발 작업을 위한 읽기/쓰기를 허용합니다.
+- `FULL_ACCESS`: `/home/dev` 작업에 더해 SSH/Docker/Git 등 인프라 접근을 허용합니다.
+
+Codex의 READ_ONLY/WORKSPACE는 short-lived restricted helper container에서 immutable root filesystem과 `/home/dev`의 `ro`/`rw` mount로 강제합니다. Restricted helper에는 Docker socket, SSH private key, GitHub token 또는 전체 `/data`를 전달하지 않습니다.
 
 ## Provider login
 
@@ -84,7 +94,7 @@ agy
 
 ## Git / GitHub
 
-GitHub CLI 인증은 `GH_TOKEN`을 우선 사용합니다. Git commit identity는 명시적으로 지정해야 하며 Agent Hub가 임의 값을 만들지 않습니다.
+GitHub CLI 인증은 `GH_TOKEN`을 우선 사용합니다. Git commit identity는 명시적으로 지정해야 하며 Agent Hub가 임의 값을 만들지 않습니다. 기본 repository root는 `/home/dev/workspace`입니다.
 
 ```text
 GH_TOKEN=<secret>
@@ -115,7 +125,7 @@ Telegram에서 다음 명령을 사용할 수 있습니다.
 
 Core Backup은 SQLite의 일관된 snapshot을 생성하고 `PRAGMA quick_check`로 검증합니다. 자동 Core Backup은 최신 7개를 유지합니다.
 
-Full Backup은 `/data`와 `/workspace`를 archive하되 다음 민감/재귀 항목을 제외합니다.
+Full Backup은 `/data`와 현재 `WORKSPACE_DIR`(`/home/dev`)을 archive하되 다음 민감/재귀 항목을 제외합니다.
 
 ```text
 /data/ssh/keys
@@ -138,7 +148,7 @@ SSH private key는 backup에 포함되지 않는 것이 정책입니다.
 5. Session, Settings, Memory, Schedule이 복원됐는지 확인합니다.
 6. SSH private key와 provider auth state는 Core DB backup 대상이 아니므로 persistent mounts에서 별도로 존재해야 합니다.
 
-Phase 11 automated E2E는 빈 target으로 Core snapshot을 복사한 뒤 DB integrity와 대표 Session/Settings/Memory/Schedule 데이터를 검증합니다. 최종 release gate에서는 Coolify 실제 restore/redeploy도 별도로 확인합니다.
+Phase 11 automated E2E는 빈 target으로 Core snapshot을 복사한 뒤 DB integrity와 대표 Session/Settings/Memory/Schedule 데이터를 검증합니다.
 
 ## Health
 
@@ -158,16 +168,18 @@ Node.js 내장 `node:test`를 사용합니다.
 npm test
 ```
 
-현재 suite는 Telegram authorization, WAL-safe pre-migration snapshot, DB schema version guard, restart interruption recovery, redeploy persistence, Core backup restore를 자동 검증합니다. 실제 Telegram/provider/Coolify 전체 lifecycle은 외부 credential과 runtime이 필요하므로 별도 live release gate로 유지합니다.
+Suite는 Telegram authorization, WAL-safe pre-migration snapshot, DB schema version guard, restart interruption recovery, redeploy persistence, Core backup restore, queue concurrency 등을 자동 검증합니다. 실제 Telegram/provider/Coolify 전체 lifecycle은 외부 credential과 runtime이 필요하므로 live verification으로 별도 확인합니다.
 
 ## Deploy / redeploy checklist
 
-1. persistent mounts가 기존 storage를 가리키는지 확인
-2. 동일 Telegram Bot Token으로 polling하는 container가 하나뿐인지 확인
-3. deploy 후 container health가 `Healthy`인지 확인
-4. `/status`에서 Core health 확인
-5. Codex와 Antigravity 각각 짧은 요청 1회 확인
-6. `/backup status`에서 최근 Core Backup 확인
+1. `/data`, `/home/dev`, provider auth persistent mounts가 기존 storage를 가리키는지 확인
+2. Linux device namespace `/dev`를 일반 storage mount로 덮어쓰지 않았는지 확인
+3. 동일 Telegram Bot Token으로 polling하는 container가 하나뿐인지 확인
+4. deploy 후 container health가 `Healthy`인지 확인
+5. `/status`에서 Core health 확인
+6. `/profile`에서 READ_ONLY/WORKSPACE/FULL_ACCESS 설명이 `/home/dev` 기준인지 확인
+7. Codex와 Antigravity 각각 짧은 요청 1회 확인
+8. `/backup status`에서 최근 Core Backup 확인
 
 Telegram에서 다음 오류가 계속 반복되면 같은 bot token을 사용하는 polling instance가 둘 이상 존재하는지 먼저 확인합니다.
 
