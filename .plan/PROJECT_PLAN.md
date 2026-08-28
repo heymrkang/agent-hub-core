@@ -1,7 +1,7 @@
 # Agent Hub --- PROJECT PLAN
 
-> **Document Version:** v0.1\
-> **Status:** V1 Planning Baseline\
+> **Document Version:** v1.0\
+> **Status:** V1 Released\
 > **Role:** Source of Truth for Agent Hub architecture and V1
 > implementation
 
