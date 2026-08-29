@@ -418,6 +418,17 @@ Gateway는 DB를 직접 공유하지 않고 Core의 내부 전용 Registry API�
 - [x] dev server 조기 종료 및 실행 후 crash를 `FAILED`로 reconcile.
 - [x] 실제 Docker 랜덤 port 감지 smoke test와 단위 테스트 추가.
 
+### 13-5 완료 기준
+
+- [x] Gateway와 SQLite를 분리하고 Core 내부 Registry Route API 구현.
+- [x] 32자 이상 공유 token을 이용한 내부 API 인증.
+- [x] `RUNNING` 상태이며 container ID/port가 검증된 Preview만 route 반환.
+- [x] 임의 hostname, host/port target 및 정지·실패 Preview proxy 차단.
+- [x] HTTP request와 Next.js/Vite HMR용 WebSocket upgrade proxy 구현.
+- [x] URL route 접근 시 `last_activity_at` 갱신.
+- [x] Preview Gateway를 Core 기본망과 Preview 전용망에만 연결.
+- [x] Gateway Route/API/proxy 단위 테스트 추가.
+
 ## 16. Telegram UX 방향
 
 세부 UI는 구현 전에 사용자와 별도 협의한다.

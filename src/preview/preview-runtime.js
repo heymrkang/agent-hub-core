@@ -33,7 +33,7 @@ function assertSafeLabelValue(value, label) {
   return normalized;
 }
 
-function containerName(previewId) {
+export function previewContainerName(previewId) {
   return `agent-hub-preview-${previewId.toLowerCase().replace(/[^a-z0-9_.-]/g, '-')}`.slice(0, 128);
 }
 
@@ -96,7 +96,7 @@ export class PreviewRuntime {
     await this.#ensureImage();
     const bindSource = await this.#resolveBindSource(projectPath);
 
-    const name = containerName(previewId);
+    const name = previewContainerName(previewId);
     const args = [
       'create', '--name', name, '--init',
       '--network', this.network,

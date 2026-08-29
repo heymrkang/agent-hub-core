@@ -11,6 +11,7 @@ import { startHealthServer } from './health/health-server.js';
 import { NotificationManager } from './notifications/notification-manager.js';
 import { SystemJobs } from './system/system-jobs.js';
 import { Logger } from './logging/logger.js';
+import { startPreviewRouteServer } from './preview/preview-route-server.js';
 
 console.log('==========================================');
 console.log('            Agent Hub Core V1');
@@ -38,6 +39,7 @@ try {
   NotificationManager.init(bot);
   schedulerEngine.start(bot);
   startHealthServer();
+  startPreviewRouteServer();
   const ownerId = String(process.env.TELEGRAM_ADMIN_USER_ID || process.env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map((v) => v.trim()).find(Boolean) || null;
   SystemJobs.start(ownerId);
   Logger.info('app', 'startup_complete', { schema: db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get()?.v || 0 });
