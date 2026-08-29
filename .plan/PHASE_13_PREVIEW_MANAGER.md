@@ -407,6 +407,17 @@ Gateway는 DB를 직접 공유하지 않고 Core의 내부 전용 Registry API�
 - [x] 범용 Node 22 Debian image와 pnpm/yarn Corepack 실행 정책 확정.
 - [x] Docker 명령 단위 테스트 추가.
 
+### 13-4 완료 기준
+
+- [x] stdout/stderr의 Next.js/Vite Local URL에서 실제 port 감지.
+- [x] Container 내부 `/proc/net/tcp*` LISTEN socket 보조 감지.
+- [x] Docker embedded DNS socket 제외 및 여러 후보 port 추정 금지.
+- [x] 자동 감지 timeout과 명시적 수동 port fallback.
+- [x] dev server 준비 완료 전 public URL 성공 처리 금지.
+- [x] `STARTING → RUNNING/FAILED` 상태 전이와 runtime metadata 연결.
+- [x] dev server 조기 종료 및 실행 후 crash를 `FAILED`로 reconcile.
+- [x] 실제 Docker 랜덤 port 감지 smoke test와 단위 테스트 추가.
+
 ## 16. Telegram UX 방향
 
 세부 UI는 구현 전에 사용자와 별도 협의한다.

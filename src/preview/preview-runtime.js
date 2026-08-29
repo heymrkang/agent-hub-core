@@ -154,6 +154,26 @@ export class PreviewRuntime {
     return `${stdout || ''}${stderr || ''}`;
   }
 
+  async listeningPorts(containerId) {
+    await this.#requireManaged(containerId);
+    const script = [
+      "const fs=require('fs')",
+      "const files=['/proc/net/tcp','/proc/net/tcp6']",
+      "const ports=new Set()",
+      "for(const file of files){let raw='';try{raw=fs.readFileSync(file,'utf8')}catch{}",
+      "for(const line of raw.trim().split('\\n').slice(1)){const fields=line.trim().split(/\\s+/);if(fields[3]!=='0A')continue;const [address,hexPort]=fields[1].split(':');if(address==='0B00007F')continue;const port=parseInt(hexPort,16);if(port>0)ports.add(port)}}",
+      "process.stdout.write(JSON.stringify([...ports].sort((a,b)=>a-b)))"
+    ].join(';');
+    const { stdout } = await this.#docker(['exec', containerId, 'node', '-e', script], 'LISTENING_PORTS_FAILED');
+    try {
+      const ports = JSON.parse(stdout);
+      if (!Array.isArray(ports) || ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)) throw new Error('invalid ports');
+      return ports;
+    } catch (error) {
+      throw new PreviewRuntimeError('INVALID_DOCKER_RESPONSE', 'Container listening port 응답을 해석할 수 없습니다.', error);
+    }
+  }
+
   async inspect(containerId) {
     const container = await this.#requireManaged(containerId);
     return {

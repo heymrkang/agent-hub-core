@@ -23,6 +23,7 @@ function dockerFake({ imagePresent = true, managed = true, coreMount = null } = 
       }]) };
     }
     if (args[0] === 'logs') return { stdout: 'out\n', stderr: 'err\n' };
+    if (args[0] === 'exec') return { stdout: '[3000,5173]', stderr: '' };
     if (args[0] === 'ps') return { stdout: 'one\ntwo\n' };
     return { stdout: '', stderr: '' };
   };
@@ -57,6 +58,7 @@ test('managed label 확인 후 lifecycle과 logs를 실행한다', async () => {
   assert.equal((await docker.stop('container-1')).status, 'running');
   assert.equal((await docker.restart('container-1')).id, 'container-1');
   assert.equal(await docker.logs('container-1'), 'out\nerr\n');
+  assert.deepEqual(await docker.listeningPorts('container-1'), [3000, 5173]);
   await docker.remove('container-1');
   assert.deepEqual(await docker.listManaged(), ['one', 'two']);
   assert.ok(fake.calls.some((args) => args.join(' ') === 'rm container-1'));
