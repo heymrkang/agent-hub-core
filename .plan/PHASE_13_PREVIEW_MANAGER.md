@@ -1,6 +1,6 @@
 # Phase 13: Mobile Preview Runtime & Preview Manager
 
-**Status: IN PROGRESS (13-1 complete)**
+**Status: IN PROGRESS (13-2 complete)**
 
 ## 1. 목표
 
@@ -385,6 +385,15 @@ Gateway는 DB를 직접 공유하지 않고 Core의 내부 전용 Registry API�
 - [x] Registry 단위 테스트 추가.
 - [x] Preview 프로젝트 디렉터리는 Docker Runtime에서 읽기/쓰기로 mount하기로 확정.
 - [x] Gateway는 Core 내부 Registry API를 사용하기로 확정.
+
+### 13-2 완료 기준
+
+- [x] Workspace 실경로 검증 및 development root 외부/symlink 탈출 차단.
+- [x] npm, pnpm, yarn lockfile 기반 package manager 감지.
+- [x] 여러 lockfile이 있는 모호한 프로젝트는 자동 실행하지 않음.
+- [x] `package.json` 파싱과 `scripts.dev` 감지.
+- [x] 셸을 거치지 않는 구조화된 사용자 명령 override 지원.
+- [x] Next.js/npm 및 Vite/pnpm fixture 단위 테스트 추가.
 
 ## 16. Telegram UX 방향
 

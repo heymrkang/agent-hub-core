@@ -1,0 +1,6 @@
+{
+  "name": "preview-vite-app",
+  "scripts": {
+    "dev": "vite"
+  }
+}

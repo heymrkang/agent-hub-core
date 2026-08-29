@@ -1,0 +1,6 @@
+{
+  "name": "preview-next-app",
+  "scripts": {
+    "dev": "next dev"
+  }
+}
