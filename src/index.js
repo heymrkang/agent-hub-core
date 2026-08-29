@@ -12,6 +12,7 @@ import { NotificationManager } from './notifications/notification-manager.js';
 import { SystemJobs } from './system/system-jobs.js';
 import { Logger } from './logging/logger.js';
 import { startPreviewRouteServer } from './preview/preview-route-server.js';
+import { getPreviewService } from './preview/preview-service.js';
 
 console.log('==========================================');
 console.log('            Agent Hub Core V1');
@@ -40,6 +41,12 @@ try {
   schedulerEngine.start(bot);
   startHealthServer();
   startPreviewRouteServer();
+  try {
+    const previewSummary = await getPreviewService().cleanup.startupReconcile();
+    Logger.info('system', 'preview_startup_reconcile', previewSummary);
+  } catch (error) {
+    Logger.error('system', 'preview_startup_reconcile_failed', error.message, { errorCode: 'PREVIEW_CLEANUP' });
+  }
   const ownerId = String(process.env.TELEGRAM_ADMIN_USER_ID || process.env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map((v) => v.trim()).find(Boolean) || null;
   SystemJobs.start(ownerId);
   Logger.info('app', 'startup_complete', { schema: db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get()?.v || 0 });

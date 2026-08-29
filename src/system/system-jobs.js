@@ -6,6 +6,7 @@ import { BackupManager } from '../backup/backup-manager.js';
 import { NotificationManager } from '../notifications/notification-manager.js';
 import { Logger } from '../logging/logger.js';
 import { redactSecrets } from '../utils/redact.js';
+import { getPreviewService } from '../preview/preview-service.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const THIRTY_DAYS_MS = 30 * DAY_MS;
@@ -46,6 +47,7 @@ class SystemJobsImpl {
   }
 
   async runDue() {
+    if (this.due('preview_cleanup', 60 * 60 * 1000)) await this.runRecorded('preview_cleanup', () => getPreviewService().cleanup.sweep());
     if (this.due('daily_core_backup')) await this.runRecorded('daily_core_backup', () => BackupManager.createCoreBackup({ reason: 'daily-system-job' }));
     if (this.due('cleanup_30d')) await this.runRecorded('cleanup_30d', () => this.cleanup30d());
   }

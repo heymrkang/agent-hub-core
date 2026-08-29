@@ -1,6 +1,6 @@
 # Phase 13: Mobile Preview Runtime & Preview Manager
 
-**Status: IN PROGRESS (13-6 complete)**
+**Status: IN PROGRESS (13-7 complete)**
 
 ## 1. 목표
 
@@ -439,6 +439,15 @@ Gateway는 DB를 직접 공유하지 않고 Core의 내부 전용 Registry API�
 - [x] `/settings`에 idle timeout과 최대 동시 Preview 설정 추가.
 - [x] 동시 실행 설정을 Preview Registry에 실시간 반영.
 - [x] Preview lifecycle 단위 테스트 추가.
+
+### 13-7 완료 기준
+
+- [x] Idle TTL 만료 시 route를 먼저 비활성화하고 container 종료/제거.
+- [x] 주기적인 dev server crash reconcile 및 `FAILED` container 정리.
+- [x] Core 시작 시 기존 활성 Preview를 자동 복구하지 않고 정리.
+- [x] Preview Registry와 연결되지 않은 managed orphan container 정리.
+- [x] Agent Hub managed label이 없는 container 자동 삭제 차단.
+- [x] Preview cleanup 실패 Structured Logging 및 System Job 알림 경로 연결.
 
 ## 16. Telegram UX 방향
 

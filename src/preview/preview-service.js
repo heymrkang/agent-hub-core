@@ -4,6 +4,7 @@ import { PreviewManager } from './preview-manager.js';
 import { PreviewRegistry } from './preview-registry.js';
 import { PreviewRuntime } from './preview-runtime.js';
 import { PreviewRuntimeDetector } from './runtime-detector.js';
+import { PreviewCleanup } from './preview-cleanup.js';
 
 let service = null;
 
@@ -15,9 +16,16 @@ export function getPreviewService() {
     maxActive: () => settings.get('preview_max_concurrent')
   });
   const runtime = new PreviewRuntime();
+  const manager = new PreviewManager({ registry, runtime });
   service = {
     registry,
-    manager: new PreviewManager({ registry, runtime }),
+    manager,
+    cleanup: new PreviewCleanup({
+      registry,
+      runtime,
+      manager,
+      idleTimeoutHours: () => settings.get('preview_idle_timeout_hours')
+    }),
     detector: new PreviewRuntimeDetector({ developmentRoot: process.env.DEVELOPMENT_ROOT || '/home/dev' })
   };
   return service;
