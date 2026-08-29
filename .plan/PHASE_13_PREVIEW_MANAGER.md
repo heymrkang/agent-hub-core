@@ -1,6 +1,6 @@
 # Phase 13: Mobile Preview Runtime & Preview Manager
 
-**Status: IN PROGRESS (13-2 complete)**
+**Status: IN PROGRESS (13-6 complete)**
 
 ## 1. 목표
 
@@ -428,6 +428,17 @@ Gateway는 DB를 직접 공유하지 않고 Core의 내부 전용 Registry API�
 - [x] URL route 접근 시 `last_activity_at` 갱신.
 - [x] Preview Gateway를 Core 기본망과 Preview 전용망에만 연결.
 - [x] Gateway Route/API/proxy 단위 테스트 추가.
+
+### 13-6 완료 기준
+
+- [x] `/preview` 목록과 활성 사용량 표시.
+- [x] 프로젝트 경로 기반 start 및 port override 지원.
+- [x] Preview 상세, URL 열기, 재시작, 로그, 종료 inline action 구현.
+- [x] stop/restart/logs lifecycle과 activity 갱신 구현.
+- [x] Stealth UI theme 정책 적용.
+- [x] `/settings`에 idle timeout과 최대 동시 Preview 설정 추가.
+- [x] 동시 실행 설정을 Preview Registry에 실시간 반영.
+- [x] Preview lifecycle 단위 테스트 추가.
 
 ## 16. Telegram UX 방향
 

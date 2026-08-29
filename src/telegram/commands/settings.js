@@ -4,6 +4,8 @@ import { isStealthMode } from '../renderer/ui-theme.js';
 const TIMEZONES = ['Asia/Seoul', 'UTC', 'Asia/Tokyo', 'America/New_York'];
 const CONCURRENCY = [1, 2, 4, 8];
 const COMPACT_THRESHOLDS = [60, 70, 80, 90];
+const PREVIEW_LIMITS = [1, 2, 3];
+const PREVIEW_TIMEOUTS = [6, 12, 24, 48, 0];
 
 function sourceInfo(source) {
   return {
@@ -67,8 +69,16 @@ async function render(bot, source, view = 'root') {
       }])),
       [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
     ];
+  } else if (view === 'preview') {
+    const timeout = values.preview_idle_timeout_hours === 0 ? '수동 종료만' : `${values.preview_idle_timeout_hours}시간`;
+    text = `${heading('Settings · Preview')}\n\nIdle Timeout: \`${timeout}\`\nMax Concurrent: \`${values.preview_max_concurrent}\`\n\n동시 실행 제한은 최대 3개입니다.`;
+    keyboard = [
+      PREVIEW_TIMEOUTS.map((value) => ({ text: mark(values.preview_idle_timeout_hours === value, value === 0 ? '수동' : `${value}h`), callback_data: `settings_set:preview_idle_timeout_hours:${value}` })),
+      PREVIEW_LIMITS.map((value) => ({ text: mark(values.preview_max_concurrent === value, `최대 ${value}`), callback_data: `settings_set:preview_max_concurrent:${value}` })),
+      [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
+    ];
   } else if (view === 'system') {
-    text = `${heading('Settings · 시스템 설정')}\n\nProvider: \`${values.default_provider}\`\nProfile: \`${values.default_execution_profile}\`\nConcurrency: \`${values.concurrency_limit}\`\nCompact: \`${values.auto_compact_threshold}%\`\nNotifications: \`${values.notifications_enabled ? 'ON' : 'OFF'}\`\nUI: \`${values.stealth_mode}\`\nTimezone: \`${values.timezone}\`\n\n전체 기본값 복원은 확인 후 실행됩니다.`;
+    text = `${heading('Settings · 시스템 설정')}\n\nProvider: \`${values.default_provider}\`\nProfile: \`${values.default_execution_profile}\`\nConcurrency: \`${values.concurrency_limit}\`\nPreview: \`${values.preview_max_concurrent}개 / ${values.preview_idle_timeout_hours === 0 ? '수동 종료' : `${values.preview_idle_timeout_hours}h`}\`\nCompact: \`${values.auto_compact_threshold}%\`\nNotifications: \`${values.notifications_enabled ? 'ON' : 'OFF'}\`\nUI: \`${values.stealth_mode}\`\nTimezone: \`${values.timezone}\`\n\n전체 기본값 복원은 확인 후 실행됩니다.`;
     keyboard = [
       [{ text: '기본값 복원', callback_data: 'settings_reset_confirm' }],
       [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
@@ -86,6 +96,7 @@ async function render(bot, source, view = 'root') {
       [{ text: '실행 설정', callback_data: 'settings_view:execution' }],
       [{ text: 'Telegram UI', callback_data: 'settings_view:telegram' }],
       [{ text: 'Scheduler', callback_data: 'settings_view:scheduler' }],
+      [{ text: 'Preview', callback_data: 'settings_view:preview' }],
       [{ text: '시스템 설정', callback_data: 'settings_view:system' }]
     ];
   }
@@ -135,7 +146,8 @@ export async function handleSettingsCallback(bot, q) {
       const view = key.startsWith('default_') ? 'agent'
         : ['concurrency_limit', 'auto_compact_threshold', 'auto_session_title'].includes(key) ? 'execution'
           : ['notifications_enabled', 'stealth_mode'].includes(key) ? 'telegram'
-            : key === 'timezone' ? 'scheduler' : 'root';
+            : key === 'timezone' ? 'scheduler'
+              : key.startsWith('preview_') ? 'preview' : 'root';
       return render(bot, q, view);
     }
   } catch (error) {

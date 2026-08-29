@@ -14,7 +14,9 @@ export const SETTING_DEFINITIONS = Object.freeze({
   auto_session_title: { type: 'boolean', default: true },
   notifications_enabled: { type: 'boolean', default: true },
   stealth_mode: { type: 'enum', values: ['NORMAL', 'STEALTH'], default: 'NORMAL' },
-  timezone: { type: 'timezone', default: process.env.TZ || 'Asia/Seoul' }
+  timezone: { type: 'timezone', default: process.env.TZ || 'Asia/Seoul' },
+  preview_idle_timeout_hours: { type: 'integer', min: 0, max: 48, default: 24 },
+  preview_max_concurrent: { type: 'integer', min: 1, max: 3, default: 3 }
 });
 
 function validateTimezone(value) {

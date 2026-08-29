@@ -47,4 +47,45 @@ export class PreviewManager {
       return this.registry.updateStatus(preview.id, PreviewStatus.FAILED, { failureReason: String(error?.message || error).slice(0, 2000) });
     }
   }
+
+  async stop(previewId) {
+    let preview = this.registry.require(previewId);
+    if ([PreviewStatus.STOPPED, PreviewStatus.EXPIRED].includes(preview.status)) return preview;
+    if (!preview.container_id) return this.registry.updateStatus(preview.id, PreviewStatus.STOPPED);
+    try {
+      if ([PreviewStatus.STARTING, PreviewStatus.RUNNING].includes(preview.status)) {
+        preview = this.registry.updateStatus(preview.id, PreviewStatus.STOPPING);
+      }
+      await this.runtime.stop(preview.container_id);
+      await this.runtime.remove(preview.container_id);
+      return this.registry.updateStatus(preview.id, PreviewStatus.STOPPED);
+    } catch (error) {
+      this.registry.updateStatus(preview.id, PreviewStatus.FAILED, { failureReason: String(error?.message || error).slice(0, 2000) });
+      throw error;
+    }
+  }
+
+  async restart(previewId) {
+    let preview = this.registry.require(previewId);
+    if (preview.status !== PreviewStatus.RUNNING || !preview.container_id) {
+      throw new Error('RUNNING Preview만 재시작할 수 있습니다. 정지된 Preview는 다시 start 하세요.');
+    }
+    try {
+      await this.runtime.restart(preview.container_id);
+      const port = await this.portDetector.detect(preview.container_id, { manualPort: preview.port });
+      preview = this.registry.updateRuntime(preview.id, { port });
+      return this.registry.touchActivity(preview.id);
+    } catch (error) {
+      this.registry.updateStatus(preview.id, PreviewStatus.FAILED, { failureReason: String(error?.message || error).slice(0, 2000) });
+      throw error;
+    }
+  }
+
+  async logs(previewId, { tail = 100 } = {}) {
+    const preview = this.registry.require(previewId);
+    if (!preview.container_id) throw new Error('Preview container가 없습니다.');
+    const output = await this.runtime.logs(preview.container_id, { tail });
+    this.registry.touchActivity(preview.id);
+    return output;
+  }
 }

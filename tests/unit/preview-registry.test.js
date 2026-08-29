@@ -69,6 +69,21 @@ test('동시 활성 Preview 제한을 원자적으로 적용한다', () => {
   } finally { db.close(); }
 });
 
+test('동시 Preview 설정 변경을 다음 생성부터 반영한다', () => {
+  const db = createDb();
+  let limit = 2;
+  try {
+    const registry = new PreviewRegistry({ db, maxActive: () => limit, randomBytes: fixedRandom(['0001', '0002']) });
+    registry.create({ sessionId: 'session-1', workspacePath: '/home/dev/a', projectName: 'a' });
+    limit = 1;
+    assert.equal(registry.getMaxActive(), 1);
+    assert.throws(
+      () => registry.create({ sessionId: 'session-1', workspacePath: '/home/dev/b', projectName: 'b' }),
+      (error) => error.code === 'ACTIVE_LIMIT'
+    );
+  } finally { db.close(); }
+});
+
 test('상태 전이, runtime metadata, 종료 후 삭제를 관리한다', () => {
   const db = createDb();
   try {

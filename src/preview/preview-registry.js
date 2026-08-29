@@ -69,11 +69,17 @@ export class PreviewRegistry {
   constructor({ db = null, domain = process.env.PREVIEW_DOMAIN || DEFAULT_DOMAIN, maxActive = DEFAULT_MAX_ACTIVE, randomBytes = crypto.randomBytes } = {}) {
     this.db = db || getDb();
     this.domain = normalizeDomain(domain);
-    this.maxActive = Number(maxActive);
+    this.maxActive = maxActive;
     this.randomBytes = randomBytes;
-    if (!Number.isInteger(this.maxActive) || this.maxActive < 1) {
+    if (typeof this.maxActive !== 'function' && (!Number.isInteger(Number(this.maxActive)) || Number(this.maxActive) < 1)) {
       throw new PreviewRegistryError('INVALID_LIMIT', '최대 동시 Preview 수는 1 이상의 정수여야 합니다.');
     }
+  }
+
+  getMaxActive() {
+    const value = Number(typeof this.maxActive === 'function' ? this.maxActive() : this.maxActive);
+    if (!Number.isInteger(value) || value < 1) throw new PreviewRegistryError('INVALID_LIMIT', '최대 동시 Preview 수는 1 이상의 정수여야 합니다.');
+    return value;
   }
 
   create({ sessionId, workspacePath, projectName }) {
@@ -91,8 +97,9 @@ export class PreviewRegistry {
       if (duplicate) {
         throw new PreviewRegistryError('WORKSPACE_ACTIVE', `이 Workspace에는 이미 활성 Preview가 있습니다: ${duplicate.id}`);
       }
-      if (this.countActive() >= this.maxActive) {
-        throw new PreviewRegistryError('ACTIVE_LIMIT', `동시 Preview 제한(${this.maxActive}개)에 도달했습니다.`);
+      const maxActive = this.getMaxActive();
+      if (this.countActive() >= maxActive) {
+        throw new PreviewRegistryError('ACTIVE_LIMIT', `동시 Preview 제한(${maxActive}개)에 도달했습니다.`);
       }
 
       for (let attempt = 0; attempt < 8; attempt += 1) {
