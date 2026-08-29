@@ -5,21 +5,26 @@ services:
       dockerfile: Dockerfile
     container_name: docker-agent-telegram
     restart: unless-stopped
-    env_file:
-      - .env
     volumes:
-      - ./data:/data
-      - ./data/providers/codex:/root/.codex
-      - ./data/providers/antigravity:/root/.gemini
+      - /mnt/storage/agent-hub-core/data:/data
+      - /mnt/storage/agent-hub-core/providers/codex:/root/.codex
+      - /mnt/storage/agent-hub-core/providers/gemini:/root/.gemini
       # 호스트의 dev 디렉토리는 유지하되 Linux 예약 경로 /dev를 덮어쓰지 않는다.
-      - ./dev:/home/dev
+      - /mnt/storage/agent-hub-core/dev:/home/dev
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - TZ=Asia/Seoul
-      - WORKSPACE_DIR=/home/dev
-      - REPOS_ROOT=/home/dev/workspace
-      - DATA_DIR=/data
-      - SSH_DATA_DIR=/data/ssh
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in Coolify Environment}"
+      TELEGRAM_ALLOWED_USER_IDS: "8418085671"
+      CODEX_TIMEOUT_MS: "600000"
+      WORKSPACE_DIR: /home/dev
+      DATA_DIR: /data
+      TZ: Asia/Seoul
+      NODE_OPTIONS: "--dns-result-order=ipv4first --no-network-family-autoselection"
+      GH_TOKEN: "${GH_TOKEN:?Set GH_TOKEN in Coolify Environment}"
+      GIT_USER_NAME: mrkang
+      GIT_USER_EMAIL: heymrkangx@google.com
+      REPOS_ROOT: /home/dev/workspace
+      SSH_DATA_DIR: /data/ssh
     networks:
       - default
 
@@ -29,12 +34,10 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     command: ["node", "src/preview/gateway-server.js"]
-    env_file:
-      - .env
     environment:
-      - PREVIEW_ROUTE_API=http://agent-telegram:8790
-      - PREVIEW_GATEWAY_HOST=0.0.0.0
-      - PREVIEW_GATEWAY_PORT=8080
+      PREVIEW_ROUTE_API: http://agent-telegram:8790
+      PREVIEW_GATEWAY_HOST: 0.0.0.0
+      PREVIEW_GATEWAY_PORT: "8080"
     depends_on:
       - agent-telegram
     labels:
