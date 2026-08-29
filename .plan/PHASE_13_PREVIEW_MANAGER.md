@@ -395,6 +395,18 @@ Gateway는 DB를 직접 공유하지 않고 Core의 내부 전용 Registry API�
 - [x] 셸을 거치지 않는 구조화된 사용자 명령 override 지원.
 - [x] Next.js/npm 및 Vite/pnpm fixture 단위 테스트 추가.
 
+### 13-3 완료 기준
+
+- [x] Preview 전용 managed Docker network 생성 및 검증.
+- [x] Preview container create/start/stop/remove/restart lifecycle 구현.
+- [x] Agent Hub managed label 검증 후에만 container 조작.
+- [x] 프로젝트 디렉터리 하나만 `/workspace`에 읽기/쓰기로 mount.
+- [x] Core container 경로를 Docker host bind source로 안전하게 변환.
+- [x] Docker socket, SSH key, Provider credential 및 Core 환경변수 전달 차단.
+- [x] container logs, inspect, managed container 목록 조회 구현.
+- [x] 범용 Node 22 Debian image와 pnpm/yarn Corepack 실행 정책 확정.
+- [x] Docker 명령 단위 테스트 추가.
+
 ## 16. Telegram UX 방향
 
 세부 UI는 구현 전에 사용자와 별도 협의한다.
