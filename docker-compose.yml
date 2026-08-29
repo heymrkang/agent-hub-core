@@ -25,6 +25,7 @@ services:
       GIT_USER_EMAIL: heymrkangx@google.com
       REPOS_ROOT: /home/dev/workspace
       SSH_DATA_DIR: /data/ssh
+      PREVIEW_INTERNAL_TOKEN: "${PREVIEW_INTERNAL_TOKEN:?Set PREVIEW_INTERNAL_TOKEN in Coolify Environment}"
     networks:
       - default
 
@@ -38,6 +39,7 @@ services:
       PREVIEW_ROUTE_API: http://agent-telegram:8790
       PREVIEW_GATEWAY_HOST: 0.0.0.0
       PREVIEW_GATEWAY_PORT: "8080"
+      PREVIEW_INTERNAL_TOKEN: "${PREVIEW_INTERNAL_TOKEN:?Set PREVIEW_INTERNAL_TOKEN in Coolify Environment}"
     depends_on:
       - agent-telegram
     labels:
