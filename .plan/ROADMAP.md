@@ -1,7 +1,7 @@
-# Agent Hub V1 Implementation Roadmap
+# Agent Hub Core Roadmap
 
 > **Status:** V1 Released\
-> **Source of Truth:** `.plan/PROJECT_PLAN.md`\
+> **Architecture:** `.plan/PROJECT_PLAN.md`\
 > **Execution Rule:** Phase 단위로 구현 → 검증 → 커밋 → 상태 갱신
 
 Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
@@ -62,7 +62,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ### Phase 13
 
-`PHASE_13_PREVIEW_MANAGER.md`를 기준으로 Mobile Preview Runtime & Preview Manager를 구현한다.
+`PHASE_13_PREVIEW_MANAGER.md`를 기준으로 Mobile Preview Runtime & Preview Manager를 구현한다. V1은 이미 release 되었으며 Phase 13은 post-V1 첫 신규 기능이다.
 
 ### Phase 14
 

@@ -19,7 +19,7 @@
 | **Health / Auth Diagnosis** | `SUPPORTED` | `codex doctor --json` 실행 시 머신 리더블 형태로 진단 결과 및 설정 상태 반환. |
 | **Sandbox & Approval Control** | `SUPPORTED` | `-s, --sandbox <read-only \| workspace-write \| danger-full-access>` 및 `-a, --ask-for-approval <on-request \| never>`. |
 | **Image & Multi-Attachment** | `SUPPORTED` | `-i, --image <FILE>...` 옵션으로 여러 이미지 파일 경로 전달 지원. |
-| **Generic File Handling** | `PARTIAL` | 파일 자체를 CLI 옵션으로 직접 전달하기보다는 워크스페이스 디렉토리 경로(`./workspace/` 또는 `/data/uploads/`)를 프롬프트에 참조시켜 처리. |
+| **Generic File Handling** | `PARTIAL` | 파일 자체를 CLI 옵션으로 직접 전달하기보다는 persistent development root(`/home/dev`) 또는 `/data/uploads/`의 경로를 프롬프트에 참조시켜 처리. |
 | **Usage / Token Quota** | `PARTIAL` | `--json` 출력 스트림의 이벤트에서 일부 토큰 사용량 정보 수신 가능. CLI 단독 `usage` 쿼터 조회 명령은 미제공. |
 | **Native Compact** | `UNSUPPORTED` | CLI 명령으로 직접 호출 가능한 독립 `compact` 서브커맨드 부재. 세션 롤링 및 압축은 내부 엔진 자동 또는 Agent Hub Summary로 보조 처리. |
 | **Cancellation & Process Control** | `SUPPORTED` | `SIGINT`/`SIGKILL` 시그널 전달로 자식 프로세스 즉시 중단 가능. |
@@ -34,7 +34,7 @@ codex exec \
   --json \
   --skip-git-repo-check \
   --dangerously-bypass-approvals-and-sandbox \
-  -C /workspace \
+  -C /home/dev \
   -m "gpt-4o" \
   "사용자 프롬프트 내용"
 ```

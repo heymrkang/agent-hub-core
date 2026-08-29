@@ -4,7 +4,7 @@
 
 ## 1. 목표
 
-Agent Hub Core V1의 마지막 핵심 기능으로, Telegram을 중심으로 모바일에서 다음 개발 루프를 완성한다.
+V1 release baseline 위에 추가하는 첫 신규 기능으로, Telegram을 중심으로 모바일에서 다음 개발 루프를 완성한다.
 
 > Telegram 요청 → Agent 코드 수정 → 개발 서버 실행 → 외부 Preview URL 생성 → 모바일 브라우저 확인 → Telegram에서 후속 수정
 
@@ -18,7 +18,7 @@ Agent Hub 자체의 별도 Web UI를 만드는 것이 목적이 아니다. Next.
 - Cloudflare Tunnel route는 wildcard host를 서버의 `localhost:80`으로 전달한다.
 - Coolify의 Traefik proxy가 현재 서비스들의 hostname routing을 담당한다.
 - Agent Hub Core는 Docker socket을 사용할 수 있다.
-- `/workspace`는 개발 프로젝트의 canonical workspace로 사용한다.
+- `/home/dev`는 persistent development root이며 `/home/dev/workspace`를 Git repository 기본 영역으로 사용한다.
 - Agent Hub는 Telegram, Session, Provider, Job Queue, Git/GitHub, SSH, Docker 인프라를 이미 보유한다.
 
 ## 3. 핵심 아키텍처
