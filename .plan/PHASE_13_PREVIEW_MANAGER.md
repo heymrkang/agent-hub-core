@@ -1,6 +1,6 @@
 # Phase 13: Mobile Preview Runtime & Preview Manager
 
-**Status: IN PROGRESS (13-7 complete)**
+**Status: IN PROGRESS (13-7 complete, deployment E2E pending)**
 
 ## 1. 목표
 
@@ -448,6 +448,16 @@ Gateway는 DB를 직접 공유하지 않고 Core의 내부 전용 Registry API�
 - [x] Preview Registry와 연결되지 않은 managed orphan container 정리.
 - [x] Agent Hub managed label이 없는 container 자동 삭제 차단.
 - [x] Preview cleanup 실패 Structured Logging 및 System Job 알림 경로 연결.
+
+### 배포 E2E 준비 상태
+
+- [x] `*.12190529.xyz` DNS/Tunnel 요청이 Cloudflare를 거쳐 Coolify Traefik까지 도달함을 확인.
+- [x] Preview Gateway 전용 Traefik `HostRegexp` router와 Coolify network 연결 구성.
+- [x] 호스트 port publish 없이 Cloudflare Tunnel → Traefik → Gateway 경계 유지.
+- [x] 실제 hostname을 검사하는 `scripts/verify-preview-ingress.sh` 추가.
+- [ ] 기존 Coolify Dockerfile Application을 Docker Compose 리소스로 전환 후 배포.
+- [ ] 실제 Preview를 생성해 외부 HTTP 및 HMR WebSocket E2E 검증.
+- [ ] Telegram 요청 → 수정 → Preview 확인 → 후속 수정 모바일 루프 검증.
 
 ## 16. Telegram UX 방향
 
