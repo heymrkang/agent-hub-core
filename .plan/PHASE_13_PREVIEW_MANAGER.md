@@ -1,6 +1,6 @@
 # Phase 13: Mobile Preview Runtime & Preview Manager
 
-**Status: PLANNED**
+**Status: IN PROGRESS (13-1 complete)**
 
 ## 1. 목표
 
@@ -327,7 +327,8 @@ failure_reason
 
 - Session을 전환해도 실행 중 Preview는 계속 살아있을 수 있다.
 - `/sessions`와 향후 Session detail에서 연결 Preview 상태를 표시할 수 있도록 설계한다.
-- 동일 Workspace에 대한 중복 Preview 생성 정책은 구현 시 명확히 정의한다.
+- 동일 Workspace에는 `STARTING`, `RUNNING`, `STOPPING` 상태 Preview를 하나만 허용한다.
+- 종료 이력(`STOPPED`, `FAILED`, `EXPIRED`)은 유지할 수 있으며 새 Preview 생성을 막지 않는다.
 
 ## 14. Preview Process / Container 관리
 
@@ -371,7 +372,19 @@ SQLite에 Preview의 canonical metadata를 저장한다.
 - orphan/restart reconciliation.
 - activity timestamp.
 
-Gateway가 DB를 직접 읽을지 Core의 내부 전용 registry endpoint를 사용할지는 구현 설계 단계에서 결정하되, 외부 공개 API로 만들지 않는다.
+Gateway는 DB를 직접 공유하지 않고 Core의 내부 전용 Registry API를 사용한다. 이 API는 Docker 내부망에만 노출하며 외부 공개 API로 만들지 않는다.
+
+### 13-1 완료 기준
+
+- [x] 상태 모델과 허용 상태 전이 확정.
+- [x] migration v12 및 Preview canonical metadata schema 추가.
+- [x] Preview Registry CRUD와 Session/Workspace 조회 추가.
+- [x] 프로젝트 slug + 4자리 랜덤 hex hostname 생성.
+- [x] 동일 Workspace 활성 Preview 1개 제한.
+- [x] 기본 최대 활성 Preview 3개 제한.
+- [x] Registry 단위 테스트 추가.
+- [x] Preview 프로젝트 디렉터리는 Docker Runtime에서 읽기/쓰기로 mount하기로 확정.
+- [x] Gateway는 Core 내부 Registry API를 사용하기로 확정.
 
 ## 16. Telegram UX 방향
 
