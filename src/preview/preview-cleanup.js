@@ -6,18 +6,21 @@ function errorText(error) {
 }
 
 export class PreviewCleanup {
-  constructor({ registry, runtime, manager, idleTimeoutHours = () => 24, logger = Logger } = {}) {
+  constructor({ registry, runtime, manager, idleTimeoutHours = () => 24, logger = Logger, consoleLogger = console } = {}) {
     if (!registry || !runtime || !manager) throw new Error('Preview cleanup dependency가 필요합니다.');
     this.registry = registry;
     this.runtime = runtime;
     this.manager = manager;
     this.idleTimeoutHours = idleTimeoutHours;
     this.logger = logger;
+    this.consoleLogger = consoleLogger;
   }
 
   async startupReconcile() {
-    const summary = { recovered: 0, failed: 0, orphansRemoved: 0, failures: 0 };
-    for (const preview of this.registry.list({ limit: 500 }).filter((item) => ACTIVE_PREVIEW_STATUSES.includes(item.status))) {
+    const active = this.registry.list({ limit: 500 }).filter((item) => ACTIVE_PREVIEW_STATUSES.includes(item.status));
+    const summary = { active: active.length, recovered: 0, failed: 0, orphansRemoved: 0, failures: 0 };
+    this.consoleLogger.log(`[Preview] 시작 시 복구 확인: active=${active.length}`);
+    for (const preview of active) {
       try {
         if (preview.status === PreviewStatus.STOPPING) {
           await this.#disableAndRemove(preview, PreviewStatus.STOPPED);
@@ -26,8 +29,10 @@ export class PreviewCleanup {
         const reconciled = await this.manager.reconcile(preview.id);
         if (reconciled.status === PreviewStatus.FAILED) {
           summary.failed += 1;
+          this.consoleLogger.warn(`[Preview] 복구 실패: project=${preview.project_name || 'unknown'} preview=${preview.id} container=${preview.container_id || 'none'} reason=${reconciled.failure_reason || 'unknown'}`);
         } else {
           summary.recovered += 1;
+          this.consoleLogger.log(`[Preview] 복구 완료: project=${preview.project_name || 'unknown'} preview=${preview.id} port=${preview.port ?? 'unknown'} container=${preview.container_id || 'none'}`);
         }
       } catch (error) {
         summary.failures += 1;
@@ -37,6 +42,7 @@ export class PreviewCleanup {
     const orphanSummary = await this.cleanupOrphans();
     summary.orphansRemoved = orphanSummary.removed;
     summary.failures += orphanSummary.failures;
+    this.consoleLogger.log(`[Preview] 시작 시 복구 완료: active=${summary.active} recovered=${summary.recovered} failed=${summary.failed} orphans_removed=${summary.orphansRemoved} errors=${summary.failures}`);
     return summary;
   }
 

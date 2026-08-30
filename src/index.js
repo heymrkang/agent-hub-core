@@ -45,6 +45,7 @@ try {
     const previewSummary = await getPreviewService().cleanup.startupReconcile();
     Logger.info('system', 'preview_startup_reconcile', previewSummary);
   } catch (error) {
+    console.error(`[Preview] 시작 시 복구 실패: ${error.message}`);
     Logger.error('system', 'preview_startup_reconcile_failed', error.message, { errorCode: 'PREVIEW_CLEANUP' });
   }
   const ownerId = String(process.env.TELEGRAM_ADMIN_USER_ID || process.env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map((v) => v.trim()).find(Boolean) || null;

@@ -43,7 +43,8 @@ function fixture({ previews, managed = [] }) {
     runtime,
     manager,
     idleTimeoutHours: () => 24,
-    logger: { error: (...args) => logs.push(args) }
+    logger: { error: (...args) => logs.push(args) },
+    consoleLogger: { log: (...args) => logs.push(args), warn: (...args) => logs.push(args) }
   });
   return { cleanup, rows, removed, stopped, logs };
 }
@@ -89,6 +90,8 @@ test('Core 시작 시 실행 중인 활성 Preview를 유지한다', async () =>
   const summary = await state.cleanup.startupReconcile();
   assert.equal(state.rows.get('preview-1').status, 'RUNNING');
   assert.equal(summary.recovered, 1);
+  assert.equal(summary.active, 1);
+  assert.ok(state.logs.some((args) => String(args[0]).includes('시작 시 복구 완료: active=1 recovered=1')));
   assert.deepEqual(state.removed, []);
 });
 

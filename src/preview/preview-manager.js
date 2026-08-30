@@ -2,14 +2,17 @@ import { PreviewStatus } from './preview-registry.js';
 import { PreviewPortDetector } from './port-detector.js';
 
 export class PreviewManager {
-  constructor({ registry, runtime, portDetector = null } = {}) {
+  constructor({ registry, runtime, portDetector = null, logger = console } = {}) {
     if (!registry || !runtime) throw new Error('Preview Registry와 Runtime이 필요합니다.');
     this.registry = registry;
     this.runtime = runtime;
     this.portDetector = portDetector || new PreviewPortDetector({ runtime });
+    this.logger = logger;
   }
 
   async start({ sessionId, detectedRuntime, manualPort = null } = {}) {
+    const startedAt = Date.now();
+    this.logger.log(`[Preview] 시작 요청: project=${detectedRuntime?.projectName || 'unknown'} package_manager=${detectedRuntime?.packageManager || 'unknown'} manual_port=${manualPort ?? 'auto'}`);
     let preview = this.registry.create({
       sessionId,
       workspacePath: detectedRuntime?.projectPath,
@@ -22,12 +25,17 @@ export class PreviewManager {
         command: JSON.stringify(created.command),
         packageManager: detectedRuntime.packageManager
       });
+      this.logger.log(`[Preview] 컨테이너 생성 완료: project=${preview.project_name || detectedRuntime.projectName} preview=${preview.id} container=${created.id}`);
       await this.runtime.start(created.id);
+      this.logger.log(`[Preview] 의존성 설치 및 개발 서버 준비 중: project=${preview.project_name || detectedRuntime.projectName} container=${created.id}`);
       const port = await this.portDetector.detect(created.id, { manualPort });
       preview = this.registry.updateRuntime(preview.id, { port });
-      return this.registry.updateStatus(preview.id, PreviewStatus.RUNNING);
+      const running = this.registry.updateStatus(preview.id, PreviewStatus.RUNNING);
+      this.logger.log(`[Preview] 실행 완료: project=${running.project_name || detectedRuntime.projectName} preview=${running.id} port=${port} duration_ms=${Date.now() - startedAt}`);
+      return running;
     } catch (error) {
       this.registry.updateStatus(preview.id, PreviewStatus.FAILED, { failureReason: String(error?.message || error).slice(0, 2000) });
+      this.logger.error(`[Preview] 시작 실패: project=${preview.project_name || detectedRuntime?.projectName || 'unknown'} preview=${preview.id} error=${String(error?.message || error)}`);
       throw error;
     }
   }
@@ -50,6 +58,7 @@ export class PreviewManager {
 
   async stop(previewId) {
     let preview = this.registry.require(previewId);
+    this.logger.log(`[Preview] 종료 요청: project=${preview.project_name || 'unknown'} preview=${preview.id} container=${preview.container_id || 'none'}`);
     if ([PreviewStatus.STOPPED, PreviewStatus.EXPIRED].includes(preview.status)) return preview;
     if (!preview.container_id) return this.registry.updateStatus(preview.id, PreviewStatus.STOPPED);
     try {
@@ -58,9 +67,12 @@ export class PreviewManager {
       }
       await this.runtime.stop(preview.container_id);
       await this.runtime.remove(preview.container_id);
-      return this.registry.updateStatus(preview.id, PreviewStatus.STOPPED);
+      const stopped = this.registry.updateStatus(preview.id, PreviewStatus.STOPPED);
+      this.logger.log(`[Preview] 종료 완료: project=${stopped.project_name || 'unknown'} preview=${stopped.id}`);
+      return stopped;
     } catch (error) {
       this.registry.updateStatus(preview.id, PreviewStatus.FAILED, { failureReason: String(error?.message || error).slice(0, 2000) });
+      this.logger.error(`[Preview] 종료 실패: project=${preview.project_name || 'unknown'} preview=${preview.id} error=${String(error?.message || error)}`);
       throw error;
     }
   }
@@ -70,13 +82,17 @@ export class PreviewManager {
     if (preview.status !== PreviewStatus.RUNNING || !preview.container_id) {
       throw new Error('RUNNING Preview만 재시작할 수 있습니다. 정지된 Preview는 다시 start 하세요.');
     }
+    this.logger.log(`[Preview] 재시작 요청: project=${preview.project_name || 'unknown'} preview=${preview.id} container=${preview.container_id}`);
     try {
       await this.runtime.restart(preview.container_id);
       const port = await this.portDetector.detect(preview.container_id, { manualPort: preview.port });
       preview = this.registry.updateRuntime(preview.id, { port });
-      return this.registry.touchActivity(preview.id);
+      const restarted = this.registry.touchActivity(preview.id);
+      this.logger.log(`[Preview] 재시작 완료: project=${restarted.project_name || 'unknown'} preview=${restarted.id} port=${port}`);
+      return restarted;
     } catch (error) {
       this.registry.updateStatus(preview.id, PreviewStatus.FAILED, { failureReason: String(error?.message || error).slice(0, 2000) });
+      this.logger.error(`[Preview] 재시작 실패: project=${preview.project_name || 'unknown'} preview=${preview.id} error=${String(error?.message || error)}`);
       throw error;
     }
   }

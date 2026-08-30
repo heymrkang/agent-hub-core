@@ -10,7 +10,8 @@ function configFromEnv() {
     host: process.env.PREVIEW_GATEWAY_HOST || '0.0.0.0',
     port: Number(process.env.PREVIEW_GATEWAY_PORT || 8080),
     routeApi: process.env.PREVIEW_ROUTE_API || 'http://agent-telegram:8790',
-    token
+    token,
+    accessLog: process.env.PREVIEW_GATEWAY_ACCESS_LOG === 'true'
   };
 }
 
@@ -49,36 +50,64 @@ function unavailable(res, error) {
 }
 
 export function createPreviewGateway(config) {
+  const logger = config.logger || console;
+  const routedTargets = new Map();
+  const logRoute = (hostname, target) => {
+    const value = `${target.targetHost}:${target.targetPort}`;
+    if (routedTargets.get(hostname) === value) return;
+    logger.log(`[Preview Gateway] 라우팅 연결: host=${hostname} target=${value}`);
+    routedTargets.set(hostname, value);
+  };
   const server = http.createServer(async (req, res) => {
+    let hostname = 'invalid';
     try {
+      hostname = hostnameFromRequest(req);
       const target = await resolveTarget(req, config);
+      logRoute(hostname, target);
       const headers = filteredHeaders(req.headers);
       headers.host = `${target.targetHost}:${target.targetPort}`;
       headers['x-forwarded-host'] = req.headers.host;
       headers['x-forwarded-proto'] = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
       const upstream = http.request({ host: target.targetHost, port: target.targetPort, method: req.method, path: req.url, headers }, (upstreamRes) => {
+        if (config.accessLog) logger.log(`[Preview Gateway] 요청: host=${hostname} method=${req.method} path=${req.url} status=${upstreamRes.statusCode || 502}`);
         res.writeHead(upstreamRes.statusCode || 502, filteredHeaders(upstreamRes.headers));
         upstreamRes.pipe(res);
       });
-      upstream.on('error', (error) => unavailable(res, error));
+      upstream.on('error', (error) => {
+        logger.error(`[Preview Gateway] upstream 연결 실패: host=${hostname} target=${target.targetHost}:${target.targetPort} error=${error.message}`);
+        unavailable(res, error);
+      });
       req.pipe(upstream);
-    } catch (error) { unavailable(res, error); }
+    } catch (error) {
+      logger.warn(`[Preview Gateway] 라우팅 실패: host=${hostname} status=${error?.statusCode || 502} reason=${error.message}`);
+      unavailable(res, error);
+    }
   });
 
   server.on('upgrade', async (req, socket, head) => {
+    let hostname = 'invalid';
     try {
+      hostname = hostnameFromRequest(req);
       const target = await resolveTarget(req, config);
+      logRoute(hostname, target);
       const headers = { ...req.headers, host: `${target.targetHost}:${target.targetPort}`, connection: 'Upgrade', upgrade: req.headers.upgrade || 'websocket' };
       const upstream = http.request({ host: target.targetHost, port: target.targetPort, method: req.method, path: req.url, headers });
       upstream.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
+        logger.log(`[Preview Gateway] WebSocket 연결: host=${hostname} target=${target.targetHost}:${target.targetPort}`);
         socket.write(`HTTP/1.1 101 Switching Protocols\r\n${Object.entries(upstreamRes.headers).map(([key, value]) => `${key}: ${value}`).join('\r\n')}\r\n\r\n`);
         if (head.length) upstreamSocket.write(head);
         if (upstreamHead.length) socket.write(upstreamHead);
         upstreamSocket.pipe(socket).pipe(upstreamSocket);
       });
-      upstream.on('error', () => socket.destroy());
+      upstream.on('error', (error) => {
+        logger.error(`[Preview Gateway] WebSocket 연결 실패: host=${hostname} target=${target.targetHost}:${target.targetPort} error=${error.message}`);
+        socket.destroy();
+      });
       upstream.end();
-    } catch { socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n'); }
+    } catch (error) {
+      logger.warn(`[Preview Gateway] WebSocket 라우팅 실패: host=${hostname} reason=${error.message}`);
+      socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
+    }
   });
   return server;
 }
