@@ -9,7 +9,6 @@ services:
       - /mnt/storage/agent-hub-core/data:/data
       - /mnt/storage/agent-hub-core/providers/codex:/root/.codex
       - /mnt/storage/agent-hub-core/providers/gemini:/root/.gemini
-      # 호스트의 dev 디렉토리는 유지하되 Linux 예약 경로 /dev를 덮어쓰지 않는다.
       - /mnt/storage/agent-hub-core/dev:/home/dev
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -34,7 +33,9 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["node", "src/preview/gateway-server.js"]
+    command:
+      - node
+      - src/preview/gateway-server.js
     environment:
       PREVIEW_ROUTE_API: http://agent-telegram:8790
       PREVIEW_GATEWAY_HOST: 0.0.0.0
@@ -42,12 +43,27 @@ services:
       PREVIEW_INTERNAL_TOKEN: "${PREVIEW_INTERNAL_TOKEN:?Set PREVIEW_INTERNAL_TOKEN in Coolify Environment}"
     depends_on:
       - agent-telegram
+
+    # Dockerfile의 8787 헬스체크를 Gateway용으로 덮어쓴다.
+    # HTTP 상태가 503이어도 서버가 응답하면 프로세스는 살아 있는 것으로 본다.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:8080/health')
+          .then(()=>process.exit(0))
+          .catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
     labels:
       traefik.enable: "true"
       traefik.docker.network: coolify
       traefik.http.routers.agent-hub-preview.priority: "1"
       traefik.http.routers.agent-hub-preview.entrypoints: http
-      traefik.http.routers.agent-hub-preview.rule: 'Host(`my-app-eed6.12190529.xyz`)'
+      traefik.http.routers.agent-hub-preview.rule: "Host(`my-app-eed6.12190529.xyz`)"
       traefik.http.routers.agent-hub-preview.service: agent-hub-preview
       traefik.http.services.agent-hub-preview.loadbalancer.server.port: "8080"
     networks:
@@ -61,7 +77,7 @@ networks:
     labels:
       agent-hub.managed: "true"
       agent-hub.type: preview-network
-  # Coolify's Traefik discovers the gateway through this shared internal network.
-  # No host port is published; Cloudflare Tunnel remains the only external ingress.
+
+  # 호스트 포트는 열지 않고 Coolify Traefik 내부망만 사용한다.
   coolify:
     external: true
