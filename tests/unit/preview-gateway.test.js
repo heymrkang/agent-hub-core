@@ -97,6 +97,8 @@ test('Gateway는 WebSocket upgrade를 raw TCP로 중계한다', async () => {
     assert.equal(req.url, '/_next/webpack-hmr');
     assert.equal(req.headers.host, 'app-a31f.12190529.xyz');
     assert.equal(req.headers['x-forwarded-host'], 'app-a31f.12190529.xyz');
+    assert.equal(req.headers.origin, 'http://localhost');
+    assert.equal(req.headers['x-forwarded-origin'], 'https://app-a31f.12190529.xyz');
     socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');
     if (head.length) socket.write(head);
     socket.on('data', (data) => socket.write(data));
@@ -118,7 +120,7 @@ test('Gateway는 WebSocket upgrade를 raw TCP로 중계한다', async () => {
   try {
     await new Promise((resolve, reject) => {
       const client = originalConnect({ host: '127.0.0.1', port: gatewayPort }, () => {
-        client.write('GET /_next/webpack-hmr HTTP/1.1\r\nHost: app-a31f.12190529.xyz\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGVzdA==\r\nSec-WebSocket-Version: 13\r\n\r\n');
+        client.write('GET /_next/webpack-hmr HTTP/1.1\r\nHost: app-a31f.12190529.xyz\r\nOrigin: https://app-a31f.12190529.xyz\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGVzdA==\r\nSec-WebSocket-Version: 13\r\n\r\n');
       });
       let response = '';
       let handshakeComplete = false;
@@ -140,4 +142,17 @@ test('Gateway는 WebSocket upgrade를 raw TCP로 중계한다', async () => {
     gateway.closeAllConnections();
     await close(gateway); await close(routeApi); await close(upstream);
   }
+});
+
+test('Gateway는 반복되는 unavailable 라우팅 경고를 제한한다', async () => {
+  const logs = [];
+  const routeApi = http.createServer((_req, res) => { res.writeHead(503); res.end(); });
+  const routePort = await listen(routeApi);
+  const gateway = createPreviewGateway({ routeApi: `http://127.0.0.1:${routePort}`, token, logger: { log() {}, warn: (message) => logs.push(message), error() {} } });
+  const gatewayPort = await listen(gateway);
+  try {
+    await fetch(`http://127.0.0.1:${gatewayPort}/`, { headers: { host: 'stopped.12190529.xyz' } });
+    await fetch(`http://127.0.0.1:${gatewayPort}/`, { headers: { host: 'stopped.12190529.xyz' } });
+    assert.equal(logs.filter((message) => message.includes('라우팅 실패')).length, 1);
+  } finally { await close(gateway); await close(routeApi); }
 });

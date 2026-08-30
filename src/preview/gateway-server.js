@@ -58,6 +58,14 @@ function serializeUpgradeRequest(req) {
     'x-forwarded-host': req.headers.host,
     'x-forwarded-proto': String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim()
   };
+  // Next.js dev servers reject HMR upgrades whose browser Origin is not in
+  // next.config.allowedDevOrigins. Preview hostnames are generated dynamically,
+  // so keep the public origin for diagnostics and present the already
+  // gateway-authorized request as a local-origin request to Next.js only.
+  if (String(req.url || '').startsWith('/_next/') && req.headers.origin) {
+    headers['x-forwarded-origin'] = req.headers.origin;
+    headers.origin = 'http://localhost';
+  }
   const lines = Object.entries(headers).flatMap(([key, value]) => {
     if (value === undefined) return [];
     return (Array.isArray(value) ? value : [value]).map((item) => `${key}: ${item}`);
@@ -68,6 +76,15 @@ function serializeUpgradeRequest(req) {
 export function createPreviewGateway(config) {
   const logger = config.logger || console;
   const routedTargets = new Map();
+  const routeWarnings = new Map();
+  const warnRouteFailure = (kind, hostname, message, statusCode = null) => {
+    const key = `${hostname}:${message}`;
+    const now = Date.now();
+    if (now - (routeWarnings.get(key) || 0) < 30_000) return;
+    routeWarnings.set(key, now);
+    const status = statusCode ? ` status=${statusCode}` : '';
+    logger.warn(`[Preview Gateway] ${kind}: host=${hostname}${status} reason=${message}`);
+  };
   const logRoute = (hostname, target) => {
     const value = `${target.targetHost}:${target.targetPort}`;
     if (routedTargets.get(hostname) === value) return;
@@ -99,7 +116,7 @@ export function createPreviewGateway(config) {
       });
       req.pipe(upstream);
     } catch (error) {
-      logger.warn(`[Preview Gateway] 라우팅 실패: host=${hostname} status=${error?.statusCode || 502} reason=${error.message}`);
+      warnRouteFailure('라우팅 실패', hostname, error.message, error?.statusCode || 502);
       unavailable(res, error);
     }
   });
@@ -124,7 +141,7 @@ export function createPreviewGateway(config) {
       socket.on('error', () => upstream.destroy());
       socket.on('close', () => upstream.destroy());
     } catch (error) {
-      logger.warn(`[Preview Gateway] WebSocket 라우팅 실패: host=${hostname} reason=${error.message}`);
+      warnRouteFailure('WebSocket 라우팅 실패', hostname, error.message);
       socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
     }
   });
