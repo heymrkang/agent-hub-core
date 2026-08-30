@@ -16,11 +16,19 @@ export class PreviewCleanup {
   }
 
   async startupReconcile() {
-    const summary = { stopped: 0, orphansRemoved: 0, failures: 0 };
+    const summary = { recovered: 0, failed: 0, orphansRemoved: 0, failures: 0 };
     for (const preview of this.registry.list({ limit: 500 }).filter((item) => ACTIVE_PREVIEW_STATUSES.includes(item.status))) {
       try {
-        await this.#disableAndRemove(preview, PreviewStatus.STOPPED);
-        summary.stopped += 1;
+        if (preview.status === PreviewStatus.STOPPING) {
+          await this.#disableAndRemove(preview, PreviewStatus.STOPPED);
+          continue;
+        }
+        const reconciled = await this.manager.reconcile(preview.id);
+        if (reconciled.status === PreviewStatus.FAILED) {
+          summary.failed += 1;
+        } else {
+          summary.recovered += 1;
+        }
       } catch (error) {
         summary.failures += 1;
         this.#logFailure('preview_startup_reconcile_failed', preview, error);

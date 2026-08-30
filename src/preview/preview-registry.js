@@ -104,7 +104,7 @@ export class PreviewRegistry {
 
       for (let attempt = 0; attempt < 8; attempt += 1) {
         const suffix = this.randomBytes(2).toString('hex');
-        const hostname = `${slug}-${suffix}.${this.domain}`;
+        const hostname = `preview-${slug}-${suffix}.${this.domain}`;
         const preview = {
           id: crypto.randomUUID(),
           sessionId,

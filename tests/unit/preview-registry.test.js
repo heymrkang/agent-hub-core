@@ -30,8 +30,8 @@ test('slug와 public hostname을 만들고 Session/Workspace에 연결한다', (
     const registry = new PreviewRegistry({ db, randomBytes: fixedRandom(['a31f']) });
     const preview = registry.create({ sessionId: 'session-1', workspacePath: '/home/dev/workspace/My App', projectName: 'My Cool App!' });
     assert.equal(preview.slug, 'my-cool-app');
-    assert.equal(preview.public_hostname, 'my-cool-app-a31f.12190529.xyz');
-    assert.equal(preview.public_url, 'https://my-cool-app-a31f.12190529.xyz');
+    assert.equal(preview.public_hostname, 'preview-my-cool-app-a31f.12190529.xyz');
+    assert.equal(preview.public_url, 'https://preview-my-cool-app-a31f.12190529.xyz');
     assert.equal(preview.workspace_path, '/home/dev/workspace/My App');
     assert.equal(preview.status, 'STARTING');
     assert.equal(registry.getByHostname(preview.public_hostname).id, preview.id);

@@ -83,11 +83,20 @@ test('registry에 없는 managed orphan만 제거한다', async () => {
   assert.equal(summary.removed, 1);
 });
 
-test('Core 시작 시 활성 Preview는 자동 복구하지 않고 STOPPED 처리한다', async () => {
+test('Core 시작 시 실행 중인 활성 Preview를 유지한다', async () => {
   const preview = { id: 'preview-1', status: 'RUNNING', container_id: 'container-1', last_activity_at: '2026-01-03 00:00:00' };
   const state = fixture({ previews: [preview], managed: [{ id: 'container-1', previewId: 'preview-1' }] });
   const summary = await state.cleanup.startupReconcile();
-  assert.equal(state.rows.get('preview-1').status, 'STOPPED');
-  assert.equal(summary.stopped, 1);
+  assert.equal(state.rows.get('preview-1').status, 'RUNNING');
+  assert.equal(summary.recovered, 1);
+  assert.deepEqual(state.removed, []);
+});
+
+test('Core 시작 시 죽은 활성 Preview는 FAILED 처리한다', async () => {
+  const preview = { id: 'preview-1', status: 'RUNNING', container_id: 'container-1', last_activity_at: '2026-01-03 00:00:00', crashed: true };
+  const state = fixture({ previews: [preview], managed: [{ id: 'container-1', previewId: 'preview-1' }] });
+  const summary = await state.cleanup.startupReconcile();
+  assert.equal(state.rows.get('preview-1').status, 'FAILED');
+  assert.equal(summary.failed, 1);
   assert.deepEqual(state.removed, ['container-1']);
 });
