@@ -16,6 +16,7 @@ async function close(server) { await new Promise((resolve) => server.close(resol
 test('Gateway는 내부 API가 승인한 target으로 path/body를 proxy한다', async () => {
   const logs = [];
   const upstream = http.createServer((req, res) => {
+    assert.equal(req.headers.host, 'app-a31f.12190529.xyz');
     let body = '';
     req.on('data', (chunk) => { body += chunk; });
     req.on('end', () => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ path: req.url, body })); });
@@ -36,9 +37,24 @@ test('Gateway는 내부 API가 승인한 target으로 path/body를 proxy한다',
     return originalRequest.call(this, options, ...args);
   };
   try {
-    const response = await fetch(`http://127.0.0.1:${gatewayPort}/hello?q=1`, { method: 'POST', headers: { host: 'app-a31f.12190529.xyz' }, body: 'payload' });
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { path: '/hello?q=1', body: 'payload' });
+    const result = await new Promise((resolve, reject) => {
+      const request = originalRequest({
+        host: '127.0.0.1',
+        port: gatewayPort,
+        method: 'POST',
+        path: '/hello?q=1',
+        headers: { host: 'app-a31f.12190529.xyz' }
+      }, (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => { body += chunk; });
+        response.on('end', () => resolve({ status: response.statusCode, body }));
+      });
+      request.on('error', reject);
+      request.end('payload');
+    });
+    assert.equal(result.status, 200);
+    assert.deepEqual(JSON.parse(result.body), { path: '/hello?q=1', body: 'payload' });
     assert.equal(logs.filter((message) => message.includes('라우팅 연결')).length, 1);
   } finally {
     http.request = originalRequest;
@@ -79,6 +95,7 @@ test('Gateway는 WebSocket upgrade를 raw TCP로 중계한다', async () => {
   upstream.on('upgrade', (req, socket, head) => {
     upgradedSocket = socket;
     assert.equal(req.url, '/_next/webpack-hmr');
+    assert.equal(req.headers.host, 'app-a31f.12190529.xyz');
     assert.equal(req.headers['x-forwarded-host'], 'app-a31f.12190529.xyz');
     socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');
     if (head.length) socket.write(head);

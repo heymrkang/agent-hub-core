@@ -50,10 +50,9 @@ function unavailable(res, error) {
   res.end(statusCode === 404 ? 'Preview not found' : 'Preview unavailable');
 }
 
-function serializeUpgradeRequest(req, target) {
+function serializeUpgradeRequest(req) {
   const headers = {
     ...req.headers,
-    host: `${target.targetHost}:${target.targetPort}`,
     connection: 'Upgrade',
     upgrade: req.headers.upgrade || 'websocket',
     'x-forwarded-host': req.headers.host,
@@ -87,7 +86,6 @@ export function createPreviewGateway(config) {
       const target = await resolveTarget(req, config);
       logRoute(hostname, target);
       const headers = filteredHeaders(req.headers);
-      headers.host = `${target.targetHost}:${target.targetPort}`;
       headers['x-forwarded-host'] = req.headers.host;
       headers['x-forwarded-proto'] = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
       const upstream = http.request({ host: target.targetHost, port: target.targetPort, method: req.method, path: req.url, headers }, (upstreamRes) => {
@@ -115,7 +113,7 @@ export function createPreviewGateway(config) {
       const connect = config.connect || net.connect;
       const upstream = connect({ host: target.targetHost, port: target.targetPort }, () => {
         logger.log(`[Preview Gateway] WebSocket 연결: host=${hostname} target=${target.targetHost}:${target.targetPort}`);
-        upstream.write(serializeUpgradeRequest(req, target));
+        upstream.write(serializeUpgradeRequest(req));
         if (head.length) upstream.write(head);
         upstream.pipe(socket).pipe(upstream);
       });
