@@ -12,6 +12,7 @@ export class PreviewManager {
 
   async start({ sessionId, detectedRuntime, manualPort = null } = {}) {
     const startedAt = Date.now();
+    let stage = 'registry';
     this.logger.log(`[Preview] 시작 요청: project=${detectedRuntime?.projectName || 'unknown'} package_manager=${detectedRuntime?.packageManager || 'unknown'} manual_port=${manualPort ?? 'auto'}`);
     let preview = this.registry.create({
       sessionId,
@@ -19,6 +20,7 @@ export class PreviewManager {
       projectName: detectedRuntime?.projectName
     });
     try {
+      stage = 'container_create';
       const created = await this.runtime.create({ preview, runtime: detectedRuntime });
       preview = this.registry.updateRuntime(preview.id, {
         containerId: created.id,
@@ -26,8 +28,10 @@ export class PreviewManager {
         packageManager: detectedRuntime.packageManager
       });
       this.logger.log(`[Preview] 컨테이너 생성 완료: project=${preview.project_name || detectedRuntime.projectName} preview=${preview.id} container=${created.id}`);
+      stage = 'container_start';
       await this.runtime.start(created.id);
       this.logger.log(`[Preview] 의존성 설치 및 개발 서버 준비 중: project=${preview.project_name || detectedRuntime.projectName} container=${created.id}`);
+      stage = 'port_detection';
       const port = await this.portDetector.detect(created.id, { manualPort });
       preview = this.registry.updateRuntime(preview.id, { port });
       const running = this.registry.updateStatus(preview.id, PreviewStatus.RUNNING);
@@ -35,7 +39,18 @@ export class PreviewManager {
       return running;
     } catch (error) {
       this.registry.updateStatus(preview.id, PreviewStatus.FAILED, { failureReason: String(error?.message || error).slice(0, 2000) });
-      this.logger.error(`[Preview] 시작 실패: project=${preview.project_name || detectedRuntime?.projectName || 'unknown'} preview=${preview.id} error=${String(error?.message || error)}`);
+      this.logger.error(`[Preview] 시작 실패: project=${preview.project_name || detectedRuntime?.projectName || 'unknown'} preview=${preview.id} container=${preview.container_id || 'none'} stage=${stage} code=${error?.code || 'unknown'} duration_ms=${Date.now() - startedAt} error=${String(error?.message || error)}`);
+      if (preview.container_id) {
+        try {
+          const output = String(await this.runtime.logs(preview.container_id, { tail: 80 }) || '')
+            .replace(/\u001b\[[0-?]*[ -\/]*[@-~]/g, '')
+            .trim()
+            .slice(-8000);
+          this.logger.error(`[Preview] 실패 시 컨테이너 로그: project=${preview.project_name || detectedRuntime?.projectName || 'unknown'} preview=${preview.id}\n${output || '(출력 없음)'}`);
+        } catch (logError) {
+          this.logger.error(`[Preview] 실패 로그 조회 불가: preview=${preview.id} error=${String(logError?.message || logError)}`);
+        }
+      }
       throw error;
     }
   }

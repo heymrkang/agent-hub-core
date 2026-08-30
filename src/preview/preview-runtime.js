@@ -122,6 +122,7 @@ export class PreviewRuntime {
       '--mount', `type=bind,source=${bindSource},target=/workspace`,
       '--tmpfs', '/tmp:rw,noexec,nosuid,size=256m',
       '--env', 'HOME=/tmp',
+      '--env', 'CI=true',
       '--label', 'agent-hub.managed=true',
       '--label', 'agent-hub.type=preview',
       '--label', `agent-hub.preview-id=${previewId}`,

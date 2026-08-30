@@ -49,6 +49,7 @@ test('격리된 managed Preview container 생성 인자를 구성한다', async 
   assert.ok(create.includes('agent-hub.managed=true'));
   assert.ok(create.includes('agent-hub.type=preview'));
   assert.ok(create.includes('agent-hub.preview-id=preview-1'));
+  assert.ok(create.some((value, index) => value === 'CI=true' && create[index - 1] === '--env'));
   assert.ok(create.includes('type=bind,source=/home/dev/workspace/app,target=/workspace'));
   assert.equal(create.some((value) => value.includes('docker.sock') || value.includes('/root/.codex') || value.includes('/data/ssh')), false);
   assert.ok(fake.calls.some(([a]) => a === 'pull'));

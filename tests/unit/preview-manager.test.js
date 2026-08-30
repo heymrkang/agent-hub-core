@@ -70,11 +70,14 @@ test('logs는 tail을 제한해 조회하고 activity를 갱신한다', async ()
 
 test('start 또는 port 감지 실패를 FAILED로 기록한다', async () => {
   const registry = registryFake();
-  const runtime = { create: async () => ({ id: 'container-1', command: [] }), start: async () => ({ running: true }) };
-  const manager = new PreviewManager({ registry, runtime, portDetector: { detect: async () => { throw new Error('port timeout'); } } });
+  const messages = [];
+  const runtime = { create: async () => ({ id: 'container-1', command: [] }), start: async () => ({ running: true }), logs: async () => '\u001b[31mpnpm confirmation prompt\u001b[0m' };
+  const manager = new PreviewManager({ registry, runtime, portDetector: { detect: async () => { throw new Error('port timeout'); } }, logger: { log: () => {}, error: (message) => messages.push(message) } });
   await assert.rejects(() => manager.start({ sessionId: 'session-1', detectedRuntime }), /port timeout/);
   assert.equal(registry.value().status, 'FAILED');
   assert.match(registry.value().failure_reason, /port timeout/);
+  assert.match(messages[0], /stage=port_detection/);
+  assert.match(messages[1], /pnpm confirmation prompt/);
 });
 
 test('종료된 dev server를 reconcile하면 FAILED 처리한다', async () => {

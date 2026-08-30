@@ -25,7 +25,7 @@ test('로그를 우선하고 listening socket을 보조 감지한다', async () 
 
 test('여러 socket은 추정하지 않고 timeout 후 수동 port를 요구한다', async () => {
   const detector = new PreviewPortDetector({ runtime: runtime({ ports: [[3000, 9229]] }), timeoutMs: 5, pollIntervalMs: 1 });
-  await assert.rejects(() => detector.detect('container-1'), (error) => error instanceof PreviewPortDetectionError && error.code === 'PORT_DETECTION_TIMEOUT' && error.message.includes('수동 port'));
+  await assert.rejects(() => detector.detect('container-1'), (error) => error instanceof PreviewPortDetectionError && error.code === 'PORT_DETECTION_TIMEOUT' && error.message.includes('listening_ports=3000,9229') && error.message.includes('수동 port'));
   const manual = new PreviewPortDetector({ runtime: runtime({ ports: [[8080]] }), timeoutMs: 5, pollIntervalMs: 1 });
   assert.equal(await manual.detect('container-1', { manualPort: 8080 }), 8080);
   await assert.rejects(() => detector.detect('container-1', { manualPort: 70000 }), (error) => error.code === 'INVALID_PORT');

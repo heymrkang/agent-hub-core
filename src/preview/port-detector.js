@@ -42,6 +42,7 @@ export class PreviewPortDetector {
     const requestedPort = manualPort === null || manualPort === undefined ? null : validPort(manualPort, '수동 port');
     const deadline = Date.now() + this.timeoutMs;
     let lastSocketPorts = [];
+    let lastLogPorts = [];
     while (Date.now() < deadline) {
       if (signal?.aborted) throw new PreviewPortDetectionError('ABORTED', 'Preview port 감지가 취소됐습니다.');
       const state = await this.runtime.inspect(containerId);
@@ -49,6 +50,7 @@ export class PreviewPortDetector {
         throw new PreviewPortDetectionError('PROCESS_EXITED', `dev server가 준비 전에 종료됐습니다. (exit ${state.exitCode ?? 'unknown'})`);
       }
       const logPorts = portsFromLogs(await this.runtime.logs(containerId, { tail: 300 }));
+      lastLogPorts = logPorts;
       lastSocketPorts = await this.runtime.listeningPorts(containerId);
       if (requestedPort !== null) {
         if (lastSocketPorts.includes(requestedPort)) return requestedPort;
@@ -62,7 +64,8 @@ export class PreviewPortDetector {
     if (requestedPort !== null) {
       throw new PreviewPortDetectionError('PORT_DETECTION_TIMEOUT', `수동 지정 port ${requestedPort}에서 listening socket을 확인하지 못했습니다.`);
     }
-    const detail = lastSocketPorts.length > 1 ? ` listening ports: ${lastSocketPorts.join(', ')}` : '';
-    throw new PreviewPortDetectionError('PORT_DETECTION_TIMEOUT', `dev server port를 자동 감지하지 못했습니다.${detail} 수동 port를 지정하세요.`);
+    const logDetail = lastLogPorts.length ? lastLogPorts.join(',') : 'none';
+    const socketDetail = lastSocketPorts.length ? lastSocketPorts.join(',') : 'none';
+    throw new PreviewPortDetectionError('PORT_DETECTION_TIMEOUT', `dev server port를 자동 감지하지 못했습니다. (log_ports=${logDetail}, listening_ports=${socketDetail}) 수동 port를 지정하세요.`);
   }
 }
