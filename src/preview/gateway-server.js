@@ -1,4 +1,5 @@
 import http from 'node:http';
+import net from 'node:net';
 
 const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 const TARGET_PATTERN = /^agent-hub-preview-[a-z0-9_.-]{1,110}$/;
@@ -49,6 +50,22 @@ function unavailable(res, error) {
   res.end(statusCode === 404 ? 'Preview not found' : 'Preview unavailable');
 }
 
+function serializeUpgradeRequest(req, target) {
+  const headers = {
+    ...req.headers,
+    host: `${target.targetHost}:${target.targetPort}`,
+    connection: 'Upgrade',
+    upgrade: req.headers.upgrade || 'websocket',
+    'x-forwarded-host': req.headers.host,
+    'x-forwarded-proto': String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim()
+  };
+  const lines = Object.entries(headers).flatMap(([key, value]) => {
+    if (value === undefined) return [];
+    return (Array.isArray(value) ? value : [value]).map((item) => `${key}: ${item}`);
+  });
+  return `${req.method || 'GET'} ${req.url || '/'} HTTP/${req.httpVersion}\r\n${lines.join('\r\n')}\r\n\r\n`;
+}
+
 export function createPreviewGateway(config) {
   const logger = config.logger || console;
   const routedTargets = new Map();
@@ -59,6 +76,11 @@ export function createPreviewGateway(config) {
     routedTargets.set(hostname, value);
   };
   const server = http.createServer(async (req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+      res.end('OK');
+      return;
+    }
     let hostname = 'invalid';
     try {
       hostname = hostnameFromRequest(req);
@@ -90,20 +112,19 @@ export function createPreviewGateway(config) {
       hostname = hostnameFromRequest(req);
       const target = await resolveTarget(req, config);
       logRoute(hostname, target);
-      const headers = { ...req.headers, host: `${target.targetHost}:${target.targetPort}`, connection: 'Upgrade', upgrade: req.headers.upgrade || 'websocket' };
-      const upstream = http.request({ host: target.targetHost, port: target.targetPort, method: req.method, path: req.url, headers });
-      upstream.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
+      const connect = config.connect || net.connect;
+      const upstream = connect({ host: target.targetHost, port: target.targetPort }, () => {
         logger.log(`[Preview Gateway] WebSocket 연결: host=${hostname} target=${target.targetHost}:${target.targetPort}`);
-        socket.write(`HTTP/1.1 101 Switching Protocols\r\n${Object.entries(upstreamRes.headers).map(([key, value]) => `${key}: ${value}`).join('\r\n')}\r\n\r\n`);
-        if (head.length) upstreamSocket.write(head);
-        if (upstreamHead.length) socket.write(upstreamHead);
-        upstreamSocket.pipe(socket).pipe(upstreamSocket);
+        upstream.write(serializeUpgradeRequest(req, target));
+        if (head.length) upstream.write(head);
+        upstream.pipe(socket).pipe(upstream);
       });
       upstream.on('error', (error) => {
-        logger.error(`[Preview Gateway] WebSocket 연결 실패: host=${hostname} target=${target.targetHost}:${target.targetPort} error=${error.message}`);
-        socket.destroy();
+        logger.error(`[Preview Gateway] WebSocket 연결 실패: host=${hostname} path=${req.url} target=${target.targetHost}:${target.targetPort} code=${error.code || 'UNKNOWN'} error=${error.message}`);
+        if (!socket.destroyed) socket.end('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
       });
-      upstream.end();
+      socket.on('error', () => upstream.destroy());
+      socket.on('close', () => upstream.destroy());
     } catch (error) {
       logger.warn(`[Preview Gateway] WebSocket 라우팅 실패: host=${hostname} reason=${error.message}`);
       socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');

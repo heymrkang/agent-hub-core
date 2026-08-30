@@ -45,7 +45,6 @@ services:
       - agent-telegram
 
     # Dockerfile의 8787 헬스체크를 Gateway용으로 덮어쓴다.
-    # HTTP 상태가 503이어도 서버가 응답하면 프로세스는 살아 있는 것으로 본다.
     healthcheck:
       test:
         - CMD-SHELL

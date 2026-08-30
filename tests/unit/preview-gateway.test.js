@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import net from 'node:net';
 import { createPreviewGateway } from '../../src/preview/gateway-server.js';
 
 const token = 'test-token-that-is-at-least-32-characters-long';
@@ -56,4 +57,66 @@ test('Gateway는 내부 API가 거부한 hostname을 unavailable로 처리한다
     assert.equal(response.status, 404);
     assert.match(logs.at(-1), /라우팅 실패.*status=404/);
   } finally { await close(gateway); await close(routeApi); }
+});
+
+test('Gateway /health는 route API 없이 200을 응답한다', async () => {
+  let routeRequests = 0;
+  const routeApi = http.createServer((_req, res) => { routeRequests += 1; res.writeHead(500); res.end(); });
+  const routePort = await listen(routeApi);
+  const gateway = createPreviewGateway({ routeApi: `http://127.0.0.1:${routePort}`, token });
+  const gatewayPort = await listen(gateway);
+  try {
+    const response = await fetch(`http://127.0.0.1:${gatewayPort}/health`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'OK');
+    assert.equal(routeRequests, 0);
+  } finally { await close(gateway); await close(routeApi); }
+});
+
+test('Gateway는 WebSocket upgrade를 raw TCP로 중계한다', async () => {
+  const upstream = http.createServer();
+  let upgradedSocket;
+  upstream.on('upgrade', (req, socket, head) => {
+    upgradedSocket = socket;
+    assert.equal(req.url, '/_next/webpack-hmr');
+    assert.equal(req.headers['x-forwarded-host'], 'app-a31f.12190529.xyz');
+    socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');
+    if (head.length) socket.write(head);
+    socket.on('data', (data) => socket.write(data));
+  });
+  const upstreamPort = await listen(upstream);
+  const routeApi = http.createServer((_req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ targetHost: 'agent-hub-preview-preview-1', targetPort: upstreamPort }));
+  });
+  const routePort = await listen(routeApi);
+  const originalConnect = net.connect;
+  const gateway = createPreviewGateway({
+    routeApi: `http://127.0.0.1:${routePort}`,
+    token,
+    logger: { log() {}, warn() {}, error() {} },
+    connect: (options, callback) => originalConnect({ ...options, host: '127.0.0.1' }, callback)
+  });
+  const gatewayPort = await listen(gateway);
+  try {
+    await new Promise((resolve, reject) => {
+      const client = originalConnect({ host: '127.0.0.1', port: gatewayPort }, () => {
+        client.write('GET /_next/webpack-hmr HTTP/1.1\r\nHost: app-a31f.12190529.xyz\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGVzdA==\r\nSec-WebSocket-Version: 13\r\n\r\n');
+      });
+      let response = '';
+      client.on('data', (chunk) => {
+        response += chunk;
+        if (response.includes('\r\n\r\n')) {
+          assert.match(response, /^HTTP\/1\.1 101 Switching Protocols/);
+          client.destroy();
+          resolve();
+        }
+      });
+      client.on('error', reject);
+    });
+  } finally {
+    upgradedSocket?.destroy();
+    gateway.closeAllConnections();
+    await close(gateway); await close(routeApi); await close(upstream);
+  }
 });
