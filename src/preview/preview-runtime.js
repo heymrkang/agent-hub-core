@@ -52,8 +52,8 @@ function runtimeCommand(command, packageManager) {
   }
 
   const installCommands = {
-    npm: ['npm', 'ci'],
-    pnpm: ['corepack', 'pnpm', 'install', '--frozen-lockfile'],
+    npm: ['npm', 'ci', '--include=dev'],
+    pnpm: ['corepack', 'pnpm', 'install', '--frozen-lockfile', '--prod=false'],
     yarn: ['corepack', 'yarn', 'install', '--immutable']
   };
   const install = installCommands[packageManager];

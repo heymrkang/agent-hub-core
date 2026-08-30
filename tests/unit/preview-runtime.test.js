@@ -42,7 +42,7 @@ test('격리된 managed Preview container 생성 인자를 구성한다', async 
   const created = await docker.create({ preview, runtime });
   assert.equal(created.id, 'container-123');
   assert.deepEqual(created.command, [
-    'sh', '-c', 'corepack pnpm install --frozen-lockfile && exec "$@"',
+    'sh', '-c', 'corepack pnpm install --frozen-lockfile --prod=false && exec "$@"',
     'preview-runtime', 'corepack', 'pnpm', 'run', 'dev'
   ]);
   const create = fake.calls.find(([command]) => command === 'create');
@@ -56,7 +56,7 @@ test('격리된 managed Preview container 생성 인자를 구성한다', async 
 
 test('lockfile package manager별 재현 가능한 설치 후 dev command를 실행한다', async () => {
   for (const [packageManager, command, expected] of [
-    ['npm', { executable: 'npm', args: ['run', 'dev'] }, ['npm ci && exec "$@"', 'npm', 'run', 'dev']],
+    ['npm', { executable: 'npm', args: ['run', 'dev'] }, ['npm ci --include=dev && exec "$@"', 'npm', 'run', 'dev']],
     ['yarn', { executable: 'yarn', args: ['run', 'dev'] }, ['corepack yarn install --immutable && exec "$@"', 'corepack', 'yarn', 'run', 'dev']]
   ]) {
     const fake = dockerFake();
@@ -72,7 +72,7 @@ test('수동 override도 install 후 셸 문자열 보간 없이 실행한다', 
   const docker = new PreviewRuntime({ run: fake.run });
   const command = { executable: 'node', args: ['server.js', 'value with spaces', '$(touch /tmp/nope)'] };
   const created = await docker.create({ preview, runtime: { ...runtime, packageManager: 'npm', command } });
-  assert.equal(created.command[2], 'npm ci && exec "$@"');
+  assert.equal(created.command[2], 'npm ci --include=dev && exec "$@"');
   assert.deepEqual(created.command.slice(4), ['node', 'server.js', 'value with spaces', '$(touch /tmp/nope)']);
 });
 
