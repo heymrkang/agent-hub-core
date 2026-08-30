@@ -121,10 +121,14 @@ test('Gateway는 WebSocket upgrade를 raw TCP로 중계한다', async () => {
         client.write('GET /_next/webpack-hmr HTTP/1.1\r\nHost: app-a31f.12190529.xyz\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGVzdA==\r\nSec-WebSocket-Version: 13\r\n\r\n');
       });
       let response = '';
+      let handshakeComplete = false;
       client.on('data', (chunk) => {
         response += chunk;
-        if (response.includes('\r\n\r\n')) {
+        if (!handshakeComplete && response.includes('\r\n\r\n')) {
           assert.match(response, /^HTTP\/1\.1 101 Switching Protocols/);
+          handshakeComplete = true;
+          client.write('ping');
+        } else if (handshakeComplete && response.endsWith('ping')) {
           client.destroy();
           resolve();
         }
