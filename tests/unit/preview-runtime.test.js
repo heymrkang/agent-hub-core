@@ -30,7 +30,7 @@ function dockerFake({ imagePresent = true, managed = true, coreMount = null } = 
   return { calls, run };
 }
 
-const preview = { id: 'preview-1', session_id: 'session-1' };
+const preview = { id: 'preview-1', session_id: 'session-1', public_hostname: 'preview-app-a31f.12190529.xyz' };
 const runtime = {
   projectPath: '/home/dev/workspace/app', packageManager: 'pnpm',
   command: { executable: 'pnpm', args: ['run', 'dev'] }
@@ -50,6 +50,8 @@ test('격리된 managed Preview container 생성 인자를 구성한다', async 
   assert.ok(create.includes('agent-hub.type=preview'));
   assert.ok(create.includes('agent-hub.preview-id=preview-1'));
   assert.ok(create.some((value, index) => value === 'CI=true' && create[index - 1] === '--env'));
+  assert.ok(create.some((value, index) => value === '__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=preview-app-a31f.12190529.xyz' && create[index - 1] === '--env'));
+  assert.ok(create.some((value, index) => value === '/tmp:rw,exec,nosuid,nodev,size=256m' && create[index - 1] === '--tmpfs'));
   assert.ok(create.includes('type=bind,source=/home/dev/workspace/app,target=/workspace'));
   assert.equal(create.some((value) => value.includes('docker.sock') || value.includes('/root/.codex') || value.includes('/data/ssh')), false);
   assert.ok(fake.calls.some(([a]) => a === 'pull'));

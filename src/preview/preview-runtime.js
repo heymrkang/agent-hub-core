@@ -120,9 +120,12 @@ export class PreviewRuntime {
       '--network-alias', name,
       '--workdir', '/workspace',
       '--mount', `type=bind,source=${bindSource},target=/workspace`,
-      '--tmpfs', '/tmp:rw,noexec,nosuid,size=256m',
+      // Yarn Berry creates executable shims below /tmp. A noexec tmpfs makes
+      // valid Yarn projects fail with "permission denied" before dev starts.
+      '--tmpfs', '/tmp:rw,exec,nosuid,nodev,size=256m',
       '--env', 'HOME=/tmp',
       '--env', 'CI=true',
+      '--env', `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=${preview.public_hostname}`,
       '--label', 'agent-hub.managed=true',
       '--label', 'agent-hub.type=preview',
       '--label', `agent-hub.preview-id=${previewId}`,

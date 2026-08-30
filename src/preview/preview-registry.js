@@ -168,7 +168,7 @@ export class PreviewRegistry {
       throw new PreviewRegistryError('INVALID_PORT', `올바르지 않은 Preview port: ${nextPort}`);
     }
     this.db.prepare(`UPDATE previews SET container_id=?,command=?,package_manager=?,port=?,updated_at=datetime('now') WHERE id=?`)
-      .run(containerId ?? current.container_id, command ?? current.command, packageManager ?? current.package_manager, nextPort, id);
+      .run(containerId === undefined ? current.container_id : containerId, command ?? current.command, packageManager ?? current.package_manager, nextPort, id);
     return this.getById(id);
   }
 

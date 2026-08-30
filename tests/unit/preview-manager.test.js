@@ -6,7 +6,7 @@ function registryFake() {
   let preview = { id: 'preview-1', session_id: 'session-1', status: 'STARTING', container_id: null, port: null };
   return {
     create: () => preview,
-    updateRuntime: (_id, values) => (preview = { ...preview, container_id: values.containerId ?? preview.container_id, port: values.port ?? preview.port }),
+    updateRuntime: (_id, values) => (preview = { ...preview, container_id: values.containerId === undefined ? preview.container_id : values.containerId, port: values.port ?? preview.port }),
     updateStatus: (_id, status, options = {}) => (preview = { ...preview, status, failure_reason: options.failureReason ?? null }),
     require: () => preview,
     touchActivity: () => (preview = { ...preview, touched: true }),
@@ -71,13 +71,16 @@ test('logs는 tail을 제한해 조회하고 activity를 갱신한다', async ()
 test('start 또는 port 감지 실패를 FAILED로 기록한다', async () => {
   const registry = registryFake();
   const messages = [];
-  const runtime = { create: async () => ({ id: 'container-1', command: [] }), start: async () => ({ running: true }), logs: async () => '\u001b[31mpnpm confirmation prompt\u001b[0m' };
+  const removed = [];
+  const runtime = { create: async () => ({ id: 'container-1', command: [] }), start: async () => ({ running: true }), logs: async () => '\u001b[31mpnpm confirmation prompt\u001b[0m', remove: async (id, options) => removed.push([id, options]) };
   const manager = new PreviewManager({ registry, runtime, portDetector: { detect: async () => { throw new Error('port timeout'); } }, logger: { log: () => {}, error: (message) => messages.push(message) } });
   await assert.rejects(() => manager.start({ sessionId: 'session-1', detectedRuntime }), /port timeout/);
   assert.equal(registry.value().status, 'FAILED');
   assert.match(registry.value().failure_reason, /port timeout/);
   assert.match(messages[0], /stage=port_detection/);
   assert.match(messages[1], /pnpm confirmation prompt/);
+  assert.deepEqual(removed, [['container-1', { force: true }]]);
+  assert.equal(registry.value().container_id, null);
 });
 
 test('종료된 dev server를 reconcile하면 FAILED 처리한다', async () => {

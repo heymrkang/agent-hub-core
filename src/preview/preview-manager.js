@@ -50,6 +50,13 @@ export class PreviewManager {
         } catch (logError) {
           this.logger.error(`[Preview] 실패 로그 조회 불가: preview=${preview.id} error=${String(logError?.message || logError)}`);
         }
+        try {
+          await this.runtime.remove(preview.container_id, { force: true });
+          this.registry.updateRuntime(preview.id, { containerId: null });
+          this.logger.log(`[Preview] 실패 컨테이너 정리 완료: preview=${preview.id} container=${preview.container_id}`);
+        } catch (cleanupError) {
+          this.logger.error(`[Preview] 실패 컨테이너 정리 불가: preview=${preview.id} container=${preview.container_id} error=${String(cleanupError?.message || cleanupError)}`);
+        }
       }
       throw error;
     }
