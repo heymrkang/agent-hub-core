@@ -41,7 +41,10 @@ test('격리된 managed Preview container 생성 인자를 구성한다', async 
   const docker = new PreviewRuntime({ run: fake.run });
   const created = await docker.create({ preview, runtime });
   assert.equal(created.id, 'container-123');
-  assert.deepEqual(created.command, ['corepack', 'pnpm', 'run', 'dev']);
+  assert.deepEqual(created.command, [
+    'sh', '-c', 'corepack pnpm install --frozen-lockfile && exec "$@"',
+    'preview-runtime', 'corepack', 'pnpm', 'run', 'dev'
+  ]);
   const create = fake.calls.find(([command]) => command === 'create');
   assert.ok(create.includes('agent-hub.managed=true'));
   assert.ok(create.includes('agent-hub.type=preview'));
@@ -49,6 +52,28 @@ test('격리된 managed Preview container 생성 인자를 구성한다', async 
   assert.ok(create.includes('type=bind,source=/home/dev/workspace/app,target=/workspace'));
   assert.equal(create.some((value) => value.includes('docker.sock') || value.includes('/root/.codex') || value.includes('/data/ssh')), false);
   assert.ok(fake.calls.some(([a]) => a === 'pull'));
+});
+
+test('lockfile package manager별 재현 가능한 설치 후 dev command를 실행한다', async () => {
+  for (const [packageManager, command, expected] of [
+    ['npm', { executable: 'npm', args: ['run', 'dev'] }, ['npm ci && exec "$@"', 'npm', 'run', 'dev']],
+    ['yarn', { executable: 'yarn', args: ['run', 'dev'] }, ['corepack yarn install --immutable && exec "$@"', 'corepack', 'yarn', 'run', 'dev']]
+  ]) {
+    const fake = dockerFake();
+    const docker = new PreviewRuntime({ run: fake.run });
+    const created = await docker.create({ preview, runtime: { ...runtime, packageManager, command } });
+    assert.equal(created.command[2], expected[0]);
+    assert.deepEqual(created.command.slice(4), expected.slice(1));
+  }
+});
+
+test('수동 override도 install 후 셸 문자열 보간 없이 실행한다', async () => {
+  const fake = dockerFake();
+  const docker = new PreviewRuntime({ run: fake.run });
+  const command = { executable: 'node', args: ['server.js', 'value with spaces', '$(touch /tmp/nope)'] };
+  const created = await docker.create({ preview, runtime: { ...runtime, packageManager: 'npm', command } });
+  assert.equal(created.command[2], 'npm ci && exec "$@"');
+  assert.deepEqual(created.command.slice(4), ['node', 'server.js', 'value with spaces', '$(touch /tmp/nope)']);
 });
 
 test('managed label 확인 후 lifecycle과 logs를 실행한다', async () => {

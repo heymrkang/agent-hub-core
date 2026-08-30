@@ -37,16 +37,33 @@ export function previewContainerName(previewId) {
   return `agent-hub-preview-${previewId.toLowerCase().replace(/[^a-z0-9_.-]/g, '-')}`.slice(0, 128);
 }
 
+function packageManagerCommand(executable, args) {
+  if (executable === 'pnpm' || executable === 'yarn') {
+    return ['corepack', executable, ...args];
+  }
+  return [executable, ...args];
+}
+
 function runtimeCommand(command, packageManager) {
   const executable = requireText(command?.executable, '실행 명령');
   const args = command?.args ?? [];
   if (!Array.isArray(args) || args.some((arg) => typeof arg !== 'string')) {
     throw new PreviewRuntimeError('INVALID_INPUT', '실행 명령 인자는 문자열 배열이어야 합니다.');
   }
-  if (packageManager === 'pnpm' || packageManager === 'yarn') {
-    return ['corepack', packageManager, ...args];
+
+  const installCommands = {
+    npm: ['npm', 'ci'],
+    pnpm: ['corepack', 'pnpm', 'install', '--frozen-lockfile'],
+    yarn: ['corepack', 'yarn', 'install', '--immutable']
+  };
+  const install = installCommands[packageManager];
+  if (!install) {
+    throw new PreviewRuntimeError('INVALID_INPUT', `지원하지 않는 package manager입니다: ${packageManager}`);
   }
-  return [executable, ...args];
+
+  const development = packageManagerCommand(executable, args);
+  const script = `${install.join(' ')} && exec "$@"`;
+  return ['sh', '-c', script, 'preview-runtime', ...development];
 }
 
 export class PreviewRuntime {

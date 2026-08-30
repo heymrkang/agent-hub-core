@@ -29,7 +29,7 @@ export function portsFromLogs(logs) {
 }
 
 export class PreviewPortDetector {
-  constructor({ runtime, timeoutMs = 60_000, pollIntervalMs = 500 } = {}) {
+  constructor({ runtime, timeoutMs = 300_000, pollIntervalMs = 500 } = {}) {
     if (!runtime) throw new PreviewPortDetectionError('INVALID_RUNTIME', 'Preview Runtime이 필요합니다.');
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1) throw new PreviewPortDetectionError('INVALID_TIMEOUT', '감지 timeout은 1ms 이상이어야 합니다.');
     if (!Number.isInteger(pollIntervalMs) || pollIntervalMs < 1) throw new PreviewPortDetectionError('INVALID_INTERVAL', '감지 주기는 1ms 이상이어야 합니다.');

@@ -1,6 +1,6 @@
 # Phase 13: Mobile Preview Runtime & Preview Manager
 
-**Status: IN PROGRESS (13-7 complete, deployment E2E pending)**
+**Status: IN PROGRESS (13-7 complete, dependency install and deployment E2E pending)**
 
 ## 1. 목표
 
@@ -226,6 +226,20 @@ Agent/Preview Manager는 가능한 경우 다음을 자동 처리한다.
 - `package.json`의 `scripts.dev` 우선 확인
 
 자동 감지가 불가능하거나 모호하면 추정 실행하지 않고 사용자에게 명확한 선택/override를 요청한다.
+
+Preview 시작 및 container 재시작 시에는 dev server 실행 전에 감지된 lockfile 기준으로 재현 가능한 의존성 설치를 수행한다.
+
+```text
+package-lock.json → npm ci
+pnpm-lock.yaml    → corepack pnpm install --frozen-lockfile
+yarn.lock         → corepack yarn install --immutable
+```
+
+- 설치 성공 후에만 `run dev` 또는 사용자가 지정한 override 명령을 실행한다.
+- pnpm/yarn 버전은 Corepack을 통해 `package.json`의 `packageManager` 선언을 우선 적용한다.
+- install 출력과 dev server 출력은 같은 Preview container log에 남긴다.
+- install 실패는 container 종료 및 Preview `FAILED` 상태로 처리한다.
+- 최초 설치 시간을 고려해 listening port 감지 timeout 기본값은 5분으로 둔다.
 
 ## 11. Port 자동 감지
 
@@ -581,6 +595,8 @@ Dockerfile / docker runtime related files
 - [ ] Next.js 프로젝트 Preview 생성 성공.
 - [ ] Vite 계열 프로젝트 Preview 생성 성공.
 - [ ] package manager 자동 감지.
+- [ ] npm/pnpm/yarn lockfile 기반 dependency install 후 dev server 실행.
+- [ ] dependency install 실패 시 Preview FAILED 및 install 로그 확인.
 - [ ] dev command 자동 감지.
 - [ ] 3000이 사용 중인 상황에서도 실제 변경 port 자동 감지.
 - [ ] 자동 port 감지 실패 시 명확한 fallback/error.
