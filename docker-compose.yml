@@ -45,10 +45,9 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: coolify
-      # Exact-host Coolify routes keep precedence over this catch-all preview route.
       traefik.http.routers.agent-hub-preview.priority: "1"
       traefik.http.routers.agent-hub-preview.entrypoints: http
-      traefik.http.routers.agent-hub-preview.rule: "HostRegexp(`[a-z0-9-]+\\.${PREVIEW_DOMAIN:-12190529.xyz}`)"
+      traefik.http.routers.agent-hub-preview.rule: 'HostRegexp(`[a-z0-9-]+\.12190529\.xyz`)'
       traefik.http.routers.agent-hub-preview.service: agent-hub-preview
       traefik.http.services.agent-hub-preview.loadbalancer.server.port: "8080"
     networks:
