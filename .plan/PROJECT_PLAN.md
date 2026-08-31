@@ -111,5 +111,8 @@ Agent Hub Core
 - Phase 12: 중복 범위로 스킵
 - Phase 13: Mobile Preview Runtime & Preview Manager — 완료
 - Phase 14: System & Resource Observability — 다음 작업
+- Phase 16: Feature Stabilization & Optimization — 계획 완료
+- Phase 17: Backend API Preview & Inspector — 계획 완료
+- Phase 18: Agent Extensibility — MCP & Skills — 계획 완료
 
-상세 범위는 `ROADMAP.md`, `PHASE_13_PREVIEW_MANAGER.md`, `PHASE_14_SYSTEM_RESOURCES.md`를 따른다.
+상세 범위와 실행 순서는 `ROADMAP.md` 및 `PHASE_16_STABILITY_OPTIMIZATION.md`, `PHASE_17_BACKEND_API_PREVIEW.md`, `PHASE_18_MCP_SKILLS.md`를 따른다.

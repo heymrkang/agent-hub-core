@@ -55,6 +55,9 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 12 | Backup/Recovery/Hardening 중복 계획 | `SKIPPED / SUPERSEDED` | Phase 10~11에서 구현·검증 완료된 범위와 중복되어 별도 구현하지 않음 |
 | Phase 13 | Mobile Preview Runtime & Preview Manager | `DONE` | 2026-08-31 모바일 개발 루프 E2E 완료 |
 | Phase 14 | System & Resource Observability (`/system`) | `PLANNED` | 다음 신규 기능 Phase |
+| Phase 16 | Feature Stabilization & Optimization | `PLANNED` | Canonical Compact, Model Thinking, Provider Usage/Quota |
+| Phase 17 | Backend API Preview & Inspector | `PLANNED` | NestJS/OpenAPI 기반 API Preview와 개발 데이터 보안 경계 |
+| Phase 18 | Agent Extensibility — MCP & Skills | `PLANNED` | Provider native MCP/Skills 조회·관리·인증·권한 정책 |
 
 ### Phase 12를 스킵하는 이유
 
@@ -69,6 +72,20 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 `PHASE_14_SYSTEM_RESOURCES.md`를 기준으로 `/system` 명령어와 System & Resource Observability를 구현한다.
 
 `/system`은 `/status`와 분리된 read-only 관찰/진단 기능이며 destructive Docker/host control을 포함하지 않는다.
+
+### Phase 16
+
+`PHASE_16_STABILITY_OPTIMIZATION.md`를 기준으로 Agent Hub Canonical Context Compact, Provider별 Model Reasoning/Thinking Level, Codex/Antigravity Usage/Quota 조회를 구현한다.
+
+### Phase 17
+
+`PHASE_17_BACKEND_API_PREVIEW.md`를 기준으로 기존 Preview Manager를 NestJS/OpenAPI 백엔드까지 확장한다. Cloudflare Access와 개발 DB 격리를 외부 API Preview URL의 필수 조건으로 둔다.
+
+### Phase 18
+
+`PHASE_18_MCP_SKILLS.md`를 기준으로 Codex/Antigravity native MCP와 Skills를 조회·사용하고, 이후 설치·인증·외부 side effect 권한 관리까지 단계적으로 확장한다.
+
+Phase 15의 상세 범위와 순서는 별도 합의 전까지 임의로 만들지 않는다.
 
 ## 5. Known Operational Notes
 
@@ -87,6 +104,9 @@ Phase 0 ~ 11: DONE
 Phase 12: SKIPPED / SUPERSEDED
 Phase 13: DONE — Mobile Preview Runtime & Preview Manager
 Phase 14: NEXT — /system System & Resource Observability
+Phase 16: PLANNED — Stability & Optimization
+Phase 17: PLANNED — Backend API Preview & Inspector
+Phase 18: PLANNED — MCP & Skills
 Development root: /home/dev
 Git repositories: /home/dev/workspace
 ```

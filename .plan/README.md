@@ -13,6 +13,9 @@
 
 - `PHASE_13_PREVIEW_MANAGER.md`: `DONE` — Mobile Preview Runtime & Preview Manager
 - `PHASE_14_SYSTEM_RESOURCES.md`: 다음 구현 Phase
+- `PHASE_16_STABILITY_OPTIMIZATION.md`: `PLANNED` — Canonical Compact, Thinking 설정, Provider Usage/Quota
+- `PHASE_17_BACKEND_API_PREVIEW.md`: `PLANNED` — NestJS/OpenAPI Backend API Preview & Inspector
+- `PHASE_18_MCP_SKILLS.md`: `PLANNED` — Codex/Antigravity MCP & Skills 조회·관리·권한
 
 ## 보관 문서
 
