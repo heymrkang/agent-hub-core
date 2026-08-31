@@ -1,6 +1,8 @@
 # Phase 13: Mobile Preview Runtime & Preview Manager
 
-**Status: IN PROGRESS (13-7 complete, dependency install and deployment E2E pending)**
+**Status: DONE — 2026-08-31**
+
+실제 홈서버 배포 환경에서 Telegram 자연어 요청부터 코드 수정, Preview 생성, 모바일 확인, 후속 수정과 HMR 반영까지 완료했다. Next.js(npm/pnpm), Vite(npm), Vite(Yarn 4) 개발 루프와 외부 HTTP/WebSocket 경로를 검증했다.
 
 ## 1. 목표
 
@@ -463,15 +465,15 @@ Gateway는 DB를 직접 공유하지 않고 Core의 내부 전용 Registry API�
 - [x] Agent Hub managed label이 없는 container 자동 삭제 차단.
 - [x] Preview cleanup 실패 Structured Logging 및 System Job 알림 경로 연결.
 
-### 배포 E2E 준비 상태
+### 배포 E2E 완료 상태
 
 - [x] `*.12190529.xyz` DNS/Tunnel 요청이 Cloudflare를 거쳐 Coolify Traefik까지 도달함을 확인.
 - [x] Preview Gateway 전용 Traefik `HostRegexp` router와 Coolify network 연결 구성.
 - [x] 호스트 port publish 없이 Cloudflare Tunnel → Traefik → Gateway 경계 유지.
 - [x] 실제 hostname을 검사하는 `scripts/verify-preview-ingress.sh` 추가.
-- [ ] 기존 Coolify Dockerfile Application을 Docker Compose 리소스로 전환 후 배포.
-- [ ] 실제 Preview를 생성해 외부 HTTP 및 HMR WebSocket E2E 검증.
-- [ ] Telegram 요청 → 수정 → Preview 확인 → 후속 수정 모바일 루프 검증.
+- [x] 기존 Coolify Dockerfile Application을 Docker Compose 리소스로 전환 후 배포.
+- [x] 실제 Preview를 생성해 외부 HTTP 및 HMR WebSocket E2E 검증.
+- [x] Telegram 요청 → 수정 → Preview 확인 → 후속 수정 모바일 루프 검증.
 
 ## 16. Telegram UX 방향
 
@@ -592,34 +594,40 @@ Dockerfile / docker runtime related files
 
 ## 23. 테스트 / 검증 기준
 
-- [ ] Next.js 프로젝트 Preview 생성 성공.
-- [ ] Vite 계열 프로젝트 Preview 생성 성공.
-- [ ] package manager 자동 감지.
-- [ ] npm/pnpm/yarn lockfile 기반 dependency install 후 dev server 실행.
-- [ ] dependency install 실패 시 Preview FAILED 및 install 로그 확인.
-- [ ] dev command 자동 감지.
-- [ ] 3000이 사용 중인 상황에서도 실제 변경 port 자동 감지.
-- [ ] 자동 port 감지 실패 시 명확한 fallback/error.
-- [ ] Preview Container가 Agent Hub Core와 분리되어 실행.
-- [ ] Preview Container에 Docker socket/SSH private key/Provider credential이 전달되지 않음.
-- [ ] 프로젝트명 + 랜덤 ID hostname 생성.
-- [ ] `*.12190529.xyz` ingress를 통해 모바일 외부 접속 성공.
-- [ ] Preview 생성/삭제마다 Cloudflare Tunnel 또는 Traefik route를 개별 수정하지 않음.
-- [ ] 최대 3개 동시 Preview 제한.
-- [ ] Preview 3개가 서로 독립적으로 실행/종료됨.
-- [ ] Session 전환 후에도 Preview 유지.
-- [ ] `/preview`에서 상태 확인.
-- [ ] start/stop/restart/logs 동작.
-- [ ] Preview URL 접근 시 `last_activity_at` 갱신.
-- [ ] 24시간 Idle TTL 정책 동작.
-- [ ] `/settings` Preview timeout 영속화.
-- [ ] dev server crash 시 FAILED 감지.
-- [ ] stop/expire 후 public URL이 더 이상 해당 dev server로 proxy되지 않음.
-- [ ] orphan cleanup이 Agent Hub managed container만 대상으로 함.
-- [ ] Telegram 자연어 요청으로 Preview 생성 가능.
-- [ ] Stealth UI에서도 Preview command UI가 기존 정책대로 렌더링.
-- [ ] LLM 일반 답변은 Preview UI/Stealth 처리로 변조되지 않음.
-- [ ] Agent Hub Core health가 Preview 하나의 crash로 unhealthy가 되지 않음.
+- [x] Next.js 프로젝트 Preview 생성 성공.
+- [x] Vite 계열 프로젝트 Preview 생성 성공.
+- [x] package manager 자동 감지.
+- [x] npm/pnpm/yarn lockfile 기반 dependency install 후 dev server 실행.
+- [x] dependency install 실패 시 Preview FAILED 및 install 로그 확인.
+- [x] dev command 자동 감지.
+- [x] 3000이 사용 중인 상황에서도 실제 변경 port 자동 감지.
+- [x] 자동 port 감지 실패 시 명확한 fallback/error.
+- [x] Preview Container가 Agent Hub Core와 분리되어 실행.
+- [x] Preview Container에 Docker socket/SSH private key/Provider credential이 전달되지 않음.
+- [x] 프로젝트명 + 랜덤 ID hostname 생성.
+- [x] `*.12190529.xyz` ingress를 통해 모바일 외부 접속 성공.
+- [x] Preview 생성/삭제마다 Cloudflare Tunnel 또는 Traefik route를 개별 수정하지 않음.
+- [x] 최대 3개 동시 Preview 제한.
+- [x] Preview 3개가 서로 독립적으로 실행/종료됨.
+- [x] Session 전환 후에도 Preview 유지.
+- [x] `/preview`에서 상태 확인.
+- [x] start/stop/restart/logs 동작.
+- [x] Preview URL 접근 시 `last_activity_at` 갱신.
+- [x] 24시간 Idle TTL 정책 동작.
+- [x] `/settings` Preview timeout 영속화.
+- [x] dev server crash 시 FAILED 감지.
+- [x] stop/expire 후 public URL이 더 이상 해당 dev server로 proxy되지 않음.
+- [x] orphan cleanup이 Agent Hub managed container만 대상으로 함.
+- [x] Telegram 자연어 요청으로 Preview 생성 가능.
+- [x] Stealth UI에서도 Preview command UI가 기존 정책대로 렌더링.
+- [x] LLM 일반 답변은 Preview UI/Stealth 처리로 변조되지 않음.
+- [x] Agent Hub Core health가 Preview 하나의 crash로 unhealthy가 되지 않음.
+
+검증 판정:
+
+- 실제 운영 검증: Preview 관리 동작, 동시 실행 제한, 독립 종료, crash 격리, 세션/재배포 유지, 외부 HTTP/HMR, 최종 모바일 자연어 E2E.
+- 자동 테스트와 구현 검토: Idle TTL, 설정 영속화, managed orphan 정리, Preview Container credential/mount 격리.
+- 최종 회귀: 61개 중 60개 통과, 실패 0개, 외부 Live E2E 1개는 선택 실행 항목으로 skip.
 
 ## 24. Phase 완료 정의
 
@@ -643,4 +651,8 @@ Telegram에서 후속 수정
 기존 Preview에서 변경 결과 확인
 ```
 
-이 Phase까지 완료되면 Agent Hub Core V1은 **모바일에서 요청 → 코딩 → 실행 → 외부 확인 → 반복 수정**이 가능한 end-to-end Mobile Vibe Coding 환경을 제공하는 것을 목표로 한다.
+Phase 13 완료로 Agent Hub Core V1은 **모바일에서 요청 → 코딩 → 실행 → 외부 확인 → 반복 수정**이 가능한 end-to-end Mobile Vibe Coding 환경을 제공한다.
+
+## 25. 완료 판정
+
+2026-08-31 기준 완료 정의의 전체 모바일 개발 루프를 실제 배포 환경에서 통과했다. Next.js HMR의 동적 origin 문제까지 수정·재검증했으며 Phase 13을 `DONE`으로 종료한다.

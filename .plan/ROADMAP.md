@@ -53,8 +53,8 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase | 단계명 | 상태 | 비고 |
 |---|---|---|---|
 | Phase 12 | Backup/Recovery/Hardening 중복 계획 | `SKIPPED / SUPERSEDED` | Phase 10~11에서 구현·검증 완료된 범위와 중복되어 별도 구현하지 않음 |
-| Phase 13 | Mobile Preview Runtime & Preview Manager | `PLANNED` | 다음 신규 기능 개발 Phase |
-| Phase 14 | System & Resource Observability (`/system`) | `PLANNED` | Host/CPU/RAM/Disk/Docker read-only observability |
+| Phase 13 | Mobile Preview Runtime & Preview Manager | `DONE` | 2026-08-31 모바일 개발 루프 E2E 완료 |
+| Phase 14 | System & Resource Observability (`/system`) | `PLANNED` | 다음 신규 기능 Phase |
 
 ### Phase 12를 스킵하는 이유
 
@@ -62,7 +62,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ### Phase 13
 
-`PHASE_13_PREVIEW_MANAGER.md`를 기준으로 Mobile Preview Runtime & Preview Manager를 구현한다. V1은 이미 release 되었으며 Phase 13은 post-V1 첫 신규 기능이다.
+`PHASE_13_PREVIEW_MANAGER.md`의 Mobile Preview Runtime & Preview Manager 구현과 실제 홈서버 배포 검증을 완료했다. Telegram 자연어 요청 → 코드 수정 → Preview 생성 → 모바일 확인 → 후속 수정 → HMR 반영 루프를 통과했다.
 
 ### Phase 14
 
@@ -85,8 +85,8 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 V1 Released
 Phase 0 ~ 11: DONE
 Phase 12: SKIPPED / SUPERSEDED
-Phase 13: NEXT — Mobile Preview Runtime & Preview Manager
-Phase 14: PLANNED — /system System & Resource Observability
+Phase 13: DONE — Mobile Preview Runtime & Preview Manager
+Phase 14: NEXT — /system System & Resource Observability
 Development root: /home/dev
 Git repositories: /home/dev/workspace
 ```

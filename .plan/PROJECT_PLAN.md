@@ -109,7 +109,7 @@ Agent Hub Core
 
 - Phase 0~11: 완료
 - Phase 12: 중복 범위로 스킵
-- Phase 13: Mobile Preview Runtime & Preview Manager — 다음 작업
-- Phase 14: System & Resource Observability — 계획
+- Phase 13: Mobile Preview Runtime & Preview Manager — 완료
+- Phase 14: System & Resource Observability — 다음 작업
 
 상세 범위는 `ROADMAP.md`, `PHASE_13_PREVIEW_MANAGER.md`, `PHASE_14_SYSTEM_RESOURCES.md`를 따른다.

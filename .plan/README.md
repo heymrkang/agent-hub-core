@@ -1,6 +1,6 @@
 # Agent Hub Planning Index
 
-`.plan` 루트에는 현재 기준과 미착수 계획만 둔다. 완료되거나 대체된 계획과 감사 기록은 `archive/v1`에서 보존한다.
+`.plan` 루트에는 현재 기준, post-V1 완료 기록과 미착수 계획을 둔다. V1 완료·대체 계획과 감사 기록은 `archive/v1`에서 보존한다.
 
 ## 현재 기준
 
@@ -9,10 +9,10 @@
 - `CAPABILITIES_CODEX.md`: 고정 Codex CLI capability baseline
 - `CAPABILITIES_ANTIGRAVITY.md`: 고정 Antigravity CLI capability baseline
 
-## 다음 작업
+## Post-V1 Phase
 
-- `PHASE_13_PREVIEW_MANAGER.md`: 다음 구현 Phase
-- `PHASE_14_SYSTEM_RESOURCES.md`: Phase 13 이후 계획
+- `PHASE_13_PREVIEW_MANAGER.md`: `DONE` — Mobile Preview Runtime & Preview Manager
+- `PHASE_14_SYSTEM_RESOURCES.md`: 다음 구현 Phase
 
 ## 보관 문서
 
