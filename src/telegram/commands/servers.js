@@ -7,6 +7,16 @@ function esc(value) { return String(value || '').replace(/([_*`\[])/g, '\\$1'); 
 function icon(normal, stealth = '') { return isStealthMode() ? stealth : normal; }
 function status(enabled) { return enabled ? (isStealthMode() ? '[ON]' : '●') : (isStealthMode() ? '[OFF]' : '○'); }
 
+export function serverRegistrationHelp() {
+  return `**서버 추가 방법**\n` +
+    `1. Private Key를 \`${SSH_KEYS_DIR}\`에 배치\n` +
+    `2. Key 파일명 확인: \`/server keys\`\n` +
+    `3. 등록: \`/server add <alias> <host> <user> <keyfile> [port]\`\n` +
+    `   예: \`/server add dev 192.168.0.10 ubuntu dev.key 22\`\n` +
+    `4. 연결 확인: \`/server test dev\`\n\n` +
+    `_Private Key 내용은 DB에 저장하지 않습니다._`;
+}
+
 async function renderServers(bot, source) {
   const chatId = source.chat ? source.chat.id : source.message.chat.id;
   const userId = source.from.id;
@@ -15,9 +25,10 @@ async function renderServers(bot, source) {
   let text = `${icon('🖥 ', '■ ')}**SSH Servers**\n\n`;
   text += `Key 경로: \`${SSH_KEYS_DIR}\`\n`;
   text += `사용 가능한 Private Key: ${keys.length ? keys.map((k) => `\`${esc(k)}\``).join(', ') : '_없음_'}\n`;
-  text += `_Private Key는 persistent volume에 직접 배치하며 Agent Hub는 Key 내용을 DB에 저장하지 않습니다._\n\n`;
-  if (!hosts.length) text += `등록된 서버가 없습니다.\n\n추가: \`/servers add <alias> <host> <user> <keyfile> [port]\``;
-  else text += hosts.map((h, i) => `${i + 1}. ${status(h.enabled)} **${esc(h.alias)}** — ${esc(h.username)}@${esc(h.host)}:${h.port}`).join('\n');
+  text += hosts.length
+    ? `${hosts.map((h, i) => `${i + 1}. ${status(h.enabled)} **${esc(h.alias)}** — ${esc(h.username)}@${esc(h.host)}:${h.port}`).join('\n')}\n\n`
+    : `등록된 서버가 없습니다.\n\n`;
+  text += serverRegistrationHelp();
 
   const keyboard = hosts.slice(0, 12).map((h) => ([{ text: `${status(h.enabled)} ${h.alias}`, callback_data: `server_info:${h.alias}` }]));
   keyboard.push([{ text: `${icon('↻ ', '')}새로고침`, callback_data: 'server_list' }]);
@@ -29,7 +40,7 @@ async function renderServers(bot, source) {
 async function showServer(bot, q, alias) {
   const host = SshManager.getHost(q.from.id, alias);
   if (!host) { await bot.answerCallbackQuery(q.id, { text: '서버를 찾을 수 없습니다.' }); return; }
-  const text = `${icon('🖥 ', '■ ')}**${esc(host.alias)}**\n\n상태: ${host.enabled ? '활성' : '비활성'}\n주소: \`${esc(host.username)}@${esc(host.host)}:${host.port}\`\nKey: \`${esc(path.basename(host.identity_file))}\`\n\n수정: \`/servers edit ${esc(host.alias)} <host> <user> <keyfile> [port]\``;
+  const text = `${icon('🖥 ', '■ ')}**${esc(host.alias)}**\n\n상태: ${host.enabled ? '활성' : '비활성'}\n주소: \`${esc(host.username)}@${esc(host.host)}:${host.port}\`\nKey: \`${esc(path.basename(host.identity_file))}\`\n\n수정: \`/server edit ${esc(host.alias)} <host> <user> <keyfile> [port]\``;
   const keyboard = [
     [{ text: `${icon('🔌 ', '')}연결 테스트`, callback_data: `server_test:${host.alias}` }],
     [{ text: host.enabled ? `${icon('⏸ ', '')}비활성화` : `${icon('▶ ', '')}활성화`, callback_data: `server_toggle:${host.alias}` }],
@@ -45,11 +56,11 @@ export async function handleServersCommand(bot, msg, args = '') {
   try {
     if (!action) return renderServers(bot, msg);
     if (action === 'keys') { const keys = SshManager.listKeyFiles(); await bot.sendMessage(chatId, keys.length ? `${icon('🔑 ', '■ ')}사용 가능한 SSH Private Key\n\n${keys.map((k) => `• ${k}`).join('\n')}` : `SSH Private Key가 없습니다.\n${SSH_KEYS_DIR}에 Key 파일을 직접 배치해주세요.`); return; }
-    if (action === 'add') { const [alias, host, username, keyfile, port = '22'] = parts; if (!alias || !host || !username || !keyfile) return bot.sendMessage(chatId, '사용법: `/servers add <alias> <host> <user> <keyfile> [port]`', { parse_mode: 'Markdown' }); const created = SshManager.addHost(userId, { alias, host, username, identityFile: keyfile, port: Number(port) }); await bot.sendMessage(chatId, `${icon('✅ ', '[OK] ')}SSH 서버 등록: **${esc(created.alias)}**`, { parse_mode: 'Markdown' }); return renderServers(bot, msg); }
-    if (action === 'edit') { const [alias, host, username, keyfile, port = '22'] = parts; if (!alias || !host || !username || !keyfile) return bot.sendMessage(chatId, '사용법: `/servers edit <alias> <host> <user> <keyfile> [port]`', { parse_mode: 'Markdown' }); const updated = SshManager.updateHost(userId, alias, { host, username, identityFile: keyfile, port: Number(port) }); await bot.sendMessage(chatId, `${icon('✅ ', '[OK] ')}SSH 서버 수정: **${esc(updated.alias)}**`, { parse_mode: 'Markdown' }); return renderServers(bot, msg); }
-    if (action === 'test') { const alias = parts[0]; if (!alias) return bot.sendMessage(chatId, '사용법: `/servers test <alias>`', { parse_mode: 'Markdown' }); const result = await SshManager.testConnection(userId, alias); await bot.sendMessage(chatId, result.ok ? `${icon('✅ ', '[OK] ')}${alias}: SSH 연결 성공` : `${icon('❌ ', '[ERR] ')}${alias}: SSH 연결 실패\n\n${result.message}`); return; }
-    if (action === 'remove') { const alias = parts[0]; if (!alias) return bot.sendMessage(chatId, '사용법: `/servers remove <alias>`', { parse_mode: 'Markdown' }); SshManager.removeHost(userId, alias); await bot.sendMessage(chatId, `Registry에서 ${alias} 제거 완료. Private Key 파일은 유지됩니다.`); return; }
-    await bot.sendMessage(chatId, '지원 명령: `/servers`, `/servers keys`, `/servers add`, `/servers edit`, `/servers test`, `/servers remove`', { parse_mode: 'Markdown' });
+    if (action === 'add') { const [alias, host, username, keyfile, port = '22'] = parts; if (!alias || !host || !username || !keyfile) return bot.sendMessage(chatId, `사용법: \`/server add <alias> <host> <user> <keyfile> [port]\`\n\n${serverRegistrationHelp()}`, { parse_mode: 'Markdown' }); const created = SshManager.addHost(userId, { alias, host, username, identityFile: keyfile, port: Number(port) }); await bot.sendMessage(chatId, `${icon('✅ ', '[OK] ')}SSH 서버 등록: **${esc(created.alias)}**`, { parse_mode: 'Markdown' }); return renderServers(bot, msg); }
+    if (action === 'edit') { const [alias, host, username, keyfile, port = '22'] = parts; if (!alias || !host || !username || !keyfile) return bot.sendMessage(chatId, '사용법: `/server edit <alias> <host> <user> <keyfile> [port]`', { parse_mode: 'Markdown' }); const updated = SshManager.updateHost(userId, alias, { host, username, identityFile: keyfile, port: Number(port) }); await bot.sendMessage(chatId, `${icon('✅ ', '[OK] ')}SSH 서버 수정: **${esc(updated.alias)}**`, { parse_mode: 'Markdown' }); return renderServers(bot, msg); }
+    if (action === 'test') { const alias = parts[0]; if (!alias) return bot.sendMessage(chatId, '사용법: `/server test <alias>`', { parse_mode: 'Markdown' }); const result = await SshManager.testConnection(userId, alias); await bot.sendMessage(chatId, result.ok ? `${icon('✅ ', '[OK] ')}${alias}: SSH 연결 성공` : `${icon('❌ ', '[ERR] ')}${alias}: SSH 연결 실패\n\n${result.message}`); return; }
+    if (action === 'remove') { const alias = parts[0]; if (!alias) return bot.sendMessage(chatId, '사용법: `/server remove <alias>`', { parse_mode: 'Markdown' }); SshManager.removeHost(userId, alias); await bot.sendMessage(chatId, `Registry에서 ${alias} 제거 완료. Private Key 파일은 유지됩니다.`); return; }
+    await bot.sendMessage(chatId, '지원 명령: `/server`, `/server keys`, `/server add`, `/server edit`, `/server test`, `/server remove`', { parse_mode: 'Markdown' });
   } catch (error) { console.error(`[Command /servers Error] ${error.message}`); await bot.sendMessage(chatId, `${icon('❌ ', '[ERR] ')}서버 관리 실패: ${error.message}`); }
 }
 
