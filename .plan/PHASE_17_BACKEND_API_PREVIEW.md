@@ -1,4 +1,4 @@
-# Phase 17: Backend API Preview & Inspector
+# Phase 17: Backend HTTP Preview & OpenAPI Discovery
 
 ## Status
 
@@ -141,12 +141,76 @@ Cloudflare Access가 설정되지 않았거나 개발 데이터 격리를 검증
 
 ---
 
-## 7. Acceptance / E2E
+## 7. NestJS 테스트 Fixture와 공동 검증 절차
+
+현재 별도 NestJS 프로젝트가 없으므로 Phase 17 착수 시 테스트 전용 프로젝트를 기본 NestJS 프로젝트에서 만든다. 전역 Nest CLI 설치나 기존 서비스 프로젝트를 전제하지 않는다. 생성 시점의 Node.js, NestJS, package manager 버전과 lockfile을 fixture에 고정해 이후 테스트 결과가 달라지지 않게 한다.
+
+### 7.1 Fixture 구성
+
+최종 자동 테스트에는 다음 두 fixture를 독립적으로 둔다.
+
+```text
+tests/fixtures/
+├─ nest-no-openapi/   # @nestjs/swagger 패키지와 문서 설정이 전혀 없음
+└─ nest-openapi/      # Swagger UI와 OpenAPI JSON을 명시적으로 제공
+```
+
+두 fixture 모두 기본 NestJS 프로젝트에서 시작하고 다음 최소 endpoint를 동일하게 제공한다.
+
+- `GET /health`: readiness 및 health 확인
+- `GET /items`: 목록 조회
+- `POST /items`: JSON body 생성
+- `PATCH /items/:id`: 일부 수정
+- `DELETE /items/:id`: 삭제
+- `POST /upload`: multipart 전달 확인
+- `GET /events`: 가능하면 SSE 회귀 확인
+
+초기 CRUD는 메모리 저장소를 사용한다. Preview runtime과 Gateway가 안정된 뒤 개발 서버의 Phase 17 전용 MariaDB DB/계정을 연결하는 통합 시나리오를 별도로 추가한다. 기본 fixture에 운영 credential이나 개인 개발 DB credential을 커밋하지 않는다.
+
+`nest-no-openapi`에는 `@nestjs/swagger`를 설치하지 않는다. `nest-openapi`는 전자를 복제한 뒤 Swagger 패키지와 bootstrap 설정만 추가한다. 환경 변수 하나로 Swagger를 끄는 방식만 사용하면 패키지가 이미 존재하는 상태만 검증하게 되므로, 두 프로젝트를 분리해 진짜 미설치 상태도 보장한다.
+
+### 7.2 우리가 같이 진행할 순서
+
+1. 내가 기본 NestJS fixture를 생성하고 endpoint, bind address, 고정 버전, 실행 명령을 준비한다.
+2. 먼저 Swagger 패키지가 없는 `nest-no-openapi`를 Agent Hub에서 선택한다.
+3. 너는 Telegram에서 Preview 시작·health·로그·재시작·종료를 실행하고, 나는 서버에서 runtime 상태, 로그, HTTP 요청과 cleanup을 확인한다.
+4. 이 상태에서 `문서 미탐지`가 표시되지만 Preview 전체는 `RUNNING`인지 확인한다.
+5. 같은 기본 프로젝트를 복제해 `nest-openapi`를 만들고 Swagger UI(`/docs`)와 OpenAPI JSON(`/docs-json`)을 추가한다.
+6. 다시 Preview를 시작해 자동 탐지, 외부 문서 URL, Cloudflare Access, Swagger `Try it out`을 확인한다.
+7. 두 fixture를 번갈아 재실행해 이전 탐지 결과가 session/project 사이에 남지 않는지 확인한다.
+8. 마지막으로 잘못된 문서 경로, custom 문서 경로, 시작 실패, readiness timeout, 포트 충돌을 하나씩 주입해 실패 처리를 확인한다.
+
+각 단계는 자동 테스트 결과와 함께 Telegram 화면, 외부 HTTP status, redacted runtime log를 검증 증거로 남긴다. 수동 확인에만 의존하지 않으며 재현된 동작은 바로 integration/E2E test로 고정한다.
+
+### 7.3 핵심 시나리오 판정표
+
+| 시나리오 | Preview 상태 | OpenAPI capability | 필수 확인 |
+|---|---|---|---|
+| Swagger 패키지/설정 없음 | `RUNNING` | 비활성, `문서 미탐지` | 일반 API, health, 로그, 재시작, 종료 |
+| Swagger UI와 JSON 있음 | `RUNNING` | 활성 | `/docs`, `/docs-json`, `Try it out`, 일반 API |
+| Swagger 패키지만 있고 bootstrap 안 함 | `RUNNING` | 비활성 | dependency 존재만으로 오탐하지 않음 |
+| 잘못된 문서 경로 override | `RUNNING` | 비활성 + 경고 | Preview runtime은 유지 |
+| custom 경로(`/internal/docs`) | `RUNNING` | 활성 | override 경로로 UI/JSON 접근 |
+| HTTP readiness 실패 | `FAILED` | 판정 안 함 | timeout 원인과 redacted log 표시, route 미발급 |
+| Cloudflare Access 미설정 | 내부 검증만 가능 | 탐지 결과 유지 | 외부 URL 발급 차단 |
+
+핵심 판정은 다음과 같다.
+
+```text
+Swagger 있음 -> API Preview 성공 + OPENAPI capability 활성
+Swagger 없음 -> API Preview 성공 + OPENAPI capability만 비활성
+```
+
+---
+
+## 8. Acceptance / E2E
 
 - [ ] NestJS 프로젝트를 감지하고 올바른 workspace에서 `start:dev`로 실행한다.
 - [ ] 서버가 `0.0.0.0`에 bind되고 HTTP readiness 이후에만 `RUNNING`이 된다.
 - [ ] Swagger UI와 OpenAPI JSON endpoint를 탐지해 Telegram에서 연다.
 - [ ] 문서가 없는 API도 `문서 미탐지` 상태로 실행·health·로그 관리가 가능하다.
+- [ ] Swagger 패키지가 설치되지 않은 fixture와 설치됐지만 bootstrap되지 않은 경우 모두 문서 미탐지로 처리한다.
+- [ ] 잘못된 Swagger 경로는 Preview를 중단하지 않고 custom 경로 override는 정상 탐지한다.
 - [ ] GET/POST/PATCH/DELETE, query, JSON body, multipart 및 Authorization header가 정상 프록시된다.
 - [ ] Swagger `Try it out`이 동일 Preview host의 실제 API를 호출한다.
 - [ ] cookie, CORS, forwarded host/proto와 OpenAPI server URL이 외부 URL에서 정상 동작한다.
@@ -158,7 +222,7 @@ Cloudflare Access가 설정되지 않았거나 개발 데이터 격리를 검증
 
 ---
 
-## 8. 완료 조건
+## 9. 완료 조건
 
 NestJS fixture 자동 테스트와 실제 개발 환경에서 다음 흐름을 통과해야 `DONE` 처리한다.
 
