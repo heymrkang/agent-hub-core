@@ -2,7 +2,7 @@
 
 ## Status
 
-`IMPLEMENTED / RUNTIME AUDIT PENDING`
+`DONE`
 
 ## 1. 목표
 
@@ -194,8 +194,12 @@ Phase 14 `/system`은 read-only observability command다.
 - [x] NORMAL/STEALTH UI 모두 의미가 유지된다.
 - [x] 반복 refresh가 Core에 과도한 command storm을 만들지 않는다.
 
-구현 검증: 2026-09-01 unit/integration/E2E `72 pass / 0 fail / 1 skip`. SSH 실수집으로 `dev`, `local` CPU/RAM/Disk/OS/Docker와 `dev` Agent Hub 컨테이너 식별을 확인했다. Coolify 재배포 후 Telegram UI 수치 대조가 남아 있다.
+구현 검증: 2026-09-01 unit/integration/E2E `72 pass / 0 fail / 1 skip`. SSH 실수집으로 `dev`, `local` CPU/RAM/Disk/OS/Docker와 `dev` Agent Hub 컨테이너 식별을 확인했다.
+
+Runtime Audit: 2026-09-01 `PASS`. Coolify 재배포 후 Telegram `/system`의 CPU/RAM/Disk/Docker/Uptime과 host 측정값이 합리적으로 일치함을 확인했다. `dev`의 고온·CPU 사용 표시는 장시간 CPU 코어 하나를 점유한 `htop` 프로세스를 실제로 반영한 값이었으며, 프로세스 종료 후 CPU idle `99~100%`, CPU 온도 `44~45°C`로 정상화되는 것까지 확인했다.
 
 ## 9. 완료 조건
 
-실제 Coolify Host에서 `/system`의 수치가 host terminal/Docker 측정값과 합리적으로 일치함을 검증하고 Phase 14 Audit에서 PASS 후 `DONE` 처리한다.
+- [x] 실제 Coolify Host에서 `/system` 수치와 host terminal/Docker 측정값의 합리적 일치를 검증했다.
+- [x] Phase 14 Runtime Audit에서 `PASS`했다.
+- [x] Phase 14를 `DONE` 처리했다.

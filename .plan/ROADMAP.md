@@ -54,7 +54,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 |---|---|---|---|
 | Phase 12 | Backup/Recovery/Hardening 중복 계획 | `SKIPPED / SUPERSEDED` | Phase 10~11에서 구현·검증 완료된 범위와 중복되어 별도 구현하지 않음 |
 | Phase 13 | Mobile Preview Runtime & Preview Manager | `DONE` | 2026-08-31 모바일 개발 루프 E2E 완료 |
-| Phase 14 | System & Resource Observability (`/system`) | `IMPLEMENTED / AUDIT PENDING` | Coolify runtime 검증 후 DONE 전환 |
+| Phase 14 | System & Resource Observability (`/system`) | `DONE` | 2026-09-01 Coolify runtime audit PASS |
 | Phase 16 | Feature Stabilization & Optimization | `PLANNED` | Canonical Compact, Model Thinking, Provider Usage/Quota |
 | Phase 17 | Backend API Preview & Inspector | `PLANNED` | NestJS/OpenAPI 기반 API Preview와 개발 데이터 보안 경계 |
 | Phase 18 | Agent Extensibility — MCP & Skills | `PLANNED` | Provider native MCP/Skills 조회·관리·인증·권한 정책 |
@@ -69,9 +69,9 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ### Phase 14
 
-`PHASE_14_SYSTEM_RESOURCES.md`를 기준으로 `/system` 명령어와 System & Resource Observability를 구현한다.
+`PHASE_14_SYSTEM_RESOURCES.md`를 기준으로 `/system` 명령어와 System & Resource Observability 구현 및 실제 Coolify runtime 검증을 완료했다.
 
-`/system`은 `/status`와 분리된 read-only 관찰/진단 기능이며 destructive Docker/host control을 포함하지 않는다.
+`/system`은 `/status`와 분리된 read-only 관찰/진단 기능이며 destructive Docker/host control을 포함하지 않는다. 등록 서버의 CPU/RAM/Disk/OS/Docker/Uptime과 Agent Hub runtime을 확인하며, 실제 CPU 점유 프로세스와 온도 변화를 정확히 반영하는 것까지 검증했다.
 
 ### Phase 16
 
@@ -103,7 +103,7 @@ V1 Released
 Phase 0 ~ 11: DONE
 Phase 12: SKIPPED / SUPERSEDED
 Phase 13: DONE — Mobile Preview Runtime & Preview Manager
-Phase 14: NEXT — /system System & Resource Observability
+Phase 14: DONE — /system System & Resource Observability
 Phase 16: PLANNED — Stability & Optimization
 Phase 17: PLANNED — Backend API Preview & Inspector
 Phase 18: PLANNED — MCP & Skills

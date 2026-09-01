@@ -110,7 +110,7 @@ Agent Hub Core
 - Phase 0~11: 완료
 - Phase 12: 중복 범위로 스킵
 - Phase 13: Mobile Preview Runtime & Preview Manager — 완료
-- Phase 14: System & Resource Observability — 다음 작업
+- Phase 14: System & Resource Observability — 완료
 - Phase 16: Feature Stabilization & Optimization — 계획 완료
 - Phase 17: Backend API Preview & Inspector — 계획 완료
 - Phase 18: Agent Extensibility — MCP & Skills — 계획 완료
