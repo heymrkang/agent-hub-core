@@ -5,6 +5,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { ProviderAdapter } from '../provider-adapter.js';
 import { runtimeConfig } from '../../config/runtime-config.js';
+import { createCodexExecutionTelemetry } from './execution-telemetry.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -60,9 +61,38 @@ export class CodexAdapter extends ProviderAdapter {
     // receives the requested ro/rw mode; transient runtime paths are tmpfs and disappear
     // with the helper container. This prevents WORKSPACE from writing to /home, /etc, etc.
     const dockerArgs = ['run', '--rm', '--name', helperName, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=256m', '--tmpfs', '/root/.cache:rw,nosuid,nodev,size=64m', '-e', 'HOME=/root', '-e', 'TMPDIR=/tmp', '-e', 'CI=true', '-v', `${runtime.workspaceSource}:${workspaceRoot}:${workspaceMode}`, '-v', `${runtime.codexHomeSource}:/root/.codex:rw`]; if (runtime.uploadsSource && fs.existsSync('/data/uploads')) dockerArgs.push('-v', `${runtime.uploadsSource}:/data/uploads:ro`); dockerArgs.push('-w', normalizedCwd, '--entrypoint', 'codex', runtime.image, ...codexArgs);
-    return new Promise((resolve, reject) => { const env = { ...process.env }; delete env.GH_TOKEN; delete env.GITHUB_TOKEN; delete env.TELEGRAM_BOT_TOKEN; const child = spawn('docker', dockerArgs, { env, stdio: ['ignore', 'pipe', 'pipe'] }); let stdout = '', stderr = '', isFinished = false; const finishError = async error => { if (isFinished) return; isFinished = true; clearTimeout(timer); await this.removeHelperContainer(helperName); reject(error); }; const timer = setTimeout(() => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error(`Codex ${profile} 실행 타임아웃 (${timeoutMs / 1000}초 초과)`)); } }, timeoutMs); if (signal) signal.addEventListener('abort', () => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error('Codex 작업이 사용자에 의해 중단되었습니다.')); } }, { once: true }); child.stdout.on('data', c => { stdout += c.toString(); }); child.stderr.on('data', c => { stderr += c.toString(); }); child.on('error', e => finishError(new Error(`Codex restricted helper 시작 실패: ${e.message}`))); child.on('close', code => { if (isFinished) return; isFinished = true; clearTimeout(timer); const response = stdout.trim(), diagnostic = stderr.trim(); if (code !== 0) return reject(new Error(`Codex ${profile} 실행 실패 (Exit code: ${code}):\n${diagnostic || response || `Exit code: ${code}`}`)); resolve({ response: response || 'Codex로부터 빈 응답을 받았습니다.' }); }); });
+    return new Promise((resolve, reject) => {
+      const env = { ...process.env }; delete env.GH_TOKEN; delete env.GITHUB_TOKEN; delete env.TELEGRAM_BOT_TOKEN;
+      const child = spawn('docker', dockerArgs, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+      const telemetry = createCodexExecutionTelemetry({ mode: `RESTRICTED:${profile}`, pid: child.pid, cwd: normalizedCwd, timeoutMs });
+      let stdout = '', stderr = '', isFinished = false;
+      const finishError = async (error, reason = 'failed') => { if (isFinished) return; isFinished = true; clearTimeout(timer); telemetry.finish(reason); await this.removeHelperContainer(helperName); reject(error); };
+      const timer = setTimeout(() => { if (!isFinished) { telemetry.timeout(); child.kill('SIGKILL'); finishError(new Error(`Codex ${profile} 실행 타임아웃 (${timeoutMs / 1000}초 초과)`), 'timeout'); } }, timeoutMs);
+      if (signal) signal.addEventListener('abort', () => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error('Codex 작업이 사용자에 의해 중단되었습니다.'), 'aborted'); } }, { once: true });
+      child.stdout.on('data', c => { stdout += c.toString(); telemetry.recordStdout(c); });
+      child.stderr.on('data', c => { stderr += c.toString(); telemetry.recordStderr(c); });
+      child.on('error', e => finishError(new Error(`Codex restricted helper 시작 실패: ${e.message}`), 'spawn_error'));
+      child.on('close', code => { if (isFinished) return; isFinished = true; clearTimeout(timer); telemetry.finish(code === 0 ? 'completed' : 'failed', { exitCode: code }); const response = stdout.trim(), diagnostic = stderr.trim(); if (code !== 0) return reject(new Error(`Codex ${profile} 실행 실패 (Exit code: ${code}):\n${diagnostic || response || `Exit code: ${code}`}`)); resolve({ response: response || 'Codex로부터 빈 응답을 받았습니다.' }); });
+    });
   }
-  async executePrompt(options = {}) { const { prompt, model, reasoningEffort = 'default', profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options; const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE'; if (normalizedProfile !== 'FULL_ACCESS') return this.executeRestrictedPrompt({ prompt, model, reasoningEffort, profile: normalizedProfile, cwd, timeoutMs, signal }); return new Promise((resolve, reject) => { const args = this.buildCodexArgs({ prompt, model, reasoningEffort }); const child = spawn('codex', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] }); let stdout = '', stderr = '', isFinished = false; const finishError = error => { if (isFinished) return; isFinished = true; clearTimeout(timer); reject(error); }; const timer = setTimeout(() => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error(`Codex 실행 타임아웃 (${timeoutMs / 1000}초 초과)`)); } }, timeoutMs); if (signal) signal.addEventListener('abort', () => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error('Codex 작업이 사용자에 의해 중단되었습니다.')); } }, { once: true }); child.stdout.on('data', c => { stdout += c.toString(); }); child.stderr.on('data', c => { stderr += c.toString(); }); child.on('error', e => finishError(new Error(`Codex 프로세스 시작 실패: ${e.message}`))); child.on('close', code => { if (isFinished) return; isFinished = true; clearTimeout(timer); const response = stdout.trim(), diagnostic = stderr.trim(); if (code !== 0) return reject(new Error(`Codex 실행 실패 (Exit code: ${code}):\n${diagnostic || response || `Exit code: ${code}`}`)); resolve({ response: response || 'Codex로부터 빈 응답을 받았습니다.' }); }); }); }
+  async executePrompt(options = {}) {
+    const { prompt, model, reasoningEffort = 'default', profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
+    const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
+    if (normalizedProfile !== 'FULL_ACCESS') return this.executeRestrictedPrompt({ prompt, model, reasoningEffort, profile: normalizedProfile, cwd, timeoutMs, signal });
+    return new Promise((resolve, reject) => {
+      const args = this.buildCodexArgs({ prompt, model, reasoningEffort });
+      const child = spawn('codex', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const telemetry = createCodexExecutionTelemetry({ mode: 'FULL_ACCESS', pid: child.pid, cwd, timeoutMs });
+      let stdout = '', stderr = '', isFinished = false;
+      const finishError = (error, reason = 'failed') => { if (isFinished) return; isFinished = true; clearTimeout(timer); telemetry.finish(reason); reject(error); };
+      const timer = setTimeout(() => { if (!isFinished) { telemetry.timeout(); child.kill('SIGKILL'); finishError(new Error(`Codex 실행 타임아웃 (${timeoutMs / 1000}초 초과)`), 'timeout'); } }, timeoutMs);
+      if (signal) signal.addEventListener('abort', () => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error('Codex 작업이 사용자에 의해 중단되었습니다.'), 'aborted'); } }, { once: true });
+      child.stdout.on('data', c => { stdout += c.toString(); telemetry.recordStdout(c); });
+      child.stderr.on('data', c => { stderr += c.toString(); telemetry.recordStderr(c); });
+      child.on('error', e => finishError(new Error(`Codex 프로세스 시작 실패: ${e.message}`), 'spawn_error'));
+      child.on('close', code => { if (isFinished) return; isFinished = true; clearTimeout(timer); telemetry.finish(code === 0 ? 'completed' : 'failed', { exitCode: code }); const response = stdout.trim(), diagnostic = stderr.trim(); if (code !== 0) return reject(new Error(`Codex 실행 실패 (Exit code: ${code}):\n${diagnostic || response || `Exit code: ${code}`}`)); resolve({ response: response || 'Codex로부터 빈 응답을 받았습니다.' }); });
+    });
+  }
 }
 
 export function parseCodexRateLimits(result, fetchedAt = new Date().toISOString()) {
