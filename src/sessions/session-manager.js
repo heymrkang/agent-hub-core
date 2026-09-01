@@ -21,11 +21,12 @@ export class SessionManager {
     const title = options.title || '새 채팅';
     const provider = options.provider || 'codex';
     const model = options.model || null;
+    const reasoningEffort = String(options.reasoningEffort || 'default');
     const profile = EXECUTION_PROFILES.has(options.profile) ? options.profile : 'WORKSPACE';
     const isSystem = options.isSystem ? 1 : 0;
     const status = options.status || (isSystem ? 'ARCHIVED' : 'ACTIVE');
-    db.prepare(`INSERT INTO sessions (id,user_id,title,title_locked,active_provider,active_model,execution_profile,status,is_system) VALUES (?,?,?,0,?,?,?,?,?)`)
-      .run(sessionId, userId, title, provider, model, profile, status, isSystem);
+    db.prepare(`INSERT INTO sessions (id,user_id,title,title_locked,active_provider,active_model,reasoning_effort,execution_profile,status,is_system) VALUES (?,?,?,0,?,?,?,?,?,?)`)
+      .run(sessionId, userId, title, provider, model, reasoningEffort, profile, status, isSystem);
     if (!isSystem) this.setActiveSession(userId, sessionId);
     return this.getSession(sessionId);
   }
