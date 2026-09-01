@@ -52,7 +52,7 @@ Phase 16은 신규 대형 기능을 추가하는 단계가 아니라, V1 이후 
 
 - Codex `0.149.1`: app-server JSON-RPC `account/rateLimits/read`를 canonical source로 사용한다. 2026-09-01 live probe에서 300분 primary와 10080분 secondary window 및 reset timestamp 응답을 확인했다. 응답 schema의 `primary`, `secondary`, `usedPercent`, `windowDurationMins`, `resetsAt`만 파싱하며 TUI scraping은 사용하지 않는다.
 - Codex model 목록도 같은 app-server 연결을 재사용할 수 있게 client 경계를 분리한다.
-- Antigravity `1.1.20`: help/subcommand/print JSON에서 독립 quota 조회 인터페이스를 확인하지 못했다. 구현 전 실제 인증 계정의 interactive status를 추가 검증하고, 안정적인 machine-readable 또는 격리 가능한 PTY source가 없으면 `UNAVAILABLE`로 표시한다.
+- Antigravity `1.1.20`: `agy --print /usage --output-format json`의 `command.data.groups[].buckets[]`에서 모델 그룹별 잔여 quota와 reset timestamp를 확인했다. 이 구조화 필드만 파싱하고 설명문이나 TUI 화면은 파싱하지 않는다.
 - Cache TTL은 성공 60초, 실패 15초, probe timeout 10초로 고정한다. 마지막 성공 cache는 10분까지 `STALE`로 표시하고 그 이후 폐기한다.
 - 강제 새로고침은 Provider별 15초 cooldown을 적용하며 동시 요청은 single-flight로 합친다.
 - Phase 16에서는 quota 자동 경고를 구현하지 않는다.
@@ -363,7 +363,7 @@ getUsageQuota({ forceRefresh })
 
 - 공통 `getUsageQuota()` contract와 Provider별 독립 cache service를 추가했다. 성공 60초, 실패 15초, 마지막 성공 10분 stale, probe 10초 timeout, 강제 새로고침 15초 cooldown, 동시 요청 single-flight 정책을 적용했다.
 - Codex app-server `account/rateLimits/read`의 `primary`/`secondary`, `usedPercent`, `windowDurationMins`, `resetsAt`만 파싱한다. `/usage`에 사용/잔여율, KST reset 시각과 상대 시간, 조회 시각/cache 상태를 표시한다.
-- Antigravity 1.1.20은 안정적인 machine-readable quota source를 확인하지 못해 `UNAVAILABLE`로 명시한다. 수치나 reset 시각을 추정하지 않는다.
+- Antigravity 1.1.20의 `agy --print /usage --output-format json` 구조화 응답을 사용한다. 모델 그룹별 주간/5시간 잔여율과 reset 시각만 파싱하며, 사용률은 역산하지 않는다.
 - `/usage`에서 Agent Hub Job 통계와 Provider 계정 quota를 분리하고 강제 새로고침 버튼을 추가했다. `/status`에는 Provider별 잔여율 요약과 조회 시각을 표시한다.
 - Provider 조회는 병렬·독립 실행하며 오류 raw dump와 account identifier를 노출하지 않는다. 일반 오류 문자열의 credential/token/secret/password 값도 마스킹한다.
 
@@ -413,14 +413,14 @@ getUsageQuota({ forceRefresh })
 
 - [x] `/usage`에서 Agent Hub Job 통계와 Provider 계정 quota가 분리돼 표시된다.
 - [x] Codex가 실제 노출하는 5시간/주간 사용량과 reset 정보를 확인할 수 있다.
-- [x] Antigravity는 검증된 quota source가 없어 `UNAVAILABLE`로 명확히 표시된다.
+- [x] Antigravity의 구조화된 `/usage` 응답에서 모델 그룹별 주간/5시간 잔여율과 reset 정보를 확인할 수 있다.
 - [x] `/status`에서 Provider별 남은 한도 요약과 조회 시각을 확인할 수 있다.
 - [x] Provider가 제공하지 않은 수치나 reset 시각을 추정하지 않는다.
 - [x] 한 Provider 조회 실패가 다른 Provider와 Agent Hub 통계 표시를 막지 않는다.
 - [x] cache hit, 강제 새로고침, stale fallback, timeout, parser 실패가 구분된다.
 - [x] 동시 `/status`와 `/usage` 조회가 Provider probe를 중복 실행하지 않는다.
 - [x] credential과 민감한 account identifier가 UI/log에 노출되지 않는다.
-- [x] pinned Codex fixture/parser와 실제 계정 smoke test가 통과한다. Antigravity는 source 부재를 재확인했다.
+- [x] pinned Codex/Antigravity fixture parser와 실제 계정 smoke test가 통과한다.
 
 ---
 

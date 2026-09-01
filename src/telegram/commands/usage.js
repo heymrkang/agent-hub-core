@@ -11,15 +11,20 @@ export function renderQuota(result) {
   const provider = result.provider.toUpperCase();
   let text = `\`[${esc(provider)}]\` · \`${esc(result.status)}\`${result.stale ? ' · `STALE`' : ''}\n\n`;
   if (result.status === 'UNAVAILABLE') {
-    const reason = result.provider === 'antigravity'
-      ? 'CLI 내부 `/usage` TUI만 제공\nAgent Hub 자동 조회 API 없음'
-      : 'Agent Hub에서 사용할 수 있는 quota 조회 API 없음';
+    const reason = 'Provider가 조회 가능한 quota를 반환하지 않음';
     return `${text}${reason}\n`;
   }
   if (result.status === 'ERROR') return `${text}조회 실패\n${esc(result.error || '알 수 없는 오류')}\n`;
   const windows = [];
+  let currentGroup = null;
   for (const window of result.windows) {
-    const usage = window.usedPercent !== undefined ? `${window.usedPercent}% 사용${window.remainingPercent !== undefined ? ` / ${window.remainingPercent}% 남음` : ''}` : '사용률 미제공';
+    if (window.group && window.group !== currentGroup) {
+      windows.push(`\`[${esc(window.group)}]\``);
+      currentGroup = window.group;
+    }
+    const usage = window.usedPercent !== undefined
+      ? `${window.usedPercent}% 사용${window.remainingPercent !== undefined ? ` / ${window.remainingPercent}% 남음` : ''}`
+      : window.remainingPercent !== undefined ? `${window.remainingPercent}% 남음` : '사용률 미제공';
     const reset = window.resetsAt ? `${kst(window.resetsAt)} (${relative(window.resetsAt)})` : '미제공';
     windows.push(`**${esc(window.label)}**\n${esc(usage)}\nReset ${esc(reset)}`);
   }

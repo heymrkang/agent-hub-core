@@ -81,7 +81,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ### Phase 16
 
-`PHASE_16_STABILITY_OPTIMIZATION.md`를 기준으로 Agent Hub Canonical Context Compact, Provider별 Model Reasoning/Thinking Level, Codex/Antigravity Usage/Quota 조회를 구현한다. 16-1 조사, 16-2 수동 Canonical Compact, 16-3 context assembly/Auto Compact 경로, 16-4 Model Thinking, 16-5 Provider Usage/Quota를 완료했다. Codex는 app-server의 5시간/주간 quota를 표시하고 Antigravity는 검증된 source 부재로 `UNAVAILABLE`을 표시한다. 현재 CLI가 context window/tokenizer를 노출하지 않아 운영 Auto Compact 판정은 `UNAVAILABLE`로 유지한다.
+`PHASE_16_STABILITY_OPTIMIZATION.md`를 기준으로 Agent Hub Canonical Context Compact, Provider별 Model Reasoning/Thinking Level, Codex/Antigravity Usage/Quota 조회를 구현한다. 16-1 조사, 16-2 수동 Canonical Compact, 16-3 context assembly/Auto Compact 경로, 16-4 Model Thinking, 16-5 Provider Usage/Quota를 완료했다. Codex는 app-server의 5시간/주간 quota를 표시하고 Antigravity는 구조화된 `/usage` 응답의 모델 그룹별 5시간/주간 잔여 quota를 표시한다. 현재 CLI가 context window/tokenizer를 노출하지 않아 운영 Auto Compact 판정은 `UNAVAILABLE`로 유지한다.
 
 ### Phase 17
 

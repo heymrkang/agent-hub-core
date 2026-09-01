@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCodexRateLimits } from '../../src/providers/codex/codex-adapter.js';
+import { parseAntigravityUsage } from '../../src/providers/antigravity/antigravity-adapter.js';
 import { UsageQuotaService } from '../../src/providers/usage-quota-service.js';
 import { renderQuota } from '../../src/telegram/commands/usage.js';
 
@@ -21,6 +22,35 @@ test('필드가 빠진 Codex 응답은 추정하지 않고 PARTIAL이다', () =>
   assert.equal(result.status, 'PARTIAL');
   assert.equal(result.windows[0].remainingPercent, 80);
   assert.equal(result.windows[0].resetsAt, undefined);
+});
+
+test('Antigravity 구조화 usage를 모델 그룹별 quota로 변환한다', () => {
+  const result = parseAntigravityUsage({ command: { data: { groups: [
+    { name: 'Gemini Models', buckets: [
+      { id: 'gemini-weekly', name: 'Weekly Limit Remaining', window: 'weekly', remaining_fraction: 0.902, reset_time: '2026-09-01T11:51:14Z' },
+      { id: 'gemini-5h', name: 'Five Hour Limit Remaining', window: '5h', remaining_fraction: 0.967, reset_time: '2026-09-01T12:05:00Z' }
+    ] },
+    { name: 'Claude and GPT models', buckets: [
+      { id: '3p-weekly', window: 'weekly', remaining_fraction: 1, reset_time: '2026-09-08T07:52:21Z' }
+    ] }
+  ] } } }, '2026-09-01T08:30:00.000Z');
+  assert.equal(result.status, 'AVAILABLE');
+  assert.deepEqual(result.windows[0], { id: 'gemini-weekly', group: 'Gemini Models', label: '주간 한도', remainingPercent: 90, resetsAt: '2026-09-01T11:51:14.000Z' });
+  assert.equal(result.windows[1].label, '5시간 한도');
+  assert.equal(result.windows[1].remainingPercent, 97);
+  assert.equal(result.windows[2].group, 'Claude and GPT models');
+});
+
+test('Antigravity quota 일부 필드 누락은 PARTIAL이며 사용률을 추정하지 않는다', () => {
+  const result = parseAntigravityUsage({ command: { data: { groups: [{ name: 'Gemini Models', buckets: [
+    { id: 'valid', window: 'weekly', remaining_fraction: 0.5 },
+    { id: 'missing', window: '5h' }
+  ] }] } } });
+  assert.equal(result.status, 'PARTIAL');
+  assert.equal(result.windows.length, 1);
+  assert.equal(result.windows[0].remainingPercent, 50);
+  assert.equal('usedPercent' in result.windows[0], false);
+  assert.throws(() => parseAntigravityUsage({}), /command\.data\.groups/);
 });
 
 test('usage cache hit과 single-flight가 probe를 중복하지 않는다', async () => {
@@ -55,13 +85,18 @@ test('강제 새로고침 cooldown과 probe timeout을 구분한다', async () =
   assert.equal(timeout.status, 'ERROR'); assert.match(timeout.error, /시간 초과/);
 });
 
-test('quota UI는 원본 percentage 의미와 unavailable을 분리한다', () => {
+test('quota UI는 원본 percentage 의미와 모델 그룹을 분리한다', () => {
   const text = renderQuota({ provider: 'codex', status: 'AVAILABLE', cache: 'HIT', fetchedAt: '2026-09-01T00:00:00Z', windows: [{ label: '5시간 한도', usedPercent: 42, remainingPercent: 58 }] });
   assert.match(text, /`\[CODEX\]` · `AVAILABLE`/);
   assert.match(text, /42% 사용 \/ 58% 남음/);
   assert.match(text, /Reset 미제공\n\n조회/);
-  const antigravity = renderQuota({ provider: 'antigravity', status: 'UNAVAILABLE', windows: [] });
-  assert.match(antigravity, /`\[ANTIGRAVITY\]` · `UNAVAILABLE`/);
-  assert.match(antigravity, /CLI 내부 `\/usage` TUI만 제공/);
-  assert.match(antigravity, /Agent Hub 자동 조회 API 없음/);
+  const antigravity = renderQuota({ provider: 'antigravity', status: 'AVAILABLE', cache: 'MISS', fetchedAt: '2026-09-01T08:30:00Z', windows: [
+    { group: 'Gemini Models', label: '주간 한도', remainingPercent: 90, resetsAt: '2026-09-01T11:51:14Z' },
+    { group: 'Gemini Models', label: '5시간 한도', remainingPercent: 97, resetsAt: '2026-09-01T12:05:00Z' },
+    { group: 'Claude and GPT models', label: '주간 한도', remainingPercent: 100, resetsAt: '2026-09-08T07:52:21Z' }
+  ] });
+  assert.match(antigravity, /`\[ANTIGRAVITY\]` · `AVAILABLE`/);
+  assert.match(antigravity, /`\[Gemini Models\]`/);
+  assert.match(antigravity, /90% 남음/);
+  assert.match(antigravity, /`\[Claude and GPT models\]`/);
 });

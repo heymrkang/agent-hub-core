@@ -42,7 +42,7 @@ export async function handleStatusCommand(bot, msg) {
     text += `Job: ${activeJob ? `${escapeMd(activeJob.status)} · ${escapeMd(activeJob.type)} · ${escapeMd(activeJob.id)}` : 'idle'}\n`;
     text += `\n**Provider Quota**\n`;
     for (const quota of quotas) {
-      const available = quota.windows.filter(w => w.remainingPercent !== undefined).map(w => `${w.label} ${w.remainingPercent}% 남음`).join(' · ');
+      const available = quota.windows.filter(w => w.remainingPercent !== undefined).map(w => `${w.group ? `${w.group} ` : ''}${w.label} ${w.remainingPercent}% 남음`).join(' · ');
       text += `${escapeMd(quota.provider.toUpperCase())}: ${escapeMd(available || quota.status)} · ${escapeMd(quota.fetchedAt)}${quota.stale ? ' · STALE' : ''}\n`;
     }
     text += `상세/새로고침: /usage\n`;
