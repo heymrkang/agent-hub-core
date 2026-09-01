@@ -7,6 +7,7 @@ const mark = (state) => STATES[isStealthMode() ? 'stealth' : 'normal'][state || 
 const pct = (value) => Number.isFinite(value) ? `${value.toFixed(1)}%` : '-';
 const temp = (value) => Number.isFinite(value) ? `${value.toFixed(1)}°C` : 'N/A';
 function size(value) { if (!Number.isFinite(value)) return '-'; const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']; let n = value, u = 0; while (n >= 1024 && u < 4) { n /= 1024; u++; } return `${n.toFixed(u > 1 ? 1 : 0)} ${units[u]}`; }
+function diskSize(value) { if (!Number.isFinite(value)) return '-'; const units = ['B', 'KB', 'MB', 'GB', 'TB']; let n = value, u = 0; while (n >= 1024 && u < 4) { n /= 1024; u++; } return `${Number(n.toFixed(u > 2 ? 1 : 0))}${units[u]}`; }
 function memorySize(value) { if (!Number.isFinite(value)) return '-'; if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)}GB`; if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)}MB`; if (value >= 1024) return `${(value / 1024).toFixed(1)}KB`; return `${value}B`; }
 function age(value) { if (!Number.isFinite(value)) return '-'; const d = Math.floor(value / 86400), h = Math.floor(value % 86400 / 3600), m = Math.floor(value % 3600 / 60); return [d && `${d}일`, (d || h) && `${h}시간`, `${m}분`].filter(Boolean).join(' '); }
 function worstDisk(items = []) { const rank = { UNKNOWN: 0, OK: 1, WARN: 2, CRITICAL: 3 }; return items.reduce((worst, item) => rank[item.severity] > rank[worst] ? item.severity : worst, 'UNKNOWN'); }
@@ -18,7 +19,10 @@ export function renderOverview(snapshot) {
     if (!server.online) return `\`[${esc(server.alias)}]\`\n\n리소스 모니터링\n${mark('OFFLINE')} OFFLINE · SSH 수집 실패: ${esc(server.error || '응답 없음')}`;
     const docker = !server.docker.installed ? 'Docker N/A' : server.docker.available ? `Docker ${server.docker.running ?? '-'} running` : 'Docker UNKNOWN';
     const state = server.severity === 'OK' ? '' : `\n${mark(server.severity)} 상태: ${server.severity}`;
-    return `\`[${esc(server.alias)}]\`\n\n리소스 모니터링${state}\nCPU ${pct(server.cpu.usagePercent)} · 온도 ${temp(server.cpu.temperatureCelsius)}\nRAM [${memorySize(server.memory.used)}/${memorySize(server.memory.total)}] · ${pct(server.memory.usagePercent)}\nDisk ${pct(Math.max(...server.disks.items.map((item) => item.usagePercent ?? 0)))} · ${docker}\nUptime ${age(server.host.uptimeSeconds)}`;
+    const disks = server.disks.items.length
+      ? server.disks.items.map((item) => `${esc(item.paths.join('+'))} ${diskSize(item.used)}/${diskSize(item.total)} (${pct(item.usagePercent)})`).join('\n')
+      : 'N/A';
+    return `\`[${esc(server.alias)}]\`\n\n리소스 모니터링${state}\nCPU ${pct(server.cpu.usagePercent)} · 온도 ${temp(server.cpu.temperatureCelsius)}\nRAM [${memorySize(server.memory.used)}/${memorySize(server.memory.total)}] · ${pct(server.memory.usagePercent)}\nDisk\n${disks}\n${docker}\nUptime ${age(server.host.uptimeSeconds)}`;
   }).join('\n\n');
   return `${title()}\n\n**전체 상태: ${snapshot.severity}**\n\n${servers}\n\nChecked: \`${esc(snapshot.checkedAt)}\``;
 }
@@ -28,7 +32,7 @@ export function renderSystem(snapshot, page = 'overview') {
   const { host: h, cpu: c, memory: m, disks: d, docker, runtime: r } = snapshot;
   const heading = `${title()}\n**${esc(snapshot.alias)}** · ${esc(h.hostname)}`;
   if (page === 'compute') return `${heading}\n\n**CPU**\n${mark(c.severity)} 사용률: **${pct(c.usagePercent)}** · 온도: **${temp(c.temperatureCelsius)}**\n0.5초 × ${c.sampleCount || '-'}회 평균 · Logical CPU: \`${c.cores}\`\nLoad Average: \`${c.load1?.toFixed(2)} / ${c.load5?.toFixed(2)} / ${c.load15?.toFixed(2)}\`\n\n**Host Memory**\n${mark(m.severity)} ${size(m.used)} / ${size(m.total)} · **${pct(m.usagePercent)}**\nAvailable: ${size(m.availableBytes)} · Swap: ${size(m.swapUsed)} / ${size(m.swapTotal)}`;
-  if (page === 'storage') return `${heading}\n\n**Storage**\n${d.items?.map((item) => `${mark(item.severity)} **${esc(item.paths.join(', '))}**\n${size(item.used)} / ${size(item.total)} · **${pct(item.usagePercent)}** · Available ${size(item.availableBytes)}`).join('\n\n') || 'filesystem 없음'}`;
+  if (page === 'storage') return `${heading}\n\n**Storage**\n${d.items?.map((item) => `${mark(item.severity)} **${esc(item.paths.join(', '))}** · \`${esc(item.filesystem)}\`\n${diskSize(item.used)}/${diskSize(item.total)} · **${pct(item.usagePercent)}** · 여유 ${diskSize(item.availableBytes)}`).join('\n\n') || 'filesystem 없음'}`;
   if (page === 'docker') {
     if (!docker.installed) return `${heading}\n\n**Docker**\nN/A · 설치되지 않음`;
     if (!docker.available) return `${heading}\n\n**Docker**\n${mark('UNKNOWN')} ${esc(docker.error)}`;
@@ -39,7 +43,7 @@ export function renderSystem(snapshot, page = 'overview') {
     return `${heading}\n\n**Agent Hub Runtime**\n${mark(r.health === 'unhealthy' ? 'CRITICAL' : 'OK')} Container: **${esc(r.name)}** · \`${esc(r.state)}\`\nCPU: ${esc(r.cpuPercent)} · Memory: ${esc(r.memoryUsage)} (${esc(r.memoryPercent)})\nRestart: ${r.restartCount ?? '-'} · Started: \`${esc(r.startedAt)}\``;
   }
   const dockerText = !docker.installed ? 'Docker N/A' : !docker.available ? `${mark('UNKNOWN')} Docker daemon 응답 없음` : `${mark((docker.unhealthy || docker.restarting) ? 'WARN' : 'OK')} Docker ${docker.running ?? '-'} running · ${docker.stopped ?? '-'} stopped`;
-  return `${heading}\n\n${mark(snapshot.severity)} **Overall: ${snapshot.severity}**\n\n**Host**\nOS: ${esc(h.os)}\nKernel: \`${esc(h.kernel)}\` · \`${esc(h.architecture)}\` · Uptime: ${age(h.uptimeSeconds)}\n\n**Resources**\n${mark(c.severity)} CPU ${pct(c.usagePercent)} · 온도 ${temp(c.temperatureCelsius)} · Load ${c.load1?.toFixed(2)} · ${c.cores} cores\n${mark(m.severity)} Memory ${pct(m.usagePercent)} · ${size(m.used)} / ${size(m.total)}\n${mark(worstDisk(d.items))} Storage ${d.items.map((item) => `${item.paths.join('+')} ${pct(item.usagePercent)}`).join(' · ')}\n${dockerText}\n\nChecked: \`${esc(snapshot.checkedAt)}\``;
+  return `${heading}\n\n${mark(snapshot.severity)} **Overall: ${snapshot.severity}**\n\n**Host**\nOS: ${esc(h.os)}\nKernel: \`${esc(h.kernel)}\` · \`${esc(h.architecture)}\` · Uptime: ${age(h.uptimeSeconds)}\n\n**Resources**\n${mark(c.severity)} CPU ${pct(c.usagePercent)} · 온도 ${temp(c.temperatureCelsius)} · Load ${c.load1?.toFixed(2)} · ${c.cores} cores\n${mark(m.severity)} Memory ${pct(m.usagePercent)} · ${size(m.used)} / ${size(m.total)}\n${mark(worstDisk(d.items))} Storage\n${d.items.map((item) => `${esc(item.paths.join('+'))} ${diskSize(item.used)}/${diskSize(item.total)} (${pct(item.usagePercent)})`).join('\n') || 'N/A'}\n${dockerText}\n\nChecked: \`${esc(snapshot.checkedAt)}\``;
 }
 
 export function overviewKeyboard(servers) { return [...servers.slice(0, 20).map((server) => [{ text: `${mark(server.severity)} ${server.alias}`, callback_data: `system_h:${server.alias}` }]), [{ text: '↻ 전체 새로고침', callback_data: 'system_ar' }]]; }

@@ -36,9 +36,13 @@ done
 printf 'LOAD\t%s\n' "$(cat /proc/loadavg)"
 printf 'CORES\t%s\n' "$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc)"
 awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ { printf "MEM\t%s\t%s\n", $1, $2 * 1024 }' /proc/meminfo
-disk_paths="/"
-for p in /data /home/dev /mnt/storage; do [ -e "$p" ] && disk_paths="$disk_paths $p"; done
-df -P -B1 $disk_paths 2>/dev/null | awk 'NR > 1 { printf "DISK\t%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5,$6 }'
+# 실제 블록 디바이스에 마운트된 모든 로컬 디스크를 수집한다. Docker overlay,
+# tmpfs 같은 가상 filesystem은 제외하고 외장 HDD/SSD는 마운트 경로와 함께 자동 반영한다.
+if command -v findmnt >/dev/null 2>&1; then
+  findmnt -rn -b -o SOURCE,SIZE,USED,AVAIL,USE%,TARGET 2>/dev/null | awk '$1 ~ /^\/dev\// { printf "DISK\t%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5,$6 }'
+else
+  df -P -B1 -x tmpfs -x devtmpfs -x overlay -x squashfs 2>/dev/null | awk 'NR > 1 && $1 ~ /^\/dev\// { printf "DISK\t%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5,$6 }'
+fi
 if ! command -v docker >/dev/null 2>&1; then printf 'DOCKER\tnot_installed\n'; exit 0; fi
 if ! docker info >/dev/null 2>&1; then printf 'DOCKER\tunavailable\n'; exit 0; fi
 printf 'DOCKER\tavailable\t%s\t%s\t%s\t%s\t%s\t%s\n' \

@@ -71,7 +71,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 `PHASE_14_SYSTEM_RESOURCES.md`를 기준으로 `/system` 명령어와 System & Resource Observability 구현 및 실제 Coolify runtime 검증을 완료했다.
 
-`/system`은 `/status`와 분리된 read-only 관찰/진단 기능이며 destructive Docker/host control을 포함하지 않는다. 등록 서버의 CPU/RAM/Disk/OS/Docker/Uptime과 Agent Hub runtime을 확인하며, 실제 CPU 점유 프로세스와 온도 변화를 정확히 반영하는 것까지 검증했다.
+`/system`은 `/status`와 분리된 read-only 관찰/진단 기능이며 destructive Docker/host control을 포함하지 않는다. 등록 서버의 CPU/RAM/Disk/OS/Docker/Uptime과 Agent Hub runtime을 확인하며, 실제 CPU 점유 프로세스와 온도 변화를 정확히 반영하는 것까지 검증했다. Disk는 마운트된 루트 및 외장 블록 디바이스를 자동 탐지하고 사용량/전체 용량을 개별 표시한다.
 
 ### Phase 16
 

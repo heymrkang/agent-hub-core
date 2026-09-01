@@ -183,6 +183,7 @@ Phase 14 `/system`은 read-only observability command다.
 - [x] `/system`이 `/server` Registry의 모든 활성 서버를 동적으로 반영한다.
 - [x] 서버별 SSH 실패를 격리하고 OFFLINE/UNKNOWN으로 표시한다.
 - [x] `/system`에서 Host OS/Kernel/Uptime을 확인할 수 있다.
+- [x] `/system`에서 루트 디스크와 마운트된 외장 HDD/SSD를 자동 탐지하고 마운트별 사용량/전체 용량을 확인할 수 있다.
 - [x] CPU usage/core/load average를 확인할 수 있다.
 - [x] Host Memory/Swap 상태를 확인할 수 있다.
 - [x] Disk capacity와 usage를 확인할 수 있다.
@@ -196,7 +197,7 @@ Phase 14 `/system`은 read-only observability command다.
 
 구현 검증: 2026-09-01 unit/integration/E2E `72 pass / 0 fail / 1 skip`. SSH 실수집으로 `dev`, `local` CPU/RAM/Disk/OS/Docker와 `dev` Agent Hub 컨테이너 식별을 확인했다.
 
-Runtime Audit: 2026-09-01 `PASS`. Coolify 재배포 후 Telegram `/system`의 CPU/RAM/Disk/Docker/Uptime과 host 측정값이 합리적으로 일치함을 확인했다. `dev`의 고온·CPU 사용 표시는 장시간 CPU 코어 하나를 점유한 `htop` 프로세스를 실제로 반영한 값이었으며, 프로세스 종료 후 CPU idle `99~100%`, CPU 온도 `44~45°C`로 정상화되는 것까지 확인했다.
+Runtime Audit: 2026-09-01 `PASS`. Coolify 재배포 후 Telegram `/system`의 CPU/RAM/Disk/Docker/Uptime과 host 측정값이 합리적으로 일치함을 확인했다. `dev`의 고온·CPU 사용 표시는 장시간 CPU 코어 하나를 점유한 `htop` 프로세스를 실제로 반영한 값이었으며, 프로세스 종료 후 CPU idle `99~100%`, CPU 온도 `44~45°C`로 정상화되는 것까지 확인했다. 후속 개선으로 고정 경로 대신 마운트된 전체 블록 디바이스를 수집하고, 루트 디스크와 외장 HDD/SSD의 사용량/전체 용량을 각각 표시하도록 확장했다.
 
 ## 9. 완료 조건
 

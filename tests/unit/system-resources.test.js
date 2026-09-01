@@ -19,6 +19,7 @@ MEM\tSwapTotal:\t200
 MEM\tSwapFree:\t150
 DISK\t/dev/sda1\t1000\t300\t700\t30%\t/
 DISK\t/dev/sda1\t1000\t300\t700\t30%\t/home/dev
+DISK\t/dev/sdb1\t2199023255552\t10737418240\t2188285837312\t1%\t/mnt/external
 DOCKER\tavailable\t27.0\t2\t1\t0\t0\t5
 RUNTIME\tavailable\t/docker-agent-telegram\trunning\thealthy\t0\t2026-09-01T00:00:00Z
 STATS\t1.2%\t100MiB / 1GiB\t10%`;
@@ -33,6 +34,12 @@ test('CPU는 0.5초 간격 4개 구간을 수집하고 온도는 워밍업 후 3
   assert.match(REMOTE_SCRIPT, /for temp_sample in 1 2 3/);
   assert.match(REMOTE_SCRIPT, /sleep 0\.5/);
   assert.match(REMOTE_SCRIPT, /\/sys\/class\/hwmon/);
+});
+
+test('원격 수집은 고정 경로가 아닌 마운트된 전체 블록 디바이스를 조회한다', () => {
+  assert.match(REMOTE_SCRIPT, /findmnt -rn -b/);
+  assert.match(REMOTE_SCRIPT, /\^\\\/dev\\\//);
+  assert.doesNotMatch(REMOTE_SCRIPT, /disk_paths=/);
 });
 
 test('resource 임계값은 OK/WARN/CRITICAL/UNKNOWN을 구분한다', () => {
@@ -55,6 +62,7 @@ test('원격 응답을 공통 리소스와 Docker/Runtime으로 파싱한다', (
   assert.equal(snapshot.cpu.temperatureCelsius, 43.833333333333336);
   assert.equal(snapshot.memory.usagePercent, 60);
   assert.deepEqual(snapshot.disks.items[0].paths, ['/', '/home/dev']);
+  assert.deepEqual(snapshot.disks.items[1].paths, ['/mnt/external']);
   assert.equal(snapshot.docker.running, 2);
   assert.equal(snapshot.runtime.name, 'docker-agent-telegram');
 });
@@ -126,9 +134,11 @@ test('전체 요약과 서버 상세을 구분해 표시한다', () => {
   assert.match(overview, /Docker 2 running/);
   assert.match(overview, /RAM \[600B\/1000B\] · 60\.0%/);
   assert.match(overview, /온도 43\.8°C/);
+  assert.match(overview, /\/mnt\/external 10GB\/2TB \(1\.0%\)/);
   assert.equal((overview.match(/OK/g) || []).length, 1);
   assert.match(detail, /Overall: OK/);
   assert.match(detail, /\/\+\/home\/dev/);
+  assert.match(detail, /\/mnt\/external 10GB\/2TB \(1\.0%\)/);
 });
 
 test('Docker가 없는 서버는 장애가 아니라 N/A로 표시한다', () => {
