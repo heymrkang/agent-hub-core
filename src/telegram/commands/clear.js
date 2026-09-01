@@ -1,52 +1,124 @@
 import { isStealthMode } from '../renderer/ui-theme.js';
 
 const DEFAULT_SCAN_LIMIT = 500;
-const DELETE_DELAY_MS = 35;
+const DELETE_BATCH_SIZE = 100;
+const DELETE_BATCH_DELAY_MS = 250;
+const clearCooldownUntilByChat = new Map();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isIgnorableDeleteError(error) {
-  const message = String(error?.message || '');
-  return /message to delete not found|message can't be deleted|message identifier is not specified|bad request/i.test(message);
+function getRetryAfterSeconds(error) {
+  const direct = Number(
+    error?.response?.body?.parameters?.retry_after
+    ?? error?.response?.headers?.['retry-after']
+    ?? error?.response?.headers?.['Retry-After']
+  );
+  if (Number.isFinite(direct) && direct > 0) return Math.ceil(direct);
+
+  const match = String(error?.message || '').match(/retry after\s+(\d+)/i);
+  if (match) return Number(match[1]);
+  return null;
+}
+
+function isRateLimitError(error) {
+  return error?.response?.statusCode === 429
+    || error?.response?.body?.error_code === 429
+    || /429 Too Many Requests/i.test(String(error?.message || ''));
+}
+
+function getCooldownSeconds(chatId) {
+  const until = clearCooldownUntilByChat.get(String(chatId)) || 0;
+  const remainingMs = until - Date.now();
+  if (remainingMs <= 0) {
+    clearCooldownUntilByChat.delete(String(chatId));
+    return 0;
+  }
+  return Math.ceil(remainingMs / 1000);
+}
+
+function setCooldown(chatId, retryAfterSeconds) {
+  if (!retryAfterSeconds) return;
+  clearCooldownUntilByChat.set(String(chatId), Date.now() + retryAfterSeconds * 1000);
+}
+
+function buildMessageIdBatches(newestMessageId) {
+  const oldestMessageId = Math.max(1, newestMessageId - DEFAULT_SCAN_LIMIT + 1);
+  const ids = [];
+  for (let messageId = newestMessageId; messageId >= oldestMessageId; messageId -= 1) {
+    ids.push(messageId);
+  }
+
+  const batches = [];
+  for (let index = 0; index < ids.length; index += DELETE_BATCH_SIZE) {
+    batches.push(ids.slice(index, index + DELETE_BATCH_SIZE));
+  }
+  return batches;
 }
 
 export async function handleClearCommand(bot, msg) {
   const chatId = msg.chat.id;
-  const newestMessageId = msg.message_id;
-  const oldestMessageId = Math.max(1, newestMessageId - DEFAULT_SCAN_LIMIT + 1);
-  let deleted = 0;
-  let failed = 0;
-
-  // Telegram 전용 정리 기능이다. Agent Hub DB/session/message records에는 손대지 않는다.
-  // Bot API 삭제 제한(대표적으로 오래된 메시지 등)에 걸리는 항목은 건너뛴다.
-  for (let messageId = newestMessageId; messageId >= oldestMessageId; messageId -= 1) {
-    try {
-      await bot.deleteMessage(chatId, messageId);
-      deleted += 1;
-    } catch (error) {
-      if (!isIgnorableDeleteError(error)) {
-        failed += 1;
-        console.warn(`[Command /clear] message_id=${messageId} 삭제 실패: ${error.message}`);
-      }
-    }
-
-    // Telegram API에 짧은 간격을 두어 대량 삭제 시 rate limit 가능성을 낮춘다.
-    if ((newestMessageId - messageId + 1) % 20 === 0) await sleep(DELETE_DELAY_MS);
+  const cooldownSeconds = getCooldownSeconds(chatId);
+  if (cooldownSeconds > 0) {
+    console.warn(`[Command /clear] Telegram rate-limit cooldown 활성: retry_after=${cooldownSeconds}s`);
+    return;
   }
 
-  console.log(`[Command /clear] Telegram 메시지 정리 완료: deleted=${deleted}, failed=${failed}, scanned=${newestMessageId - oldestMessageId + 1}`);
+  if (typeof bot.deleteMessages !== 'function') {
+    throw new Error('현재 node-telegram-bot-api에서 deleteMessages를 사용할 수 없습니다.');
+  }
 
-  // /clear 명령 자체까지 삭제되므로 성공 메시지를 남기지 않는다.
-  // 삭제할 수 없는 메시지가 있어도 Agent Hub 데이터에는 영향을 주지 않는다.
-  if (failed > 0) {
+  const batches = buildMessageIdBatches(msg.message_id);
+  let attempted = 0;
+  let successfulBatches = 0;
+  let failedBatches = 0;
+  let rateLimited = false;
+  let retryAfterSeconds = null;
+
+  // Telegram 전용 정리 기능이다. Agent Hub DB/session/message records에는 손대지 않는다.
+  // deleteMessages는 한 번에 최대 100개의 message_id를 처리하므로 기존 개별 삭제 요청을 최대 5회 배치 호출로 줄인다.
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index];
+    attempted += batch.length;
+
+    try {
+      await bot.deleteMessages(chatId, batch);
+      successfulBatches += 1;
+    } catch (error) {
+      if (isRateLimitError(error)) {
+        rateLimited = true;
+        retryAfterSeconds = getRetryAfterSeconds(error);
+        setCooldown(chatId, retryAfterSeconds);
+        console.warn(`[Command /clear] Telegram 429 감지: retry_after=${retryAfterSeconds ?? 'unknown'}s, 추가 삭제 요청 중단`);
+        break;
+      }
+
+      failedBatches += 1;
+      console.warn(`[Command /clear] batch=${index + 1}/${batches.length} 삭제 실패: ${error.message}`);
+    }
+
+    if (index < batches.length - 1) await sleep(DELETE_BATCH_DELAY_MS);
+  }
+
+  console.log(`[Command /clear] Telegram 메시지 정리 완료: scanned=${batches.flat().length}, attempted=${attempted}, successful_batches=${successfulBatches}, failed_batches=${failedBatches}, rate_limited=${rateLimited}`);
+
+  // /clear 명령 자체도 삭제 대상이므로 정상 완료 시 별도 성공 메시지는 남기지 않는다.
+  // 429 상태에서는 Telegram API 호출을 더 만들지 않는다.
+  if (failedBatches > 0 && !rateLimited) {
     const text = isStealthMode()
-      ? `! 일부 Telegram 메시지를 삭제하지 못했습니다. Agent Hub 세션/기록은 변경되지 않았습니다.`
-      : `⚠️ 일부 Telegram 메시지를 삭제하지 못했습니다. Agent Hub 세션/기록은 변경되지 않았습니다.`;
+      ? `! 일부 Telegram 메시지 배치를 삭제하지 못했습니다. Agent Hub 세션/기록은 변경되지 않았습니다.`
+      : `⚠️ 일부 Telegram 메시지 배치를 삭제하지 못했습니다. Agent Hub 세션/기록은 변경되지 않았습니다.`;
     const notice = await bot.sendMessage(chatId, text).catch(() => null);
     if (notice?.message_id) {
       setTimeout(() => bot.deleteMessage(chatId, notice.message_id).catch(() => {}), 5000);
     }
   }
 }
+
+export const __clearTestUtils = {
+  buildMessageIdBatches,
+  getRetryAfterSeconds,
+  isRateLimitError,
+  clearCooldownUntilByChat,
+};
