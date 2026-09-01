@@ -109,4 +109,29 @@ export class ContextManager {
       latestMessageId: messages.length > 0 ? messages[messages.length - 1].id : null
     };
   }
+
+  static buildExecutionContext(sessionId, { excludeMessageId = null, tailSize = 10 } = {}) {
+    const sessionInfo = this.getSessionContextInfo(sessionId);
+    if (!sessionInfo) throw new Error('세션을 찾을 수 없습니다.');
+
+    const db = getDb();
+    let cursorRowid = 0;
+    if (sessionInfo.compact_cursor_message_id) {
+      const cursor = db.prepare('SELECT rowid AS cursor FROM messages WHERE id = ? AND session_id = ?')
+        .get(sessionInfo.compact_cursor_message_id, sessionId);
+      if (!cursor) throw new Error('저장된 Compact cursor가 현재 세션의 Canonical message를 가리키지 않습니다.');
+      cursorRowid = cursor.cursor;
+    }
+
+    const messages = db.prepare(`SELECT * FROM messages
+      WHERE session_id = ? AND rowid > ? AND (? IS NULL OR id != ?)
+      ORDER BY rowid DESC LIMIT ?`).all(sessionId, cursorRowid, excludeMessageId, excludeMessageId, tailSize).reverse();
+
+    return {
+      sessionId,
+      rollingSummary: sessionInfo.rolling_summary || null,
+      messages,
+      compactCursorMessageId: sessionInfo.compact_cursor_message_id || null
+    };
+  }
 }

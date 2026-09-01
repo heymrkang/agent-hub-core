@@ -10,12 +10,15 @@ const { initDatabase, getDb } = await import('../../src/database/index.js');
 const { SessionManager } = await import('../../src/sessions/session-manager.js');
 const { ContextManager } = await import('../../src/context/context-manager.js');
 const { Compactor } = await import('../../src/context/compactor.js');
+const { ContextAssembler } = await import('../../src/context/context-assembler.js');
 const { JobRuntime } = await import('../../src/jobs/job-runtime.js');
 const { providerManager } = await import('../../src/providers/provider-manager.js');
 const { queueManager } = await import('../../src/jobs/queue-manager.js');
+const { initSettingsManager } = await import('../../src/settings/settings-manager.js');
 
 initDatabase();
 const db = getDb();
+initSettingsManager(db);
 const userId = 1602;
 
 function createSession(messageCount = 16) {
@@ -32,6 +35,15 @@ function createSession(messageCount = 16) {
 
 function registerAdapter(executePrompt) {
   providerManager.registerAdapter({ name: 'compact-test', executePrompt });
+}
+
+function registerMeasuredAdapter({ executePrompt, contextWindow = 100, countTokens = 90 }) {
+  providerManager.registerAdapter({
+    name: 'compact-test',
+    executePrompt,
+    getContextWindowTokens: async () => contextWindow,
+    countPromptTokens: async () => countTokens
+  });
 }
 
 test('migration 013 adds compact metadata and reasoning default', () => {
@@ -126,4 +138,61 @@ test('active jobs and concurrent compact calls return BUSY', async () => {
   }), (error) => error.code === 'COMPACT_BUSY');
   release();
   assert.equal((await first).status, 'COMPACTED');
+});
+
+test('execution context excludes compacted originals and keeps summary plus raw tail', async () => {
+  const session = createSession();
+  registerAdapter(async () => ({ response: 'summary-for-context' }));
+  await Compactor.compactSession(session.id);
+  const currentMessageId = SessionManager.saveMessage({ sessionId: session.id, role: 'user', text: 'current-message' });
+  const assembled = ContextAssembler.assemble({
+    sessionId: session.id,
+    userMessageId: currentMessageId,
+    memoryBlock: '[memory]',
+    currentPrompt: 'current-prompt'
+  });
+
+  assert.match(assembled.prompt, /summary-for-context/);
+  assert.doesNotMatch(assembled.prompt, /message-1(?:\D|$)/);
+  assert.match(assembled.prompt, /message-7/);
+  assert.match(assembled.prompt, /message-16/);
+  assert.doesNotMatch(assembled.prompt, /current-message/);
+  assert.match(assembled.prompt, /current-prompt/);
+});
+
+test('auto compact runs once at threshold and rebuilds the prompt from the new cursor', async () => {
+  const session = createSession();
+  let summaryCalls = 0;
+  registerMeasuredAdapter({
+    executePrompt: async () => { summaryCalls += 1; return { response: 'auto-summary' }; }
+  });
+  const prepared = await ContextAssembler.prepare({ session, currentPrompt: 'new request' });
+
+  assert.equal(prepared.autoCompact.status, 'COMPACTED');
+  assert.equal(prepared.autoCompact.attempted, true);
+  assert.equal(summaryCalls, 1);
+  assert.match(prepared.prompt, /auto-summary/);
+  assert.doesNotMatch(prepared.prompt, /message-1(?:\D|$)/);
+  assert.match(prepared.prompt, /new request/);
+});
+
+test('auto compact is unavailable without trustworthy provider token metrics', async () => {
+  const session = createSession();
+  let calls = 0;
+  registerAdapter(async () => { calls += 1; return { response: 'must-not-run' }; });
+  const prepared = await ContextAssembler.prepare({ session, currentPrompt: 'new request' });
+  assert.equal(prepared.autoCompact.status, 'UNAVAILABLE');
+  assert.equal(prepared.autoCompact.attempted, false);
+  assert.equal(calls, 0);
+  assert.match(prepared.prompt, /message-7/);
+});
+
+test('auto compact failure preserves and returns the pre-compact prompt', async () => {
+  const session = createSession();
+  registerMeasuredAdapter({ executePrompt: async () => { throw new Error('auto summary failed'); } });
+  const prepared = await ContextAssembler.prepare({ session, currentPrompt: 'survives failure' });
+  assert.equal(prepared.autoCompact.status, 'FAILED');
+  assert.match(prepared.prompt, /message-7/);
+  assert.match(prepared.prompt, /survives failure/);
+  assert.equal(SessionManager.getSession(session.id).compact_cursor_message_id, null);
 });

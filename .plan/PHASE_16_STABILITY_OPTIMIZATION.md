@@ -2,7 +2,7 @@
 
 ## Status
 
-`IN PROGRESS — 16-2 Canonical Compact 완료`
+`IN PROGRESS — 16-3 Auto Compact / Canonical Context Assembly 완료`
 
 Phase 16은 신규 대형 기능을 추가하는 단계가 아니라, V1 이후 실제 사용에서 드러난 미완성 기능과 조작 불가능한 Provider 옵션을 정리하는 안정화·최적화 단계다.
 
@@ -162,6 +162,15 @@ Provider native compact를 억지로 호출하지 않고 **Agent Hub 자체 Cano
 - rolling summary, message UUID cursor, 압축 시각, 전후 estimated character count는 단일 transaction으로 저장한다. Provider 실패나 cursor conflict 시 기존 상태는 유지한다.
 - Canonical `messages`는 삭제하거나 수정하지 않으며 완료 UI에 압축 메시지 수, 원문 tail 수, 전후 추정 문자 수를 표시한다.
 - 자동 Compact와 실제 Provider prompt의 canonical context assembly 연결은 Phase 16-3 범위다.
+
+### 1.8 Phase 16-3 구현 결과
+
+- Telegram 실행 prompt를 `ContextAssembler`로 단일화했다. 실제 Provider에는 global memory, rolling summary, compact cursor 이후 최근 Canonical message 10개, 현재 요청 순으로 조립해 전달한다.
+- 현재 user message는 Canonical DB에 먼저 보존하되 history에서 제외해 현재 prompt가 중복되지 않는다. compact cursor 이전 원문도 rolling summary와 중복 전달하지 않는다.
+- `auto_compact_threshold`를 Provider 호출 전 실행 경로에 연결했다. Adapter가 신뢰할 수 있는 context window token 수와 prompt token 수를 모두 제공할 때만 사용률을 계산한다.
+- 임계치에 도달하면 요청당 자동 Compact를 최대 1회 실행한 뒤 갱신된 summary/cursor로 prompt를 다시 조립한다. `NO_CHANGE`/`BUSY`는 반복하지 않는다.
+- 자동 Compact Provider 호출이 실패하면 summary/cursor를 손상시키지 않고 압축 전 prompt로 원래 사용자 요청을 계속한다.
+- Codex `0.149.1` app-server `model/list`와 Antigravity `1.1.20`은 신뢰 가능한 context window/tokenizer 정보를 노출하지 않으므로 현재 운영 Adapter의 Auto Compact 판정은 `UNAVAILABLE`이다. 문자 수 기반 가짜 token 비율이나 하드코딩 context window는 사용하지 않는다.
 
 ---
 
@@ -363,12 +372,12 @@ getUsageQuota({ forceRefresh })
 - [x] `/compact` 후 Agent Hub 세션 ID와 활성 세션이 바뀌지 않는다.
 - [x] Canonical 원본 messages가 삭제되거나 수정되지 않는다.
 - [x] 오래된 메시지는 summary에 반영되고 최근 tail은 원문으로 유지된다.
-- [ ] compact cursor 이전 원문이 다음 Provider prompt에 중복 포함되지 않는다.
+- [x] compact cursor 이전 원문이 다음 Provider prompt에 중복 포함되지 않는다.
 - [x] 두 번 이상 압축해도 기존 summary와 신규 구간이 연속성을 유지한다.
 - [x] 압축 실패 시 기존 summary/cursor가 손상되지 않는다.
-- [ ] `auto_compact_threshold` 도달 시 자동 압축 후 원래 요청이 정상 실행된다.
-- [ ] context window를 모르는 경우 가짜 사용률을 표시하거나 임의 압축하지 않는다.
-- [ ] Codex와 Antigravity 전환 후에도 동일한 Canonical summary를 사용할 수 있다.
+- [x] 신뢰 가능한 token metrics를 제공하는 Adapter에서 `auto_compact_threshold` 도달 시 자동 압축 후 원래 요청이 정상 실행된다.
+- [x] context window를 모르는 경우 가짜 사용률을 표시하거나 임의 압축하지 않는다.
+- [x] Codex와 Antigravity 전환 후에도 Provider 독립적인 Canonical summary/cursor 조립 경로를 사용한다.
 - [ ] Core 재배포 후 summary와 cursor가 유지된다.
 
 ### Reasoning / Thinking

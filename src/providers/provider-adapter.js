@@ -48,6 +48,10 @@ export class ProviderAdapter {
     };
   }
 
+  // Provider가 신뢰할 수 있는 값을 노출할 때만 Auto Compact를 활성화한다.
+  async getContextWindowTokens() { return null; }
+  async countPromptTokens() { return null; }
+
   /**
    * 프롬프트를 비대화형으로 실행한다.
    * @param {object} options { prompt, model, sessionId, profile, cwd, signal }
