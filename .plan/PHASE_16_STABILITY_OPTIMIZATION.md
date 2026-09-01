@@ -2,7 +2,7 @@
 
 ## Status
 
-`IN PROGRESS — 16-4 Model Thinking 완료`
+`DONE — 16-5 Provider Usage/Quota 완료`
 
 Phase 16은 신규 대형 기능을 추가하는 단계가 아니라, V1 이후 실제 사용에서 드러난 미완성 기능과 조작 불가능한 Provider 옵션을 정리하는 안정화·최적화 단계다.
 
@@ -359,6 +359,14 @@ getUsageQuota({ forceRefresh })
 
 ---
 
+### 3.6 Phase 16-5 구현 결과
+
+- 공통 `getUsageQuota()` contract와 Provider별 독립 cache service를 추가했다. 성공 60초, 실패 15초, 마지막 성공 10분 stale, probe 10초 timeout, 강제 새로고침 15초 cooldown, 동시 요청 single-flight 정책을 적용했다.
+- Codex app-server `account/rateLimits/read`의 `primary`/`secondary`, `usedPercent`, `windowDurationMins`, `resetsAt`만 파싱한다. `/usage`에 사용/잔여율, KST reset 시각과 상대 시간, 조회 시각/cache 상태를 표시한다.
+- Antigravity 1.1.20은 안정적인 machine-readable quota source를 확인하지 못해 `UNAVAILABLE`로 명시한다. 수치나 reset 시각을 추정하지 않는다.
+- `/usage`에서 Agent Hub Job 통계와 Provider 계정 quota를 분리하고 강제 새로고침 버튼을 추가했다. `/status`에는 Provider별 잔여율 요약과 조회 시각을 표시한다.
+- Provider 조회는 병렬·독립 실행하며 오류 raw dump와 account identifier를 노출하지 않는다. 일반 오류 문자열의 credential/token/secret/password 값도 마스킹한다.
+
 ## 4. 예상 변경 범위
 
 - sessions schema migration: compact cursor/metadata, `reasoning_effort`
@@ -403,16 +411,16 @@ getUsageQuota({ forceRefresh })
 
 ### Provider Usage / Quota
 
-- [ ] `/usage`에서 Agent Hub Job 통계와 Provider 계정 quota가 분리돼 표시된다.
-- [ ] Codex가 실제 노출하는 5시간/주간 사용량과 reset 정보를 확인할 수 있다.
-- [ ] Antigravity가 실제 노출하는 quota window와 reset 정보를 확인할 수 있다.
-- [ ] `/status`에서 Provider별 남은 한도 요약과 조회 시각을 확인할 수 있다.
-- [ ] Provider가 제공하지 않은 수치나 reset 시각을 추정하지 않는다.
-- [ ] 한 Provider 조회 실패가 다른 Provider와 Agent Hub 통계 표시를 막지 않는다.
-- [ ] cache hit, 강제 새로고침, stale fallback, timeout, parser 실패가 구분된다.
-- [ ] 동시 `/status`와 `/usage` 조회가 Provider probe를 중복 실행하지 않는다.
-- [ ] credential과 민감한 account identifier가 UI/log에 노출되지 않는다.
-- [ ] pinned Codex/Antigravity CLI fixture와 실제 계정 smoke test가 통과한다.
+- [x] `/usage`에서 Agent Hub Job 통계와 Provider 계정 quota가 분리돼 표시된다.
+- [x] Codex가 실제 노출하는 5시간/주간 사용량과 reset 정보를 확인할 수 있다.
+- [x] Antigravity는 검증된 quota source가 없어 `UNAVAILABLE`로 명확히 표시된다.
+- [x] `/status`에서 Provider별 남은 한도 요약과 조회 시각을 확인할 수 있다.
+- [x] Provider가 제공하지 않은 수치나 reset 시각을 추정하지 않는다.
+- [x] 한 Provider 조회 실패가 다른 Provider와 Agent Hub 통계 표시를 막지 않는다.
+- [x] cache hit, 강제 새로고침, stale fallback, timeout, parser 실패가 구분된다.
+- [x] 동시 `/status`와 `/usage` 조회가 Provider probe를 중복 실행하지 않는다.
+- [x] credential과 민감한 account identifier가 UI/log에 노출되지 않는다.
+- [x] pinned Codex fixture/parser와 실제 계정 smoke test가 통과한다. Antigravity는 source 부재를 재확인했다.
 
 ---
 

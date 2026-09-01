@@ -1,5 +1,6 @@
 import { CodexAdapter } from './codex/codex-adapter.js';
 import { AntigravityAdapter } from './antigravity/antigravity-adapter.js';
+import { UsageQuotaService } from './usage-quota-service.js';
 
 class ProviderManager {
   constructor() { this.adapters = new Map(); this.initDefaultAdapters(); }
@@ -17,3 +18,4 @@ class ProviderManager {
   }
 }
 export const providerManager = new ProviderManager();
+export const usageQuotaService = new UsageQuotaService({ providerManager });

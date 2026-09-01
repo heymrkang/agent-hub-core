@@ -1,32 +1,45 @@
 import { getDb } from '../../database/index.js';
-import { providerManager } from '../../providers/provider-manager.js';
+import { providerManager, usageQuotaService } from '../../providers/provider-manager.js';
 import { isStealthMode, uiTitle } from '../renderer/ui-theme.js';
 
-function fmtMs(ms) {
-  const value = Number(ms || 0);
-  if (!value) return '0s';
-  const sec = Math.round(value / 1000);
-  if (sec < 60) return `${sec}s`;
-  const min = Math.floor(sec / 60); const rem = sec % 60;
-  return `${min}m ${rem}s`;
-}
+function fmtMs(ms) { const sec = Math.round(Number(ms || 0) / 1000); if (sec < 60) return `${sec}s`; return `${Math.floor(sec / 60)}m ${sec % 60}s`; }
 function esc(v) { return String(v ?? '').replace(/([_*`\[])/g, '\\$1'); }
+function kst(iso) { try { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso)); } catch { return '미제공'; } }
+function relative(iso) { const seconds = Math.round((Date.parse(iso) - Date.now()) / 1000); if (!Number.isFinite(seconds)) return null; if (seconds <= 0) return 'reset 시각 지남'; const mins = Math.ceil(seconds / 60); if (mins < 60) return `${mins}분 후`; const hours = Math.floor(mins / 60), rem = mins % 60; if (hours < 24) return `${hours}시간 ${rem}분 후`; return `${Math.floor(hours / 24)}일 ${hours % 24}시간 후`; }
 
-export async function handleUsageCommand(bot, msg) {
+export function renderQuota(result) {
+  let text = `**${esc(result.provider.toUpperCase())}** · \`${esc(result.status)}\`${result.stale ? ' · STALE' : ''}\n`;
+  if (result.status === 'UNAVAILABLE') return `${text}• 신뢰 가능한 quota 조회 인터페이스 없음\n`;
+  if (result.status === 'ERROR') return `${text}• 조회 실패: ${esc(result.error || '알 수 없는 오류')}\n`;
+  for (const window of result.windows) {
+    const usage = window.usedPercent !== undefined ? `${window.usedPercent}% 사용${window.remainingPercent !== undefined ? ` / ${window.remainingPercent}% 남음` : ''}` : '사용률 미제공';
+    const reset = window.resetsAt ? `${kst(window.resetsAt)} (${relative(window.resetsAt)})` : '미제공';
+    text += `• ${esc(window.label)}: ${esc(usage)}\n  reset: ${esc(reset)}\n`;
+  }
+  text += `• 조회: ${esc(kst(result.fetchedAt))} · cache ${esc(result.cache)}\n`;
+  if (result.error) text += `• 최신 조회 오류: ${esc(result.error)}\n`;
+  return text;
+}
+
+async function buildUsageText(userId, forceRefresh) {
   const db = getDb();
-  const userId = msg.from.id;
   const totals = db.prepare(`SELECT COUNT(*) AS runs, COALESCE(SUM(duration_ms),0) AS duration_ms FROM jobs j JOIN sessions s ON s.id=j.session_id WHERE s.user_id=? AND j.status='COMPLETED'`).get(userId);
   const providers = db.prepare(`SELECT j.provider, COUNT(*) AS runs, COALESCE(SUM(j.duration_ms),0) AS duration_ms FROM jobs j JOIN sessions s ON s.id=j.session_id WHERE s.user_id=? AND j.status='COMPLETED' GROUP BY j.provider ORDER BY runs DESC`).all(userId);
   const models = db.prepare(`SELECT COALESCE(j.model,'CLI Default') AS model, COUNT(*) AS runs FROM jobs j JOIN sessions s ON s.id=j.session_id WHERE s.user_id=? AND j.status='COMPLETED' GROUP BY COALESCE(j.model,'CLI Default') ORDER BY runs DESC LIMIT 10`).all(userId);
-
-  let text = `${uiTitle('📊', 'Agent Hub Usage')}\n\n`;
-  text += `완료 작업: **${totals.runs}회**\n실행 시간 합계: **${fmtMs(totals.duration_ms)}**\n\n`;
-  text += `**Provider 분포**\n`;
-  text += providers.length ? providers.map((r) => `• ${esc(r.provider)}: ${r.runs}회 / ${fmtMs(r.duration_ms)}`).join('\n') : '• 기록 없음';
-  text += `\n\n**Model 분포**\n`;
-  text += models.length ? models.map((r) => `• ${esc(r.model)}: ${r.runs}회`).join('\n') : '• 기록 없음';
-  text += `\n\n**Provider quota / token**\n`;
-  for (const name of providerManager.listProviderNames()) text += `• ${esc(name)}: CLI가 신뢰 가능한 quota/window/token 수치를 현재 노출하지 않아 표시하지 않음\n`;
-  text += `\n_${isStealthMode() ? '미제공 수치는 추정하지 않습니다.' : 'ℹ️ 미제공 수치는 추정하지 않습니다.'}_`;
-  await bot.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown' });
+  const quotas = await Promise.all(providerManager.listProviderNames().map(name => usageQuotaService.get(name, { forceRefresh })));
+  let text = `${uiTitle('📊', 'Agent Hub Usage')}\n\n**Agent Hub Job 통계**\n완료 작업: **${totals.runs}회**\n실행 시간 합계: **${fmtMs(totals.duration_ms)}**\n\n**Provider 분포**\n`;
+  text += providers.length ? providers.map(r => `• ${esc(r.provider)}: ${r.runs}회 / ${fmtMs(r.duration_ms)}`).join('\n') : '• 기록 없음';
+  text += `\n\n**Model 분포**\n${models.length ? models.map(r => `• ${esc(r.model)}: ${r.runs}회`).join('\n') : '• 기록 없음'}`;
+  text += `\n\n**Provider 계정 quota**\n\n${quotas.map(renderQuota).join('\n')}\n_${isStealthMode() ? '미제공 수치는 추정하지 않습니다.' : 'ℹ️ 미제공 수치는 추정하지 않습니다.'}_`;
+  return text;
 }
+
+export async function handleUsageCommand(bot, msg, { forceRefresh = false } = {}) {
+  const chatId = msg.chat ? msg.chat.id : msg.message.chat.id; const userId = msg.from.id;
+  const text = await buildUsageText(userId, forceRefresh);
+  const options = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: isStealthMode() ? '↻ quota 새로고침' : '🔄 quota 새로고침', callback_data: 'usage_refresh' }]] } };
+  if (msg.message && !msg.chat) return bot.editMessageText(text, { chat_id: chatId, message_id: msg.message.message_id, ...options });
+  return bot.sendMessage(chatId, text, options);
+}
+
+export async function handleUsageCallback(bot, query) { await handleUsageCommand(bot, query, { forceRefresh: true }); await bot.answerCallbackQuery(query.id, { text: 'Provider quota를 새로고침했습니다.' }); }

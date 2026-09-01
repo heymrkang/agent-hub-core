@@ -33,6 +33,17 @@ export class CodexAdapter extends ProviderAdapter {
       send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'agent_hub', title: 'Agent Hub', version: '1.0.0' } } });
     });
   }
+  async queryAppServerRateLimits() {
+    return new Promise((resolve, reject) => {
+      const child = spawn('codex', ['app-server', '--stdio'], { cwd: this.workspaceDir, env: { ...process.env, CI: 'true' }, stdio: ['pipe', 'pipe', 'pipe'] }); let buffer = '', stderr = '', settled = false;
+      const timer = setTimeout(() => finish(new Error(`Codex app-server rateLimits 타임아웃: ${stderr.trim() || '응답 없음'}`)), 10000);
+      const finish = (error, value) => { if (settled) return; settled = true; clearTimeout(timer); if (!child.killed) child.kill('SIGTERM'); error ? reject(error) : resolve(value); }; const send = payload => child.stdin.write(`${JSON.stringify(payload)}\n`);
+      child.stderr.on('data', c => { stderr += c.toString(); }); child.on('error', e => finish(new Error(`Codex app-server 시작 실패: ${e.message}`))); child.on('close', code => { if (!settled) finish(new Error(`Codex app-server 조기 종료 (code=${code}): ${stderr.trim() || '상세 오류 없음'}`)); });
+      child.stdout.on('data', chunk => { buffer += chunk.toString(); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines.map(l => l.trim()).filter(Boolean)) { let m; try { m = JSON.parse(line); } catch { continue; } if (m.id === 1) { if (m.error) return finish(new Error(m.error.message || 'initialize 실패')); send({ method: 'initialized', params: {} }); send({ id: 2, method: 'account/rateLimits/read', params: {} }); } else if (m.id === 2) { if (m.error) return finish(new Error(m.error.message || 'rateLimits 조회 실패')); return finish(null, m.result); } } });
+      send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'agent_hub', title: 'Agent Hub', version: '1.0.0' } } });
+    });
+  }
+  async getUsageQuota() { return parseCodexRateLimits(await this.queryAppServerRateLimits()); }
   async discoverModels(forceRefresh = false) { const now = Date.now(); if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels; try { const result = await this.queryAppServerModels(); const rows = Array.isArray(result?.data) ? result.data : []; const discovered = rows.filter(m => m && !m.hidden).map(m => { const efforts = (m.supportedReasoningEfforts || m.supported_reasoning_efforts || []).map(e => typeof e === 'string' ? e : e?.reasoningEffort || e?.reasoning_effort || e?.value).filter(Boolean); const defaultEffort = m.defaultReasoningEffort || m.default_reasoning_effort || null; return { id: m.model || m.id, name: m.displayName || m.display_name || m.model || m.id, default: Boolean(m.isDefault ?? m.is_default), description: m.description || null, metadata: { reasoningEfforts: [...new Set(efforts)], defaultReasoningEffort: defaultEffort } }; }).filter(m => m.id); if (!discovered.length) throw new Error('model/list가 표시 가능한 모델을 반환하지 않았습니다.'); this.cachedModels = discovered; this.lastModelCheck = now; return discovered; } catch (error) { this.cachedModels = null; throw new Error(`Codex 모델 동적 조회 실패 (app-server model/list): ${error.message}`); } }
   getCapabilities() { return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'PARTIAL', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'SUPPORTED', reasoningEffort: 'SUPPORTED' }; }
   buildCodexArgs({ prompt, model, reasoningEffort = 'default' }) { const args = ['exec']; if (model && model !== 'default') args.push('-m', model); if (reasoningEffort && reasoningEffort !== 'default') args.push('-c', `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`); args.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', prompt); return args; }
@@ -52,3 +63,23 @@ export class CodexAdapter extends ProviderAdapter {
   }
   async executePrompt(options = {}) { const { prompt, model, reasoningEffort = 'default', profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options; const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE'; if (normalizedProfile !== 'FULL_ACCESS') return this.executeRestrictedPrompt({ prompt, model, reasoningEffort, profile: normalizedProfile, cwd, timeoutMs, signal }); return new Promise((resolve, reject) => { const args = this.buildCodexArgs({ prompt, model, reasoningEffort }); const child = spawn('codex', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] }); let stdout = '', stderr = '', isFinished = false; const finishError = error => { if (isFinished) return; isFinished = true; clearTimeout(timer); reject(error); }; const timer = setTimeout(() => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error(`Codex 실행 타임아웃 (${timeoutMs / 1000}초 초과)`)); } }, timeoutMs); if (signal) signal.addEventListener('abort', () => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error('Codex 작업이 사용자에 의해 중단되었습니다.')); } }, { once: true }); child.stdout.on('data', c => { stdout += c.toString(); }); child.stderr.on('data', c => { stderr += c.toString(); }); child.on('error', e => finishError(new Error(`Codex 프로세스 시작 실패: ${e.message}`))); child.on('close', code => { if (isFinished) return; isFinished = true; clearTimeout(timer); const response = stdout.trim(), diagnostic = stderr.trim(); if (code !== 0) return reject(new Error(`Codex 실행 실패 (Exit code: ${code}):\n${diagnostic || response || `Exit code: ${code}`}`)); resolve({ response: response || 'Codex로부터 빈 응답을 받았습니다.' }); }); }); }
 }
+
+export function parseCodexRateLimits(result, fetchedAt = new Date().toISOString()) {
+  const root = result?.rateLimits || result?.rate_limits || result || {};
+  const specs = [['primary', root.primary], ['secondary', root.secondary]];
+  const windows = specs.filter(([, value]) => value && typeof value === 'object').map(([id, value]) => {
+    const used = numberOrNull(value.usedPercent ?? value.used_percent);
+    const duration = numberOrNull(value.windowDurationMins ?? value.window_duration_mins);
+    const resetsAt = timestampOrNull(value.resetsAt ?? value.resets_at);
+    const window = { id, label: duration ? formatWindowLabel(duration) : id };
+    if (used !== null) { window.usedPercent = used; window.remainingPercent = Math.max(0, 100 - used); }
+    if (duration !== null) window.windowDurationMins = duration;
+    if (resetsAt) window.resetsAt = resetsAt;
+    return window;
+  });
+  const complete = windows.length > 0 && windows.every(w => w.usedPercent !== undefined && w.windowDurationMins !== undefined && w.resetsAt);
+  return { provider: 'codex', windows, fetchedAt, source: 'codex app-server account/rateLimits/read', status: windows.length ? (complete ? 'AVAILABLE' : 'PARTIAL') : 'UNAVAILABLE' };
+}
+function numberOrNull(value) { const n = Number(value); return Number.isFinite(n) ? n : null; }
+function timestampOrNull(value) { if (value === null || value === undefined || value === '') return null; const ms = typeof value === 'number' && value < 1e12 ? value * 1000 : value; const d = new Date(ms); return Number.isNaN(d.getTime()) ? null : d.toISOString(); }
+function formatWindowLabel(minutes) { if (minutes === 10080) return '주간 한도'; if (minutes % 1440 === 0) return `${minutes / 1440}일 한도`; if (minutes % 60 === 0) return `${minutes / 60}시간 한도`; return `${minutes}분 한도`; }

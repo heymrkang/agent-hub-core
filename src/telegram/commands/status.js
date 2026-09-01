@@ -4,6 +4,7 @@ import { HealthService } from '../../health/health-service.js';
 import { getDb } from '../../database/index.js';
 import { SessionManager } from '../../sessions/session-manager.js';
 import { isStealthMode, uiTitle } from '../renderer/ui-theme.js';
+import { providerManager, usageQuotaService } from '../../providers/provider-manager.js';
 
 const ICONS = { HEALTHY: '✅', DEGRADED: '⚠️', ERROR: '❌' };
 const PLAIN = { HEALTHY: '[OK]', DEGRADED: '[WARN]', ERROR: '[ERR]' };
@@ -22,7 +23,10 @@ export async function handleStatusCommand(bot, msg) {
   const userId = msg.from.id;
   const waiting = await bot.sendMessage(chatId, isStealthMode() ? '■ 시스템 상태 확인 중...' : '🔎 시스템 상태 확인 중...');
   try {
-    const snapshot = await HealthService.getSnapshot();
+    const [snapshot, quotas] = await Promise.all([
+      HealthService.getSnapshot(),
+      Promise.all(providerManager.listProviderNames().map(name => usageQuotaService.get(name)))
+    ]);
     const stealth = isStealthMode();
     const mark = (state) => stealth ? PLAIN[state] : ICONS[state];
     const session = SessionManager.getActiveSession(userId);
@@ -36,6 +40,12 @@ export async function handleStatusCommand(bot, msg) {
     text += `\n**Active Session**\n`;
     text += `Title: ${escapeMd(session.title)}\nProvider: ${escapeMd(session.active_provider)}\nModel: ${escapeMd(session.active_model || 'CLI Default')}\nThinking: ${escapeMd(session.reasoning_effort || 'default')}\nProfile: ${escapeMd(session.execution_profile)}\n`;
     text += `Job: ${activeJob ? `${escapeMd(activeJob.status)} · ${escapeMd(activeJob.type)} · ${escapeMd(activeJob.id)}` : 'idle'}\n`;
+    text += `\n**Provider Quota**\n`;
+    for (const quota of quotas) {
+      const available = quota.windows.filter(w => w.remainingPercent !== undefined).map(w => `${w.label} ${w.remainingPercent}% 남음`).join(' · ');
+      text += `${escapeMd(quota.provider.toUpperCase())}: ${escapeMd(available || quota.status)} · ${escapeMd(quota.fetchedAt)}${quota.stale ? ' · STALE' : ''}\n`;
+    }
+    text += `상세/새로고침: /usage\n`;
     if (recentFailure) text += `\n**Recent Failure**\n${escapeMd(recentFailure.error_category || 'UNKNOWN')} · ${escapeMd(recentFailure.created_at)}\n${escapeMd(String(recentFailure.error_message || '').slice(0, 500))}\n`;
     text += `\nChecked: \`${snapshot.checkedAt}\``;
     await bot.editMessageText(text, { chat_id: chatId, message_id: waiting.message_id, parse_mode: 'Markdown' });

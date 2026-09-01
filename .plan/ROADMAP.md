@@ -56,7 +56,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 13 | Mobile Preview Runtime & Preview Manager | `DONE` | 2026-08-31 모바일 개발 루프 E2E 완료 |
 | Phase 14 | System & Resource Observability (`/system`) | `DONE` | 2026-09-01 Coolify runtime audit PASS |
 | Phase 15 | Unassigned | `SKIPPED / UNASSIGNED` | 별도 구현 범위 없이 건너뛰고 Phase 16으로 진행 |
-| Phase 16 | Feature Stabilization & Optimization | `IN PROGRESS` | 16-3 Auto Compact/Canonical Context Assembly 완료; 다음은 16-4 Thinking |
+| Phase 16 | Feature Stabilization & Optimization | `DONE` | Canonical Compact, Model Thinking, Provider Usage/Quota 완료 |
 | Phase 17 | Backend API Preview & Inspector | `PLANNED` | NestJS/OpenAPI 기반 API Preview와 개발 데이터 보안 경계 |
 | Phase 18 | Agent Extensibility — MCP & Skills | `PLANNED` | Provider native MCP/Skills 조회·관리·인증·권한 정책 |
 | Phase 19 | Deploy Webhooks, Voice Prompting & Smart Quota | `PLANNED` | Coolify 배포 연동(`/deploy`), Whisper STT 음성 코딩, 부하 0% 스마트 Quota 알림 |
@@ -81,7 +81,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ### Phase 16
 
-`PHASE_16_STABILITY_OPTIMIZATION.md`를 기준으로 Agent Hub Canonical Context Compact, Provider별 Model Reasoning/Thinking Level, Codex/Antigravity Usage/Quota 조회를 구현한다. 2026-09-01에 16-1 repository/CLI/schema 조사를 완료했고, 16-2에서 수동 Canonical Compact를 구현했다. 16-3에서는 compact cursor 이후 원문만 전달하는 단일 context assembly와 capability 기반 Auto Compact, 실패 fallback을 실행 경로에 연결했다. 현재 CLI는 신뢰 가능한 context window/tokenizer를 노출하지 않아 운영 Auto Compact 판정은 `UNAVAILABLE`로 유지한다. 다음은 16-4 Model Thinking이다.
+`PHASE_16_STABILITY_OPTIMIZATION.md`를 기준으로 Agent Hub Canonical Context Compact, Provider별 Model Reasoning/Thinking Level, Codex/Antigravity Usage/Quota 조회를 구현한다. 16-1 조사, 16-2 수동 Canonical Compact, 16-3 context assembly/Auto Compact 경로, 16-4 Model Thinking, 16-5 Provider Usage/Quota를 완료했다. Codex는 app-server의 5시간/주간 quota를 표시하고 Antigravity는 검증된 source 부재로 `UNAVAILABLE`을 표시한다. 현재 CLI가 context window/tokenizer를 노출하지 않아 운영 Auto Compact 판정은 `UNAVAILABLE`로 유지한다.
 
 ### Phase 17
 
@@ -113,7 +113,7 @@ Phase 12: SKIPPED / SUPERSEDED
 Phase 13: DONE — Mobile Preview Runtime & Preview Manager
 Phase 14: DONE — /system System & Resource Observability
 Phase 15: SKIPPED / UNASSIGNED
-Phase 16: IN PROGRESS — 16-3 Auto Compact / Canonical Context Assembly 완료
+Phase 16: DONE — Canonical Compact / Model Thinking / Provider Usage·Quota 완료
 Phase 17: PLANNED — Backend API Preview & Inspector
 Phase 18: PLANNED — MCP & Skills
 Phase 19: PLANNED — Deploy Webhooks, Voice Prompting & Smart Quota

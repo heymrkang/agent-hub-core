@@ -20,7 +20,7 @@
 | **Health / Auth Diagnosis** | `SUPPORTED` | `agy --version` 및 `~/.gemini` 세션 파일 검증을 통한 실시간 헬스체크 지원. |
 | **Image & Multi-Attachment** | `SUPPORTED` | 워크스페이스 컨텍스트 및 멀티모달 파일 인식 지원. |
 | **Native Compact** | `UNSUPPORTED` | Native Compact 독립 서브커맨드 부재. Agent Hub Canonical Context 및 Summary로 관리. |
-| **Usage / Token Quota** | `UNVERIFIED` | v1.1.20 help/subcommand/print JSON에서 독립 quota source를 확인하지 못했다. 실제 인증 계정의 interactive status를 추가 검증하며 안정적인 source가 없으면 `UNAVAILABLE`로 유지한다. |
+| **Usage / Token Quota** | `UNAVAILABLE` | v1.1.20 help/subcommand/print JSON과 인증 계정에서 안정적인 독립 quota source를 확인하지 못했다. Agent Hub는 수치를 추정하지 않는다. |
 | **Cancellation & Process Control** | `SUPPORTED` | `SIGINT`/`SIGKILL` 시그널 전달로 자식 프로세스 즉시 중단 가능. |
 
 ---

@@ -78,7 +78,5 @@ export class ProviderAdapter {
    * 사용량/쿼터를 조회한다.
    * @returns {Promise<object|null>}
    */
-  async getUsage() {
-    return null;
-  }
+  async getUsageQuota() { return { provider: this.name, windows: [], status: 'UNAVAILABLE', source: null, fetchedAt: new Date().toISOString() }; }
 }
