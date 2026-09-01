@@ -21,6 +21,6 @@ export function cpuSeverity({ usagePercent, load1, cores }, thresholds = RESOURC
 }
 
 export function worstSeverity(values) {
-  const rank = { UNKNOWN: 0, OK: 1, WARN: 2, CRITICAL: 3 };
+  const rank = { UNKNOWN: 0, OK: 1, WARN: 2, CRITICAL: 3, OFFLINE: 4 };
   return values.reduce((worst, value) => rank[value] > rank[worst] ? value : worst, 'UNKNOWN');
 }

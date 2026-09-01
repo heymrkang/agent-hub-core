@@ -1,7 +1,7 @@
 import { systemService } from '../../system/system-service.js';
 import { isStealthMode } from '../renderer/ui-theme.js';
 
-const STATES = { normal: { OK: '✅', WARN: '⚠️', CRITICAL: '🚨', UNKNOWN: '❔' }, stealth: { OK: '[OK]', WARN: '[WARN]', CRITICAL: '[CRITICAL]', UNKNOWN: '[UNKNOWN]' } };
+const STATES = { normal: { OK: '✅', WARN: '⚠️', CRITICAL: '🚨', OFFLINE: '⚫', UNKNOWN: '❔' }, stealth: { OK: '[OK]', WARN: '[WARN]', CRITICAL: '[CRITICAL]', OFFLINE: '[OFFLINE]', UNKNOWN: '[UNKNOWN]' } };
 const esc = (value) => String(value ?? '-').replace(/([_*`\[])/g, '\\$1');
 const mark = (state) => STATES[isStealthMode() ? 'stealth' : 'normal'][state || 'UNKNOWN'];
 const pct = (value) => Number.isFinite(value) ? `${value.toFixed(1)}%` : '-';
@@ -13,7 +13,7 @@ const title = () => `${isStealthMode() ? '■' : '🖥'} **System Resources**`;
 export function renderOverview(snapshot) {
   if (!snapshot.servers.length) return `${title()}\n\n등록된 활성 서버가 없습니다.\n\`/server\`에서 서버를 등록하거나 활성화하세요.`;
   const servers = snapshot.servers.map((server) => {
-    if (!server.online) return `${mark('UNKNOWN')} **${esc(server.alias)}** · OFFLINE\nSSH 수집 실패: ${esc(server.error || '응답 없음')}`;
+    if (!server.online) return `${mark('OFFLINE')} **${esc(server.alias)}** · OFFLINE\nSSH 수집 실패: ${esc(server.error || '응답 없음')}`;
     const docker = !server.docker.installed ? 'Docker N/A' : server.docker.available ? `Docker ${server.docker.running ?? '-'} running` : 'Docker UNKNOWN';
     return `${mark(server.severity)} **${esc(server.alias)}** · ${server.severity}\nCPU ${pct(server.cpu.usagePercent)} · RAM ${pct(server.memory.usagePercent)} · Disk ${pct(Math.max(...server.disks.items.map((item) => item.usagePercent ?? 0)))}\n${docker} · Uptime ${age(server.host.uptimeSeconds)}`;
   }).join('\n\n');
@@ -21,7 +21,7 @@ export function renderOverview(snapshot) {
 }
 
 export function renderSystem(snapshot, page = 'overview') {
-  if (!snapshot.online) return `${title()}\n\n${mark('UNKNOWN')} **${esc(snapshot.alias)} · OFFLINE**\n${esc(snapshot.error || 'SSH 응답 없음')}`;
+  if (!snapshot.online) return `${title()}\n\n${mark('OFFLINE')} **${esc(snapshot.alias)} · OFFLINE**\n${esc(snapshot.error || 'SSH 응답 없음')}`;
   const { host: h, cpu: c, memory: m, disks: d, docker, runtime: r } = snapshot;
   const heading = `${title()}\n**${esc(snapshot.alias)}** · ${esc(h.hostname)}`;
   if (page === 'compute') return `${heading}\n\n**CPU**\n${mark(c.severity)} 사용률: **${pct(c.usagePercent)}** · Logical CPU: \`${c.cores}\`\nLoad Average: \`${c.load1?.toFixed(2)} / ${c.load5?.toFixed(2)} / ${c.load15?.toFixed(2)}\`\n\n**Host Memory**\n${mark(m.severity)} ${size(m.used)} / ${size(m.total)} · **${pct(m.usagePercent)}**\nAvailable: ${size(m.availableBytes)} · Swap: ${size(m.swapUsed)} / ${size(m.swapTotal)}`;
@@ -39,8 +39,8 @@ export function renderSystem(snapshot, page = 'overview') {
   return `${heading}\n\n${mark(snapshot.severity)} **Overall: ${snapshot.severity}**\n\n**Host**\nOS: ${esc(h.os)}\nKernel: \`${esc(h.kernel)}\` · \`${esc(h.architecture)}\` · Uptime: ${age(h.uptimeSeconds)}\n\n**Resources**\n${mark(c.severity)} CPU ${pct(c.usagePercent)} · Load ${c.load1?.toFixed(2)} · ${c.cores} cores\n${mark(m.severity)} Memory ${pct(m.usagePercent)} · ${size(m.used)} / ${size(m.total)}\n${mark(worstDisk(d.items))} Storage ${d.items.map((item) => `${item.paths.join('+')} ${pct(item.usagePercent)}`).join(' · ')}\n${dockerText}\n\nChecked: \`${esc(snapshot.checkedAt)}\``;
 }
 
-function overviewKeyboard(servers) { return [...servers.slice(0, 20).map((server) => [{ text: `${mark(server.severity)} ${server.alias}`, callback_data: `system_host:${server.alias}` }]), [{ text: '↻ 전체 새로고침', callback_data: 'system_all_refresh' }]]; }
-function detailKeyboard(alias, page) { return [[{ text: '‹ 전체 서버', callback_data: 'system_all' }], [{ text: '개요', callback_data: `system_detail:${alias}:overview` }, { text: 'CPU / Memory', callback_data: `system_detail:${alias}:compute` }], [{ text: 'Storage', callback_data: `system_detail:${alias}:storage` }, { text: 'Docker', callback_data: `system_detail:${alias}:docker` }], [{ text: 'Runtime', callback_data: `system_detail:${alias}:runtime` }, { text: '↻ 새로고침', callback_data: `system_refresh:${alias}:${page}` }]]; }
+export function overviewKeyboard(servers) { return [...servers.slice(0, 20).map((server) => [{ text: `${mark(server.severity)} ${server.alias}`, callback_data: `system_h:${server.alias}` }]), [{ text: '↻ 전체 새로고침', callback_data: 'system_ar' }]]; }
+export function detailKeyboard(alias, page) { const pages = { overview: 'o', compute: 'c', storage: 's', docker: 'd', runtime: 'r' }; return [[{ text: '‹ 전체 서버', callback_data: 'system_a' }], [{ text: '개요', callback_data: `system_d:${alias}:o` }, { text: 'CPU / Memory', callback_data: `system_d:${alias}:c` }], [{ text: 'Storage', callback_data: `system_d:${alias}:s` }, { text: 'Docker', callback_data: `system_d:${alias}:d` }], [{ text: 'Runtime', callback_data: `system_d:${alias}:r` }, { text: '↻ 새로고침', callback_data: `system_r:${alias}:${pages[page] || 'o'}` }]]; }
 async function edit(bot, source, text, keyboard) { const chatId = source.chat?.id || source.message.chat.id, messageId = source.message?.message_id; const options = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: keyboard } }; if (messageId) return bot.editMessageText(text, { chat_id: chatId, message_id: messageId, ...options }).catch((error) => { if (!/message is not modified/i.test(error.message)) throw error; }); return bot.sendMessage(chatId, text, options); }
 async function showOverview(bot, source, userId, force, service) { const snapshot = await service.getOverview(userId, { force }); return edit(bot, source, renderOverview(snapshot), overviewKeyboard(snapshot.servers)); }
 async function showDetail(bot, source, userId, alias, page, force, service) { const snapshot = await service.getServer(userId, alias, { force }); return edit(bot, source, renderSystem(snapshot, page), detailKeyboard(alias, page)); }
@@ -53,10 +53,11 @@ export async function handleSystemCommand(bot, msg, args = '', service = systemS
 
 export async function handleSystemCallback(bot, q, service = systemService) {
   await bot.answerCallbackQuery(q.id).catch(() => {}); const parts = String(q.data || '').split(':');
+  const pages = { o: 'overview', c: 'compute', s: 'storage', d: 'docker', r: 'runtime' };
   try {
-    if (parts[0] === 'system_all' || parts[0] === 'system_all_refresh') return showOverview(bot, q, q.from.id, parts[0] === 'system_all_refresh', service);
-    if (parts[0] === 'system_host') return showDetail(bot, q, q.from.id, parts[1], 'overview', false, service);
-    if (parts[0] === 'system_detail') return showDetail(bot, q, q.from.id, parts[1], parts[2] || 'overview', false, service);
-    if (parts[0] === 'system_refresh') return showDetail(bot, q, q.from.id, parts[1], parts[2] || 'overview', true, service);
+    if (parts[0] === 'system_a' || parts[0] === 'system_ar') return showOverview(bot, q, q.from.id, parts[0] === 'system_ar', service);
+    if (parts[0] === 'system_h') return showDetail(bot, q, q.from.id, parts[1], 'overview', false, service);
+    if (parts[0] === 'system_d') return showDetail(bot, q, q.from.id, parts[1], pages[parts[2]] || 'overview', false, service);
+    if (parts[0] === 'system_r') return showDetail(bot, q, q.from.id, parts[1], pages[parts[2]] || 'overview', true, service);
   } catch (error) { return bot.answerCallbackQuery(q.id, { text: `실패: ${error.message}`.slice(0, 180), show_alert: true }).catch(() => {}); }
 }

@@ -6,7 +6,10 @@ import { RESOURCE_THRESHOLDS, cpuSeverity, usageSeverity, worstSeverity } from '
 const execFileAsync = promisify(execFile);
 export const REMOTE_SCRIPT = String.raw`set -u
 one_line() { printf '%s' "$1" | tr '\n\t' '  '; }
-printf 'HOST\t'; one_line "$(hostname 2>/dev/null || true)"; printf '\t'; one_line "$(. /etc/os-release 2>/dev/null; printf '%s' "\${PRETTY_NAME:-\${NAME:-unknown}}")"; printf '\t%s\t%s\t%s\n' "$(uname -r)" "$(uname -m)" "$(cut -d. -f1 /proc/uptime)"
+os_name="$(sed -n 's/^PRETTY_NAME=//p' /etc/os-release 2>/dev/null | sed 's/^"//;s/"$//' | head -1)"
+[ -n "$os_name" ] || os_name="$(sed -n 's/^NAME=//p' /etc/os-release 2>/dev/null | sed 's/^"//;s/"$//' | head -1)"
+[ -n "$os_name" ] || os_name=unknown
+printf 'HOST\t'; one_line "$(hostname 2>/dev/null || true)"; printf '\t'; one_line "$os_name"; printf '\t%s\t%s\t%s\n' "$(uname -r)" "$(uname -m)" "$(cut -d. -f1 /proc/uptime)"
 printf 'CPU1\t%s\n' "$(sed -n '1p' /proc/stat)"
 sleep 0.2
 printf 'CPU2\t%s\n' "$(sed -n '1p' /proc/stat)"
@@ -44,9 +47,9 @@ function cpuLine(text) {
 const number = (value) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; };
 
 export class SystemService {
-  constructor({ sshManager = SshManager, cacheTtlMs = 10000, refreshDebounceMs = 3000, timeoutMs = 10000, concurrency = 4 } = {}) {
+  constructor({ sshManager = SshManager, execFile = execFileAsync, cacheTtlMs = 10000, refreshDebounceMs = 3000, timeoutMs = 10000, concurrency = 4 } = {}) {
     this.sshManager = sshManager; this.cacheTtlMs = cacheTtlMs; this.refreshDebounceMs = refreshDebounceMs;
-    this.timeoutMs = timeoutMs; this.concurrency = concurrency; this.cache = new Map(); this.inFlight = new Map();
+    this.execFile = execFile; this.timeoutMs = timeoutMs; this.concurrency = Math.max(1, concurrency); this.cache = new Map(); this.inFlight = new Map();
   }
 
   async getOverview(userId, { force = false } = {}) {
@@ -66,14 +69,14 @@ export class SystemService {
     const key = `${host.user_id}:${host.alias}`, cached = this.cache.get(key);
     if (cached && Date.now() - cached.at < (force ? this.refreshDebounceMs : this.cacheTtlMs)) return cached.value;
     if (this.inFlight.has(key)) return this.inFlight.get(key);
-    const promise = this.collectRemote(host).catch((error) => ({ alias: host.alias, address: host.host, checkedAt: new Date().toISOString(), online: false, severity: 'UNKNOWN', error: String(error.stderr || error.stdout || error.message || error).trim().slice(0, 500) }))
+    const promise = this.collectRemote(host).catch((error) => ({ alias: host.alias, address: host.host, checkedAt: new Date().toISOString(), online: false, severity: 'OFFLINE', error: String(error.stderr || error.stdout || error.message || error).trim().slice(0, 500) }))
       .then((value) => { this.cache.set(key, { at: Date.now(), value }); return value; }).finally(() => this.inFlight.delete(key));
     this.inFlight.set(key, promise); return promise;
   }
 
   async collectRemote(host) {
     const encoded = Buffer.from(REMOTE_SCRIPT).toString('base64');
-    const { stdout } = await execFileAsync('ssh', ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${Math.max(1, Math.ceil(this.timeoutMs / 1000))}`, host.alias, `printf %s ${encoded} | base64 -d | sh`], { timeout: this.timeoutMs + 2000, maxBuffer: 2 * 1024 * 1024 });
+    const { stdout } = await this.execFile('ssh', ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${Math.max(1, Math.ceil(this.timeoutMs / 1000))}`, host.alias, `printf %s ${encoded} | base64 -d | sh`], { timeout: this.timeoutMs + 2000, maxBuffer: 2 * 1024 * 1024 });
     return this.parse(host, stdout);
   }
 

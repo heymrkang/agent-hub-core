@@ -194,7 +194,7 @@ Phase 14 `/system`은 read-only observability command다.
 - [x] NORMAL/STEALTH UI 모두 의미가 유지된다.
 - [x] 반복 refresh가 Core에 과도한 command storm을 만들지 않는다.
 
-구현 검증: 2026-09-01 unit/integration/E2E `67 pass / 0 fail / 1 skip`. SSH 실수집으로 `dev`, `local` CPU/RAM/Disk/Docker와 `dev` Agent Hub 컨테이너 식별을 확인했다. Coolify 재배포 후 Telegram UI 수치 대조가 남아 있다.
+구현 검증: 2026-09-01 unit/integration/E2E `72 pass / 0 fail / 1 skip`. SSH 실수집으로 `dev`, `local` CPU/RAM/Disk/OS/Docker와 `dev` Agent Hub 컨테이너 식별을 확인했다. Coolify 재배포 후 Telegram UI 수치 대조가 남아 있다.
 
 ## 9. 완료 조건
 
