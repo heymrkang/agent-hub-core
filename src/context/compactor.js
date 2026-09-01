@@ -70,6 +70,7 @@ export class Compactor {
       const response = await adapter.executePrompt({
         prompt,
         model: range.session.active_model,
+        reasoningEffort: 'default',
         sessionId,
         profile: 'READ_ONLY'
       });

@@ -44,7 +44,8 @@ export class ProviderAdapter {
       dynamicModelDiscovery: 'UNSUPPORTED',
       multiImage: 'UNSUPPORTED',
       nativeCompact: 'UNSUPPORTED',
-      usageMetrics: 'UNSUPPORTED'
+      usageMetrics: 'UNSUPPORTED',
+      reasoningEffort: 'UNSUPPORTED'
     };
   }
 
@@ -54,7 +55,7 @@ export class ProviderAdapter {
 
   /**
    * 프롬프트를 비대화형으로 실행한다.
-   * @param {object} options { prompt, model, sessionId, profile, cwd, signal }
+   * @param {object} options { prompt, model, reasoningEffort, sessionId, profile, cwd, signal }
    * @returns {Promise<{ response: string, rawEvents?: Array<any> }>}
    */
   async executePrompt(options) {

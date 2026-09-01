@@ -34,7 +34,7 @@ export async function handleStatusCommand(bot, msg) {
     text += `${mark(snapshot.state)} **Overall: ${snapshot.state}**\n\n`;
     for (const item of snapshot.checks) text += `${mark(item.state)} **${item.name}** — ${escapeMd(item.detail)}\n`;
     text += `\n**Active Session**\n`;
-    text += `Title: ${escapeMd(session.title)}\nProvider: ${escapeMd(session.active_provider)}\nModel: ${escapeMd(session.active_model || 'CLI Default')}\nProfile: ${escapeMd(session.execution_profile)}\n`;
+    text += `Title: ${escapeMd(session.title)}\nProvider: ${escapeMd(session.active_provider)}\nModel: ${escapeMd(session.active_model || 'CLI Default')}\nThinking: ${escapeMd(session.reasoning_effort || 'default')}\nProfile: ${escapeMd(session.execution_profile)}\n`;
     text += `Job: ${activeJob ? `${escapeMd(activeJob.status)} · ${escapeMd(activeJob.type)} · ${escapeMd(activeJob.id)}` : 'idle'}\n`;
     if (recentFailure) text += `\n**Recent Failure**\n${escapeMd(recentFailure.error_category || 'UNKNOWN')} · ${escapeMd(recentFailure.created_at)}\n${escapeMd(String(recentFailure.error_message || '').slice(0, 500))}\n`;
     text += `\nChecked: \`${snapshot.checkedAt}\``;

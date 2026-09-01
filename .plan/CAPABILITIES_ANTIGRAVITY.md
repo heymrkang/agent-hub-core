@@ -35,3 +35,5 @@ agy \
   --effort "medium" \
   --dangerously-skip-permissions
 ```
+
+`default`를 선택하면 `--effort`를 생략한다. Agent Hub가 임의로 `medium`을 강제하지 않으며, 명시 값은 `low|medium|high`만 실행 전에 허용한다.

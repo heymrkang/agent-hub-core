@@ -27,7 +27,7 @@ async function renderSessions(bot, source, status = 'ACTIVE', page = 0) {
 
   let text = `${uiTitle('📁', `세션 · ${statusNames[status]}`)}\n\n`;
   text += `현재: **${md(activeSession.title, 36)}**\n`;
-  text += `Provider: ${md(activeSession.active_provider)}${activeSession.active_model ? ` · ${md(activeSession.active_model)}` : ''}\n\n`;
+  text += `Provider: ${md(activeSession.active_provider)}${activeSession.active_model ? ` · ${md(activeSession.active_model)}` : ''}\nThinking: ${md(activeSession.reasoning_effort || 'default')}\n\n`;
   if (!pageItems.length) text += `_${statusNames[status]}에 세션이 없습니다._`;
   else { text += `세션 ${sessions.length}개 · ${page + 1}/${totalPages} 페이지\n`; text += `_세션을 선택하면 관리 메뉴가 열립니다._`; }
 
@@ -75,7 +75,7 @@ async function showSessionDetail(bot, callbackQuery, sessionId, returnStatus = n
 
   let text = `${uiTitle('📄', md(session.title, 50))}\n\n`;
   text += `상태: ${statusNames[session.status] || md(session.status)}${isCurrent ? ' · 현재 세션' : ''}\n`;
-  text += `Provider: ${md(session.active_provider)}${session.active_model ? ` · ${md(session.active_model)}` : ''}\n`;
+  text += `Provider: ${md(session.active_provider)}${session.active_model ? ` · ${md(session.active_model)}` : ''}\nThinking: ${md(session.reasoning_effort || 'default')}\n`;
   text += `Profile: ${md(session.execution_profile)}\n`;
   text += `최근 활동: ${md(formatKST(session.updated_at))}\n`;
   if (session.title_locked) text += `제목: 사용자 지정${isStealthMode() ? ' [LOCK]' : ' 🔒'}\n`;

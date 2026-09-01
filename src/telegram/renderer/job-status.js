@@ -35,6 +35,7 @@ export class JobStatusRenderer {
   static formatStatusText(job, status, elapsedSec) {
     const providerName = (job.provider || 'codex').toUpperCase();
     const modelName = job.model || 'Default';
+    const thinking = job.reasoningEffort || 'default';
     const stealth = isStealthMode();
     let icon = stealth ? '[WAIT]' : '⏳';
     let statusLabel = '대기 중 (QUEUED)';
@@ -43,6 +44,6 @@ export class JobStatusRenderer {
     else if (status === JobStatus.CANCELLED) { icon = stealth ? '[STOP]' : '🛑'; statusLabel = '사용자에 의해 취소됨 (CANCELLED)'; }
     else if (status === JobStatus.FAILED) { icon = stealth ? '[ERR]' : '❌'; statusLabel = '실행 실패 (FAILED)'; }
     else if (status === JobStatus.INTERRUPTED) { icon = stealth ? '[WARN]' : '⚠️'; statusLabel = '서버 재시작으로 중단됨 (INTERRUPTED)'; }
-    return `${icon} **[${providerName} / ${modelName}]** ${statusLabel}\n_세션: ${job.sessionTitle || '활성 세션'}_`;
+    return `${icon} **[${providerName} / ${modelName} / Thinking: ${thinking}]** ${statusLabel}\n_세션: ${job.sessionTitle || '활성 세션'}_`;
   }
 }

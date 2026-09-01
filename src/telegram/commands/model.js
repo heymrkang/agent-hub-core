@@ -14,7 +14,7 @@ export async function handleModelCommand(bot, msg) {
   try {
     const active = SessionManager.getActiveSession(userId);
     const providers = providerManager.listProviderNames();
-    const text = `${uiTitle('🤖', '모델 및 프로바이더 설정')}\n\n${isStealthMode() ? '▪' : '📌'} **활성 세션**: **${escapeMd(active.title)}**\n• 현재 Provider: \`${active.active_provider}\`\n• 현재 Model: \`${active.active_model || '기본 모델 (CLI Default)'}\`\n\n변경할 Provider를 선택하세요:`;
+    const text = `${uiTitle('🤖', '모델 및 프로바이더 설정')}\n\n${isStealthMode() ? '▪' : '📌'} **활성 세션**: **${escapeMd(active.title)}**\n• 현재 Provider: \`${active.active_provider}\`\n• 현재 Model: \`${active.active_model || '기본 모델 (CLI Default)'}\`\n• 현재 Thinking: \`${active.reasoning_effort || 'default'}\`\n\n변경할 Provider를 선택하세요:`;
     const buttons = providers.map((p) => [{
       text: `${selectedMark(p === active.active_provider)}${p.toUpperCase()}${p === active.active_provider ? ' (선택됨)' : ''}`,
       callback_data: `model_provider:${p}`
@@ -94,10 +94,22 @@ async function refreshModels(bot, q, providerName) {
   }
 }
 
-async function showSuccess(bot, q, providerName, modelId) {
+async function renderThinking(bot, q, providerName, model) {
+  const active = SessionManager.getActiveSession(q.from.id);
+  const { levels, providerDefault } = modelCatalog.getReasoningOptions(providerName, model.id);
+  const text = `${uiTitle('🧠', 'Thinking 선택')}\n\n• Provider: \`${providerName}\`\n• Model: \`${escapeMd(model.name)}\`\n• Provider Default: \`${providerDefault || '미공개'}\`\n\n해당 모델이 지원하는 사고 레벨만 표시한다.`;
+  const buttons = levels.map((level) => [{
+    text: `${selectedMark(active.active_provider === providerName && active.active_model === model.id && (active.reasoning_effort || 'default') === level)}${level}`,
+    callback_data: `model_apply:${providerName}:${modelToken(model.id)}:${level}`
+  }]);
+  buttons.push([{ text: nav('모델 목록', '🔙'), callback_data: `model_provider:${providerName}` }]);
+  return editModelMessage(bot, q.message.chat.id, q.message.message_id, text, { inline_keyboard: buttons });
+}
+
+async function showSuccess(bot, q, providerName, modelId, reasoningEffort) {
   const active = SessionManager.getActiveSession(q.from.id);
   return editModelMessage(bot, q.message.chat.id, q.message.message_id,
-    `${uiStatusIcon('success')} **모델 설정 완료**\n\n${isStealthMode() ? '▪' : '📌'} **세션**: **${escapeMd(active.title)}**\n${isStealthMode() ? '▪' : '🤖'} **Provider**: \`${providerName.toUpperCase()}\`\n${isStealthMode() ? '▪' : '🧠'} **Model**: \`${modelId}\``,
+    `${uiStatusIcon('success')} **모델 설정 완료**\n\n${isStealthMode() ? '▪' : '📌'} **세션**: **${escapeMd(active.title)}**\n${isStealthMode() ? '▪' : '🤖'} **Provider**: \`${providerName.toUpperCase()}\`\n${isStealthMode() ? '▪' : '🧠'} **Model**: \`${modelId}\`\n${isStealthMode() ? '▪' : '⚙️'} **Thinking**: \`${reasoningEffort}\``,
     { inline_keyboard: [[{ text: nav('다른 모델로 변경', '🔄'), callback_data: `model_provider:${providerName}` }]] });
 }
 
@@ -112,11 +124,19 @@ export async function handleModelCallback(bot, q) {
     const cached = modelCatalog.getModels(providerName);
     const selected = cached.find((m) => modelToken(m.id) === token);
     if (!selected) return bot.answerCallbackQuery(q.id, { text: '모델 캐시가 갱신되었습니다. 목록을 다시 열어 선택해주세요.', show_alert: true }).catch(() => {});
+    await bot.answerCallbackQuery(q.id).catch(() => {});
+    return renderThinking(bot, q, providerName, selected);
+  }
+  if (data.startsWith('model_apply:')) {
+    const [, providerName, token, effort] = data.split(':');
+    const selected = modelCatalog.getModels(providerName).find((m) => modelToken(m.id) === token);
+    if (!selected) return bot.answerCallbackQuery(q.id, { text: '모델 캐시가 갱신됐다. 다시 선택해라.', show_alert: true }).catch(() => {});
     const active = SessionManager.getActiveSession(userId);
     try {
-      await HandoffManager.executeHandoff({ sessionId: active.id, fromProvider: active.active_provider, toProvider: providerName, targetModel: selected.id });
-      await bot.answerCallbackQuery(q.id, { text: '모델 적용 완료' }).catch(() => {});
-      return showSuccess(bot, q, providerName, selected.id);
+      const validated = modelCatalog.validateReasoningEffort(providerName, selected.id, effort);
+      await HandoffManager.executeHandoff({ sessionId: active.id, fromProvider: active.active_provider, toProvider: providerName, targetModel: selected.id, reasoningEffort: validated });
+      await bot.answerCallbackQuery(q.id, { text: '모델/Thinking 적용 완료' }).catch(() => {});
+      return showSuccess(bot, q, providerName, selected.id, validated);
     } catch (error) {
       return bot.answerCallbackQuery(q.id, { text: `변경 실패: ${error.message}`.slice(0, 180), show_alert: true }).catch(() => {});
     }

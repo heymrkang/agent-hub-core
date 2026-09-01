@@ -18,6 +18,26 @@ class ModelCatalog {
     }));
   }
 
+  getModel(provider, modelId) {
+    return this.getModels(provider).find((model) => model.id === modelId) || null;
+  }
+
+  getReasoningOptions(provider, modelId) {
+    const model = this.getModel(provider, modelId);
+    const levels = Array.isArray(model?.metadata?.reasoningEfforts) ? model.metadata.reasoningEfforts.filter(Boolean) : [];
+    return {
+      levels: ['default', ...new Set(levels.map(String))],
+      providerDefault: model?.metadata?.defaultReasoningEffort || null
+    };
+  }
+
+  validateReasoningEffort(provider, modelId, reasoningEffort) {
+    const value = String(reasoningEffort || 'default');
+    const { levels } = this.getReasoningOptions(provider, modelId);
+    if (!levels.includes(value)) throw new Error(`[${provider}/${modelId}] Thinking '${value}'은 지원하지 않습니다. 허용: ${levels.join(', ')}`);
+    return value;
+  }
+
   getCacheState(provider) {
     const db = getDb();
     return db.prepare('SELECT * FROM provider_model_cache WHERE provider = ?').get(provider.toLowerCase()) || {

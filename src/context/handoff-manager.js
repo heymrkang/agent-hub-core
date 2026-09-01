@@ -4,14 +4,14 @@ import { ContextManager } from './context-manager.js';
 import { providerManager } from '../providers/provider-manager.js';
 
 export class HandoffManager {
-  static async executeHandoff({ sessionId, fromProvider, toProvider, targetModel = null }) {
+  static async executeHandoff({ sessionId, fromProvider, toProvider, targetModel = null, reasoningEffort = 'default' }) {
     const db = getDb();
     const handoffId = crypto.randomUUID();
     const fromP = fromProvider.toLowerCase();
     const toP = toProvider.toLowerCase();
 
     if (fromP === toP) {
-      db.prepare(`UPDATE sessions SET active_model = ?, updated_at = datetime('now') WHERE id = ?`).run(targetModel, sessionId);
+      db.prepare(`UPDATE sessions SET active_model = ?, reasoning_effort = ?, updated_at = datetime('now') WHERE id = ?`).run(targetModel, reasoningEffort, sessionId);
       return { success: true, isSameProvider: true };
     }
 
@@ -39,7 +39,7 @@ export class HandoffManager {
       // Provider 선택 자체는 원자적으로 바꾸되, sync cursor는 여기서 절대 갱신하지 않는다.
       // 실제 대상 Provider 실행 성공 후 QueueManager가 cursor/native ref를 저장한다.
       db.transaction(() => {
-        db.prepare(`UPDATE sessions SET active_provider = ?, active_model = ?, updated_at = datetime('now') WHERE id = ?`).run(toP, targetModel, sessionId);
+        db.prepare(`UPDATE sessions SET active_provider = ?, active_model = ?, reasoning_effort = ?, updated_at = datetime('now') WHERE id = ?`).run(toP, targetModel, reasoningEffort, sessionId);
         db.prepare(`UPDATE provider_handoffs SET status = 'SUCCESS' WHERE id = ?`).run(handoffId);
       })();
       return { success: true, isIncremental: Boolean(existingTargetSession?.last_synced_message_id), messageCount: contextPackage.totalMessageCount };

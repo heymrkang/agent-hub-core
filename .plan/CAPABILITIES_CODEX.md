@@ -61,3 +61,4 @@ codex doctor --json
 1. 모델 리스트를 코드에 절대 하드코딩하지 않는다.
 2. Usage/Quota는 app-server `account/rateLimits/read`가 반환한 필드만 표시하며 누락값을 추정하지 않는다.
 3. 네이티브 Compact는 사용하지 않는다. `/compact`는 Canonical 원문을 보존한 채 Agent Hub rolling summary와 message UUID cursor를 갱신한다.
+4. `model/list`의 reasoning metadata를 모델 캐시에 보존하고, `default`는 config를 생략한다. 명시 level은 restricted/FULL_ACCESS 모두 `-c model_reasoning_effort="<level>"`로 전달한다.

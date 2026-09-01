@@ -4,6 +4,7 @@ import { providerManager } from '../providers/provider-manager.js';
 import { ContextManager } from '../context/context-manager.js';
 import { getSettingsManager } from '../settings/settings-manager.js';
 import { Compactor } from '../context/compactor.js';
+import { modelCatalog } from '../providers/model-catalog.js';
 
 class QueueManager {
   constructor() {
@@ -24,16 +25,17 @@ class QueueManager {
     }
   }
 
-  enqueueJob({ sessionId, sessionTitle, provider, model, prompt, profile, onStatusUpdate, type = 'CHAT', timeoutMs = null, queueGraceMs = null }) {
+  enqueueJob({ sessionId, sessionTitle, provider, model, reasoningEffort = 'default', prompt, profile, onStatusUpdate, type = 'CHAT', timeoutMs = null, queueGraceMs = null }) {
     if (Compactor.isCompactingSession(sessionId)) {
       const error = new Error('현재 세션의 컨텍스트를 압축 중입니다. 완료 후 다시 시도하세요.');
       error.code = 'COMPACT_BUSY';
       throw error;
     }
+    modelCatalog.validateReasoningEffort(provider, model, reasoningEffort);
     const jobRecord = JobRuntime.createJob({ sessionId, type, provider, model });
     const abortController = new AbortController();
     const queueItem = {
-      job: { ...jobRecord, sessionTitle }, prompt, profile, abortController, onStatusUpdate,
+      job: { ...jobRecord, sessionTitle, reasoningEffort }, prompt, profile, abortController, onStatusUpdate,
       timeoutMs, queueGraceMs, queueTimer: null, resolve: null, reject: null, started: false
     };
     const promise = new Promise((resolve, reject) => { queueItem.resolve = resolve; queueItem.reject = reject; });
@@ -93,7 +95,7 @@ class QueueManager {
     try {
       const adapter = providerManager.getAdapter(job.provider);
       const providerSession = ContextManager.getProviderSession(job.session_id, providerName);
-      const result = await adapter.executePrompt({ prompt, model: job.model, sessionId: job.session_id, nativeSessionRef: providerSession?.native_session_ref || null, profile, signal: abortController.signal });
+      const result = await adapter.executePrompt({ prompt, model: job.model, reasoningEffort: job.reasoningEffort, sessionId: job.session_id, nativeSessionRef: providerSession?.native_session_ref || null, profile, signal: abortController.signal });
       const canonical = ContextManager.buildContextPackage(job.session_id);
       ContextManager.upsertProviderSession({ sessionId: job.session_id, provider: providerName, nativeSessionRef: result.nativeSessionRef || null, lastSyncedMessageId: canonical.latestMessageId });
       const durationMs = Date.now() - startTime;

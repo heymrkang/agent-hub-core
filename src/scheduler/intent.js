@@ -7,7 +7,7 @@ export async function extractScheduleIntent(text, activeSession, timezone = 'Asi
 
   const adapter = providerManager.getAdapter(activeSession.active_provider);
   const prompt = `다음 사용자의 스케줄 등록 요청을 JSON 하나로만 변환하세요. 설명/마크다운 금지.\n현재 timezone: ${timezone}\n현재 시각 ISO: ${new Date().toISOString()}\n허용 schedule_type: ONCE, INTERVAL, DAILY\nINTERVAL schedule_value는 초 단위 문자열(최소 60), DAILY는 HH:mm, ONCE는 ISO-8601 timestamp.\nprovider는 codex 또는 antigravity. model은 명시하지 않으면 null. timeout_seconds는 기본 300.\n반드시 필드: name,schedule_type,schedule_value,timezone,provider,model,execution_profile,prompt,timeout_seconds,needs_clarification,clarification_reason\n모호한 날짜/시간이면 needs_clarification=true로 하세요.\n사용자 요청: ${JSON.stringify(text)}`;
-  const result = await adapter.executePrompt({ prompt, model: activeSession.active_model, profile: 'READ_ONLY' });
+  const result = await adapter.executePrompt({ prompt, model: activeSession.active_model, reasoningEffort: 'default', profile: 'READ_ONLY' });
   const raw = String(result.response || '').trim().replace(/^```json\s*/i, '').replace(/```$/,'').trim();
   let parsed;
   try { parsed = JSON.parse(raw); } catch { throw new Error('스케줄 요청을 구조화하지 못했습니다. 시간을 더 명확하게 입력해주세요.'); }

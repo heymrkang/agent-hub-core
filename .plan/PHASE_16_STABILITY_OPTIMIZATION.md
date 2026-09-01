@@ -2,7 +2,7 @@
 
 ## Status
 
-`IN PROGRESS — 16-3 Auto Compact / Canonical Context Assembly 완료`
+`IN PROGRESS — 16-4 Model Thinking 완료`
 
 Phase 16은 신규 대형 기능을 추가하는 단계가 아니라, V1 이후 실제 사용에서 드러난 미완성 기능과 조작 불가능한 Provider 옵션을 정리하는 안정화·최적화 단계다.
 
@@ -257,6 +257,15 @@ executePrompt({
 - Provider/model 전환 실패 시 기존 Provider/model/level을 모두 유지한다.
 - 적용 완료 화면에서 세 값을 한 번에 확인할 수 있게 한다.
 - NORMAL/STEALTH UI 모두 의미가 유지되어야 한다.
+
+### 2.7 Phase 16-4 구현 결과
+
+- `/model`을 `Provider -> Model -> Thinking -> 적용` 순서로 변경했다. 캐시된 모델 metadata의 허용 level과 `default`만 노출하며, 지원하지 않는 level은 적용과 Job 생성 전에 거부한다.
+- Codex `model/list`의 `supportedReasoningEfforts`/`defaultReasoningEffort`를 `provider_models.metadata_json`에 보존한다. restricted helper와 `FULL_ACCESS` 실행은 둘 다 `-c model_reasoning_effort=...` 인자 builder를 공유한다.
+- Antigravity는 `default`에서 `--effort`를 생략하고 `low|medium|high`를 선택했을 때만 명시한다. 기존 기본 모델의 `medium` 강제를 제거했다.
+- Provider/Model/Thinking은 하나의 DB transaction으로 적용한다. 같은 Provider의 Model/Thinking 변경은 handoff를 생성하지 않고, Provider 전환 실패 시 기존 세 값을 유지한다.
+- 일반 CHAT Job에 세션 `reasoning_effort`를 snapshot하여 Adapter에 전달한다. Compact/스케줄 의도 판별 등 내부 `READ_ONLY` 작업은 `default`를 명시해 사용자 선택이 내부 작업을 오염시키지 않게 했다.
+- `/model`, `/status`, 세션 목록/상세, Job 상태에 Thinking을 표시한다.
 
 ---
 
