@@ -4,6 +4,8 @@ export const SETTING_DEFINITIONS = Object.freeze({
   default_provider: { type: 'enum', values: ['codex', 'antigravity'], default: 'codex' },
   default_model_codex: { type: 'string', default: '' },
   default_model_antigravity: { type: 'string', default: '' },
+  default_reasoning_effort_codex: { type: 'string', default: 'default' },
+  default_reasoning_effort_antigravity: { type: 'string', default: 'default' },
   default_execution_profile: {
     type: 'enum',
     values: ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'],
