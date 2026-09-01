@@ -3,6 +3,7 @@ import { JobStatus, ErrorCategory } from './types.js';
 import { providerManager } from '../providers/provider-manager.js';
 import { ContextManager } from '../context/context-manager.js';
 import { getSettingsManager } from '../settings/settings-manager.js';
+import { Compactor } from '../context/compactor.js';
 
 class QueueManager {
   constructor() {
@@ -24,6 +25,11 @@ class QueueManager {
   }
 
   enqueueJob({ sessionId, sessionTitle, provider, model, prompt, profile, onStatusUpdate, type = 'CHAT', timeoutMs = null, queueGraceMs = null }) {
+    if (Compactor.isCompactingSession(sessionId)) {
+      const error = new Error('현재 세션의 컨텍스트를 압축 중입니다. 완료 후 다시 시도하세요.');
+      error.code = 'COMPACT_BUSY';
+      throw error;
+    }
     const jobRecord = JobRuntime.createJob({ sessionId, type, provider, model });
     const abortController = new AbortController();
     const queueItem = {

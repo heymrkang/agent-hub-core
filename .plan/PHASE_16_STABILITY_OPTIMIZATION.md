@@ -2,7 +2,7 @@
 
 ## Status
 
-`IN PROGRESS — 16-1 조사·명세 완료`
+`IN PROGRESS — 16-2 Canonical Compact 완료`
 
 Phase 16은 신규 대형 기능을 추가하는 단계가 아니라, V1 이후 실제 사용에서 드러난 미완성 기능과 조작 불가능한 Provider 옵션을 정리하는 안정화·최적화 단계다.
 
@@ -152,6 +152,16 @@ Provider native compact를 억지로 호출하지 않고 **Agent Hub 자체 Cano
 - 정확히 유지해야 하는 식별자, 경로, 명령, 오류 핵심
 
 비밀값, token, credential은 summary에 넣지 않는다. summary prompt와 결과에도 기존 secret-redaction 규칙을 적용한다.
+
+### 1.7 Phase 16-2 구현 결과
+
+- migration `013_phase16_session_context.sql`로 compact cursor/시각/문자 수 메타와 후속 Thinking용 `reasoning_effort` 기본 필드를 추가했다.
+- `/compact`는 Provider native compact 대신 활성 Provider/Model의 `READ_ONLY` 내부 요약 호출을 사용한다. 이 호출은 Job이나 Canonical message를 만들지 않는다.
+- SQLite `rowid` 순서로 cursor 이후 구간을 계산하고 최근 10개 원문을 유지한다. 신규 후보 6개 미만은 `NO_CHANGE`, 활성 Job이나 동시 압축은 `BUSY`로 구분한다.
+- 기존 rolling summary와 신규 후보만 요약 prompt에 넣고 secret redaction을 입출력 양쪽에 적용한다.
+- rolling summary, message UUID cursor, 압축 시각, 전후 estimated character count는 단일 transaction으로 저장한다. Provider 실패나 cursor conflict 시 기존 상태는 유지한다.
+- Canonical `messages`는 삭제하거나 수정하지 않으며 완료 UI에 압축 메시지 수, 원문 tail 수, 전후 추정 문자 수를 표시한다.
+- 자동 Compact와 실제 Provider prompt의 canonical context assembly 연결은 Phase 16-3 범위다.
 
 ---
 
@@ -350,12 +360,12 @@ getUsageQuota({ forceRefresh })
 
 ### Compact
 
-- [ ] `/compact` 후 Agent Hub 세션 ID와 활성 세션이 바뀌지 않는다.
-- [ ] Canonical 원본 messages가 삭제되거나 수정되지 않는다.
-- [ ] 오래된 메시지는 summary에 반영되고 최근 tail은 원문으로 유지된다.
+- [x] `/compact` 후 Agent Hub 세션 ID와 활성 세션이 바뀌지 않는다.
+- [x] Canonical 원본 messages가 삭제되거나 수정되지 않는다.
+- [x] 오래된 메시지는 summary에 반영되고 최근 tail은 원문으로 유지된다.
 - [ ] compact cursor 이전 원문이 다음 Provider prompt에 중복 포함되지 않는다.
-- [ ] 두 번 이상 압축해도 기존 summary와 신규 구간이 연속성을 유지한다.
-- [ ] 압축 실패 시 기존 summary/cursor가 손상되지 않는다.
+- [x] 두 번 이상 압축해도 기존 summary와 신규 구간이 연속성을 유지한다.
+- [x] 압축 실패 시 기존 summary/cursor가 손상되지 않는다.
 - [ ] `auto_compact_threshold` 도달 시 자동 압축 후 원래 요청이 정상 실행된다.
 - [ ] context window를 모르는 경우 가짜 사용률을 표시하거나 임의 압축하지 않는다.
 - [ ] Codex와 Antigravity 전환 후에도 동일한 Canonical summary를 사용할 수 있다.

@@ -56,7 +56,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 13 | Mobile Preview Runtime & Preview Manager | `DONE` | 2026-08-31 모바일 개발 루프 E2E 완료 |
 | Phase 14 | System & Resource Observability (`/system`) | `DONE` | 2026-09-01 Coolify runtime audit PASS |
 | Phase 15 | Unassigned | `SKIPPED / UNASSIGNED` | 별도 구현 범위 없이 건너뛰고 Phase 16으로 진행 |
-| Phase 16 | Feature Stabilization & Optimization | `IN PROGRESS` | 16-1 조사·명세 완료; 다음은 16-2 Canonical Compact |
+| Phase 16 | Feature Stabilization & Optimization | `IN PROGRESS` | 16-2 Canonical Compact 완료; 다음은 16-3 Auto Compact/실행 경로 연결 |
 | Phase 17 | Backend API Preview & Inspector | `PLANNED` | NestJS/OpenAPI 기반 API Preview와 개발 데이터 보안 경계 |
 | Phase 18 | Agent Extensibility — MCP & Skills | `PLANNED` | Provider native MCP/Skills 조회·관리·인증·권한 정책 |
 
@@ -80,7 +80,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ### Phase 16
 
-`PHASE_16_STABILITY_OPTIMIZATION.md`를 기준으로 Agent Hub Canonical Context Compact, Provider별 Model Reasoning/Thinking Level, Codex/Antigravity Usage/Quota 조회를 구현한다. 2026-09-01에 16-1 repository/CLI/schema 조사를 완료했고 migration `013`, compact tail/minimum, Thinking capability source, quota cache/장애 정책을 확정했다.
+`PHASE_16_STABILITY_OPTIMIZATION.md`를 기준으로 Agent Hub Canonical Context Compact, Provider별 Model Reasoning/Thinking Level, Codex/Antigravity Usage/Quota 조회를 구현한다. 2026-09-01에 16-1 repository/CLI/schema 조사를 완료했고, 16-2에서 migration `013`과 수동 Canonical Compact, cursor 기반 반복 압축, transaction/lock/rollback을 구현했다. 다음은 16-3 Auto Compact와 실제 Provider context assembly 연결이다.
 
 ### Phase 17
 
@@ -108,7 +108,7 @@ Phase 12: SKIPPED / SUPERSEDED
 Phase 13: DONE — Mobile Preview Runtime & Preview Manager
 Phase 14: DONE — /system System & Resource Observability
 Phase 15: SKIPPED / UNASSIGNED
-Phase 16: IN PROGRESS — 16-1 조사·명세 완료
+Phase 16: IN PROGRESS — 16-2 Canonical Compact 완료
 Phase 17: PLANNED — Backend API Preview & Inspector
 Phase 18: PLANNED — MCP & Skills
 Development root: /home/dev

@@ -22,7 +22,7 @@
 | **Image & Multi-Attachment** | `SUPPORTED` | `-i, --image <FILE>...` 옵션으로 여러 이미지 파일 경로 전달 지원. |
 | **Generic File Handling** | `PARTIAL` | 파일 자체를 CLI 옵션으로 직접 전달하기보다는 persistent development root(`/home/dev`) 또는 `/data/uploads/`의 경로를 프롬프트에 참조시켜 처리. |
 | **Usage / Token Quota** | `SUPPORTED` | app-server JSON-RPC `account/rateLimits/read`가 primary/secondary window의 used percent, duration, reset timestamp를 제공한다. 독립 CLI subcommand가 아닌 app-server protocol을 사용한다. |
-| **Native Compact** | `UNSUPPORTED` | CLI 명령으로 직접 호출 가능한 독립 `compact` 서브커맨드 부재. 세션 롤링 및 압축은 내부 엔진 자동 또는 Agent Hub Summary로 보조 처리. |
+| **Native Compact** | `UNSUPPORTED` | CLI 독립 `compact` 서브커맨드는 없다. `/compact`는 Provider native 기능이 아니라 Agent Hub Canonical rolling summary로 구현한다. |
 | **Cancellation & Process Control** | `SUPPORTED` | `SIGINT`/`SIGKILL` 시그널 전달로 자식 프로세스 즉시 중단 가능. |
 
 ---
@@ -60,4 +60,4 @@ codex doctor --json
 
 1. 모델 리스트를 코드에 절대 하드코딩하지 않는다.
 2. Usage/Quota는 app-server `account/rateLimits/read`가 반환한 필드만 표시하며 누락값을 추정하지 않는다.
-3. 네이티브 Compact가 지원되지 않으므로 `/compact` 시 억지 fallback을 하지 않고 명확히 보고한다.
+3. 네이티브 Compact는 사용하지 않는다. `/compact`는 Canonical 원문을 보존한 채 Agent Hub rolling summary와 message UUID cursor를 갱신한다.
