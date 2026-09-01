@@ -47,11 +47,27 @@ async function buildUsageText(userId, forceRefresh) {
 }
 
 export async function handleUsageCommand(bot, msg, { forceRefresh = false } = {}) {
-  const chatId = msg.chat ? msg.chat.id : msg.message.chat.id; const userId = msg.from.id;
-  const text = await buildUsageText(userId, forceRefresh);
+  const chatId = msg.chat ? msg.chat.id : msg.message.chat.id;
+  const userId = msg.from.id;
+  const isCallback = Boolean(msg.message && !msg.chat);
   const options = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: isStealthMode() ? '↻ quota 새로고침' : '🔄 quota 새로고침', callback_data: 'usage_refresh' }]] } };
-  if (msg.message && !msg.chat) return bot.editMessageText(text, { chat_id: chatId, message_id: msg.message.message_id, ...options });
-  return bot.sendMessage(chatId, text, options);
+
+  if (isCallback) {
+    const text = await buildUsageText(userId, forceRefresh);
+    return bot.editMessageText(text, { chat_id: chatId, message_id: msg.message.message_id, ...options });
+  }
+
+  const waiting = await bot.sendMessage(chatId, isStealthMode() ? '■ Usage 확인 중...' : '🔎 Usage 확인 중...');
+  try {
+    const text = await buildUsageText(userId, forceRefresh);
+    return await bot.editMessageText(text, { chat_id: chatId, message_id: waiting.message_id, ...options });
+  } catch (error) {
+    await bot.editMessageText(`${isStealthMode() ? '[ERR]' : '❌'} Usage 조회 실패: ${error.message}`, {
+      chat_id: chatId,
+      message_id: waiting.message_id
+    }).catch(() => {});
+    return null;
+  }
 }
 
 export async function handleUsageCallback(bot, query) { await handleUsageCommand(bot, query, { forceRefresh: true }); await bot.answerCallbackQuery(query.id, { text: 'Provider quota를 새로고침했습니다.' }); }
