@@ -57,6 +57,11 @@ test('강제 새로고침 cooldown과 probe timeout을 구분한다', async () =
 
 test('quota UI는 원본 percentage 의미와 unavailable을 분리한다', () => {
   const text = renderQuota({ provider: 'codex', status: 'AVAILABLE', cache: 'HIT', fetchedAt: '2026-09-01T00:00:00Z', windows: [{ label: '5시간 한도', usedPercent: 42, remainingPercent: 58 }] });
+  assert.match(text, /`\[CODEX\]` · `AVAILABLE`/);
   assert.match(text, /42% 사용 \/ 58% 남음/);
-  assert.match(renderQuota({ provider: 'antigravity', status: 'UNAVAILABLE', windows: [] }), /신뢰 가능한 quota 조회 인터페이스 없음/);
+  assert.match(text, /Reset 미제공\n\n조회/);
+  const antigravity = renderQuota({ provider: 'antigravity', status: 'UNAVAILABLE', windows: [] });
+  assert.match(antigravity, /`\[ANTIGRAVITY\]` · `UNAVAILABLE`/);
+  assert.match(antigravity, /CLI 내부 `\/usage` TUI만 제공/);
+  assert.match(antigravity, /Agent Hub 자동 조회 API 없음/);
 });

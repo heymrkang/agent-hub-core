@@ -8,16 +8,23 @@ function kst(iso) { try { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'A
 function relative(iso) { const seconds = Math.round((Date.parse(iso) - Date.now()) / 1000); if (!Number.isFinite(seconds)) return null; if (seconds <= 0) return 'reset 시각 지남'; const mins = Math.ceil(seconds / 60); if (mins < 60) return `${mins}분 후`; const hours = Math.floor(mins / 60), rem = mins % 60; if (hours < 24) return `${hours}시간 ${rem}분 후`; return `${Math.floor(hours / 24)}일 ${hours % 24}시간 후`; }
 
 export function renderQuota(result) {
-  let text = `**${esc(result.provider.toUpperCase())}** · \`${esc(result.status)}\`${result.stale ? ' · STALE' : ''}\n`;
-  if (result.status === 'UNAVAILABLE') return `${text}• 신뢰 가능한 quota 조회 인터페이스 없음\n`;
-  if (result.status === 'ERROR') return `${text}• 조회 실패: ${esc(result.error || '알 수 없는 오류')}\n`;
+  const provider = result.provider.toUpperCase();
+  let text = `\`[${esc(provider)}]\` · \`${esc(result.status)}\`${result.stale ? ' · `STALE`' : ''}\n\n`;
+  if (result.status === 'UNAVAILABLE') {
+    const reason = result.provider === 'antigravity'
+      ? 'CLI 내부 `/usage` TUI만 제공\nAgent Hub 자동 조회 API 없음'
+      : 'Agent Hub에서 사용할 수 있는 quota 조회 API 없음';
+    return `${text}${reason}\n`;
+  }
+  if (result.status === 'ERROR') return `${text}조회 실패\n${esc(result.error || '알 수 없는 오류')}\n`;
+  const windows = [];
   for (const window of result.windows) {
     const usage = window.usedPercent !== undefined ? `${window.usedPercent}% 사용${window.remainingPercent !== undefined ? ` / ${window.remainingPercent}% 남음` : ''}` : '사용률 미제공';
     const reset = window.resetsAt ? `${kst(window.resetsAt)} (${relative(window.resetsAt)})` : '미제공';
-    text += `• ${esc(window.label)}: ${esc(usage)}\n  reset: ${esc(reset)}\n`;
+    windows.push(`**${esc(window.label)}**\n${esc(usage)}\nReset ${esc(reset)}`);
   }
-  text += `• 조회: ${esc(kst(result.fetchedAt))} · cache ${esc(result.cache)}\n`;
-  if (result.error) text += `• 최신 조회 오류: ${esc(result.error)}\n`;
+  text += `${windows.join('\n\n')}\n\n조회 ${esc(kst(result.fetchedAt))}\nCache \`${esc(result.cache)}\`\n`;
+  if (result.error) text += `최신 조회 오류\n${esc(result.error)}\n`;
   return text;
 }
 
@@ -27,10 +34,10 @@ async function buildUsageText(userId, forceRefresh) {
   const providers = db.prepare(`SELECT j.provider, COUNT(*) AS runs, COALESCE(SUM(j.duration_ms),0) AS duration_ms FROM jobs j JOIN sessions s ON s.id=j.session_id WHERE s.user_id=? AND j.status='COMPLETED' GROUP BY j.provider ORDER BY runs DESC`).all(userId);
   const models = db.prepare(`SELECT COALESCE(j.model,'CLI Default') AS model, COUNT(*) AS runs FROM jobs j JOIN sessions s ON s.id=j.session_id WHERE s.user_id=? AND j.status='COMPLETED' GROUP BY COALESCE(j.model,'CLI Default') ORDER BY runs DESC LIMIT 10`).all(userId);
   const quotas = await Promise.all(providerManager.listProviderNames().map(name => usageQuotaService.get(name, { forceRefresh })));
-  let text = `${uiTitle('📊', 'Agent Hub Usage')}\n\n**Agent Hub Job 통계**\n완료 작업: **${totals.runs}회**\n실행 시간 합계: **${fmtMs(totals.duration_ms)}**\n\n**Provider 분포**\n`;
+  let text = `${uiTitle('📊', 'Agent Hub Usage')}\n\n\`[JOB]\`\n\n완료 작업 **${totals.runs}회**\n실행 시간 합계 **${fmtMs(totals.duration_ms)}**\n\n\`[PROVIDER]\`\n\n`;
   text += providers.length ? providers.map(r => `• ${esc(r.provider)}: ${r.runs}회 / ${fmtMs(r.duration_ms)}`).join('\n') : '• 기록 없음';
-  text += `\n\n**Model 분포**\n${models.length ? models.map(r => `• ${esc(r.model)}: ${r.runs}회`).join('\n') : '• 기록 없음'}`;
-  text += `\n\n**Provider 계정 quota**\n\n${quotas.map(renderQuota).join('\n')}\n_${isStealthMode() ? '미제공 수치는 추정하지 않습니다.' : 'ℹ️ 미제공 수치는 추정하지 않습니다.'}_`;
+  text += `\n\n\`[MODEL]\`\n\n${models.length ? models.map(r => `• ${esc(r.model)}: ${r.runs}회`).join('\n') : '• 기록 없음'}`;
+  text += `\n\n${quotas.map(renderQuota).join('\n')}\n_${isStealthMode() ? '미제공 수치는 추정하지 않습니다.' : 'ℹ️ 미제공 수치는 추정하지 않습니다.'}_`;
   return text;
 }
 
