@@ -2,14 +2,16 @@ import { redactSecrets } from '../../utils/redact.js';
 
 const DEFAULT_TAIL_CHARS = 4000;
 const DEFAULT_HEARTBEAT_MS = 60000;
+const REDACTION_CONTEXT_CHARS = 1024;
 
 export function appendDiagnosticTail(current, chunk, maxChars = DEFAULT_TAIL_CHARS) {
   const next = `${current || ''}${String(chunk ?? '')}`;
   return next.length <= maxChars ? next : next.slice(-maxChars);
 }
 
-export function sanitizeDiagnosticTail(value) {
-  return redactSecrets(String(value ?? '').trim());
+export function sanitizeDiagnosticTail(value, maxChars = DEFAULT_TAIL_CHARS) {
+  const sanitized = redactSecrets(String(value ?? '').trim());
+  return sanitized.length <= maxChars ? sanitized : sanitized.slice(-maxChars);
 }
 
 export function createCodexExecutionTelemetry({
@@ -35,6 +37,7 @@ export function createCodexExecutionTelemetry({
   const normalizedMode = String(mode || 'UNKNOWN');
   const safeCwd = sanitizeDiagnosticTail(cwd || 'unknown');
   const timeoutSec = Math.ceil(Number(timeoutMs || 0) / 1000);
+  const rawTailChars = Math.max(tailChars, tailChars + REDACTION_CONTEXT_CHARS);
 
   const snapshot = (reason, extra = {}) => ({
     reason,
@@ -44,8 +47,8 @@ export function createCodexExecutionTelemetry({
     idleSec: Math.max(0, Math.floor((now() - lastOutputAt) / 1000)),
     stdoutBytes,
     stderrBytes,
-    stdoutTail: sanitizeDiagnosticTail(stdoutTail),
-    stderrTail: sanitizeDiagnosticTail(stderrTail),
+    stdoutTail: sanitizeDiagnosticTail(stdoutTail, tailChars),
+    stderrTail: sanitizeDiagnosticTail(stderrTail, tailChars),
     ...extra,
   });
 
@@ -64,10 +67,10 @@ export function createCodexExecutionTelemetry({
     const bytes = Buffer.byteLength(text);
     if (stream === 'stderr') {
       stderrBytes += bytes;
-      stderrTail = appendDiagnosticTail(stderrTail, text, tailChars);
+      stderrTail = appendDiagnosticTail(stderrTail, text, rawTailChars);
     } else {
       stdoutBytes += bytes;
-      stdoutTail = appendDiagnosticTail(stdoutTail, text, tailChars);
+      stdoutTail = appendDiagnosticTail(stdoutTail, text, rawTailChars);
     }
   };
 
