@@ -8,6 +8,7 @@ const host = { user_id: 1, alias: 'dev', host: '192.168.0.10', enabled: 1 };
 const remoteOutput = `HOST\tdev-host\tUbuntu 24.04 LTS\t6.8.0\tx86_64\t86400
 CPU1\tcpu  100 0 100 800 0 0 0 0 0 0
 CPU2\tcpu  110 0 110 880 0 0 0 0 0 0
+TEMP\tPackage id 0\t47500
 LOAD\t0.20 0.10 0.05 1/100 1
 CORES\t4
 MEM\tMemTotal:\t1000
@@ -23,6 +24,12 @@ STATS\t1.2%\t100MiB / 1GiB\t10%`;
 test('원격 수집 스크립트는 os-release 값을 셸 변수 문자열이 아닌 실제 OS명으로 출력한다', () => {
   assert.doesNotMatch(REMOTE_SCRIPT, /\\\$\{PRETTY_NAME/);
   assert.match(REMOTE_SCRIPT, /PRETTY_NAME=/);
+});
+
+test('CPU는 0.5초 간격 4개 구간을 수집하고 온도 센서를 조회한다', () => {
+  assert.match(REMOTE_SCRIPT, /for sample in 1 2 3 4/);
+  assert.match(REMOTE_SCRIPT, /sleep 0\.5/);
+  assert.match(REMOTE_SCRIPT, /\/sys\/class\/hwmon/);
 });
 
 test('resource 임계값은 OK/WARN/CRITICAL/UNKNOWN을 구분한다', () => {
@@ -41,6 +48,8 @@ test('원격 응답을 공통 리소스와 Docker/Runtime으로 파싱한다', (
   const snapshot = new SystemService().parse(host, remoteOutput);
   assert.equal(snapshot.online, true);
   assert.equal(snapshot.host.hostname, 'dev-host');
+  assert.equal(snapshot.cpu.sampleCount, 1);
+  assert.equal(snapshot.cpu.temperatureCelsius, 47.5);
   assert.equal(snapshot.memory.usagePercent, 60);
   assert.deepEqual(snapshot.disks.items[0].paths, ['/', '/home/dev']);
   assert.equal(snapshot.docker.running, 2);
@@ -112,6 +121,9 @@ test('전체 요약과 서버 상세을 구분해 표시한다', () => {
   const detail = renderSystem(server);
   assert.match(overview, /dev/);
   assert.match(overview, /Docker 2 running/);
+  assert.match(overview, /RAM \[600B\/1000B\] · 60\.0%/);
+  assert.match(overview, /온도 47\.5°C/);
+  assert.equal((overview.match(/OK/g) || []).length, 1);
   assert.match(detail, /Overall: OK/);
   assert.match(detail, /\/\+\/home\/dev/);
 });

@@ -10,9 +10,22 @@ os_name="$(sed -n 's/^PRETTY_NAME=//p' /etc/os-release 2>/dev/null | sed 's/^"//
 [ -n "$os_name" ] || os_name="$(sed -n 's/^NAME=//p' /etc/os-release 2>/dev/null | sed 's/^"//;s/"$//' | head -1)"
 [ -n "$os_name" ] || os_name=unknown
 printf 'HOST\t'; one_line "$(hostname 2>/dev/null || true)"; printf '\t'; one_line "$os_name"; printf '\t%s\t%s\t%s\n' "$(uname -r)" "$(uname -m)" "$(cut -d. -f1 /proc/uptime)"
-printf 'CPU1\t%s\n' "$(sed -n '1p' /proc/stat)"
-sleep 0.2
-printf 'CPU2\t%s\n' "$(sed -n '1p' /proc/stat)"
+printf 'CPU\t%s\n' "$(sed -n '1p' /proc/stat)"
+for sample in 1 2 3 4; do
+  sleep 0.5
+  printf 'CPU\t%s\n' "$(sed -n '1p' /proc/stat)"
+done
+for sensor in /sys/class/hwmon/hwmon*/temp*_input /sys/class/thermal/thermal_zone*/temp; do
+  [ -r "$sensor" ] || continue
+  value="$(cat "$sensor" 2>/dev/null || true)"
+  case "$value" in ''|*[!0-9-]*) continue ;; esac
+  label=""
+  case "$sensor" in
+    */thermal_zone*/temp) label="$(cat "\${sensor%/temp}/type" 2>/dev/null || true)" ;;
+    *_input) label="$(cat "\${sensor%_input}_label" 2>/dev/null || true)" ;;
+  esac
+  printf 'TEMP\t'; one_line "$label"; printf '\t%s\n' "$value"
+done
 printf 'LOAD\t%s\n' "$(cat /proc/loadavg)"
 printf 'CORES\t%s\n' "$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc)"
 awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ { printf "MEM\t%s\t%s\n", $1, $2 * 1024 }' /proc/meminfo
@@ -83,10 +96,19 @@ export class SystemService {
   parse(host, output) {
     const rows = String(output).trim().split('\n').map((line) => line.split('\t')), first = (name) => rows.find((row) => row[0] === name);
     const hostRow = first('HOST'); if (!hostRow) throw new Error('원격 시스템 응답 형식이 올바르지 않습니다.');
-    const c1 = cpuLine(first('CPU1')?.[1]), c2 = cpuLine(first('CPU2')?.[1]), totalDelta = c1 && c2 ? c2.total - c1.total : 0;
-    const usagePercent = totalDelta > 0 ? (1 - (c2.idle - c1.idle) / totalDelta) * 100 : null;
+    const cpuRows = rows.filter((row) => row[0] === 'CPU').map((row) => cpuLine(row[1])).filter(Boolean);
+    if (!cpuRows.length) cpuRows.push(...['CPU1', 'CPU2'].map((name) => cpuLine(first(name)?.[1])).filter(Boolean));
+    const cpuSamples = [];
+    for (let i = 1; i < cpuRows.length; i++) {
+      const totalDelta = cpuRows[i].total - cpuRows[i - 1].total;
+      if (totalDelta > 0) cpuSamples.push((1 - (cpuRows[i].idle - cpuRows[i - 1].idle) / totalDelta) * 100);
+    }
+    const usagePercent = cpuSamples.length ? cpuSamples.reduce((sum, value) => sum + value, 0) / cpuSamples.length : null;
     const load = first('LOAD')?.[1]?.split(/\s+/).map(Number) || [], cores = number(first('CORES')?.[1]);
-    const cpu = { available: Number.isFinite(usagePercent), usagePercent, cores, load1: load[0], load5: load[1], load15: load[2] }; cpu.severity = cpuSeverity(cpu);
+    const temperatures = rows.filter((row) => row[0] === 'TEMP').map((row) => ({ label: row[1] || '', celsius: number(row[2]) / 1000 }))
+      .filter((item) => Number.isFinite(item.celsius) && item.celsius > -20 && item.celsius < 150);
+    const preferredTemperature = temperatures.find((item) => /package|tctl|cpu/i.test(item.label)) || temperatures.find((item) => /core/i.test(item.label)) || temperatures.sort((a, b) => b.celsius - a.celsius)[0];
+    const cpu = { available: Number.isFinite(usagePercent), usagePercent, sampleCount: cpuSamples.length, temperatureCelsius: preferredTemperature?.celsius ?? null, cores, load1: load[0], load5: load[1], load15: load[2] }; cpu.severity = cpuSeverity(cpu);
     const mem = Object.fromEntries(rows.filter((row) => row[0] === 'MEM').map((row) => [row[1].replace(':', ''), number(row[2])]));
     const total = mem.MemTotal, available = mem.MemAvailable, used = total - available;
     const memory = { available: Number.isFinite(total), total, used, availableBytes: available, usagePercent: total > 0 ? used / total * 100 : null, swapTotal: mem.SwapTotal || 0, swapUsed: Math.max(0, (mem.SwapTotal || 0) - (mem.SwapFree || 0)) }; memory.severity = usageSeverity(memory.usagePercent, RESOURCE_THRESHOLDS.memory);
