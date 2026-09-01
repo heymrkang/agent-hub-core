@@ -2,11 +2,67 @@
 
 ## Status
 
-`PLANNED`
+`IN PROGRESS — 16-1 조사·명세 완료`
 
 Phase 16은 신규 대형 기능을 추가하는 단계가 아니라, V1 이후 실제 사용에서 드러난 미완성 기능과 조작 불가능한 Provider 옵션을 정리하는 안정화·최적화 단계다.
 
 확정 범위는 Canonical Context Compact, Model Reasoning/Thinking Level, Provider Usage/Quota Visibility다. Backend API Preview와 MCP/Skills는 각각 Phase 17과 Phase 18로 분리한다.
+
+## 0. Phase 16-1 조사 결과와 구현 기준
+
+### 0.1 기준선
+
+- 착수 기준 commit: `578fcf9` (`main`, `origin/main`, `backup/phase-15-skipped-baseline` 동일)
+- 착수 시 DB schema: `v12`; Phase 16 migration은 `013_phase16_session_context.sql`
+- 고정 CLI: Codex `0.149.1`, Antigravity `1.1.20`
+- 착수 회귀 기준: `74 PASS / 1 SKIP / 0 FAIL`
+- 일반 대화는 현재 최근 10개 메시지만 조립하고, Provider handoff는 별도 30개/cursor 경로를 사용한다. Phase 16에서는 둘을 하나의 canonical context assembly로 합친다.
+
+### 0.2 Compact 고정값과 실패 정책
+
+- 최근 원문 보존량: message 10개. role pair를 억지로 재구성하지 않고 SQLite `rowid` 순서를 따른다.
+- 최소 신규 압축량: message 6개. cursor 이후 압축 후보가 6개 미만이면 `NO_CHANGE`다.
+- cursor 저장값: `messages.id` UUID인 `compact_cursor_message_id`. 비교할 때만 해당 message의 SQLite `rowid`를 조회한다. VACUUM에 따라 변할 수 있는 raw `rowid` 자체는 저장하지 않는다.
+- 크기 지표: UTF-8 byte나 가짜 token이 아니라 JavaScript string character count를 `estimated characters`로 표시한다.
+- 요약 실행: 활성 Provider/Model을 사용하되 execution profile은 `READ_ONLY`, reasoning은 Provider 기본값으로 고정한다. 요약 호출은 사용자 CHAT message/job으로 저장하지 않는다.
+- 수동 compact는 활성/대기 Job이 있으면 `BUSY`로 거부한다. 자동 compact는 Provider 실행 직전에 같은 session lock 안에서 1회만 시도한다.
+- 자동 compact 실패 시 원래 요청은 압축 전 canonical context로 1회 실행한다. compact 재시도 loop는 만들지 않는다.
+- 모델 context window를 capability에서 얻지 못하면 자동 임계치 상태는 `UNAVAILABLE`이며 character 비율로 대체하지 않는다.
+
+### 0.3 Migration 013 확정
+
+`sessions`에 다음 컬럼을 추가한다.
+
+- `compact_cursor_message_id TEXT`
+- `last_compacted_at TEXT`
+- `compact_before_chars INTEGER`
+- `compact_after_chars INTEGER`
+- `reasoning_effort TEXT NOT NULL DEFAULT 'default'`
+
+기존 `rolling_summary`는 유지한다. `compact_cursor_message_id`는 canonical 원문 보존 원칙과 migration 단순성을 위해 DB foreign key를 걸지 않고 service transaction에서 같은 session 소속 여부를 검증한다.
+
+### 0.4 Thinking capability 확정
+
+- canonical 값은 `default`와 Provider/model capability가 반환한 문자열이다.
+- Codex `0.149.1`: app-server `model/list`의 `supportedReasoningEfforts`, `defaultReasoningEffort`를 사용한다. 2026-09-01 live probe에서 모델별 서로 다른 effort 목록과 기본값을 확인했다. 실행 시 strict config 검증을 통과한 key `model_reasoning_effort`로 전달하며 restricted/FULL_ACCESS가 같은 argument builder를 쓴다.
+- Antigravity `1.1.20`: CLI help가 보장하는 `low|medium|high`만 노출하고 `--effort <level>`로 전달한다. `default`면 `--effort`를 생략한다.
+- 모델별 capability가 비었거나 조회에 실패하면 `default`만 허용한다. silent fallback은 금지한다.
+
+### 0.5 Usage/Quota capability 확정
+
+- Codex `0.149.1`: app-server JSON-RPC `account/rateLimits/read`를 canonical source로 사용한다. 2026-09-01 live probe에서 300분 primary와 10080분 secondary window 및 reset timestamp 응답을 확인했다. 응답 schema의 `primary`, `secondary`, `usedPercent`, `windowDurationMins`, `resetsAt`만 파싱하며 TUI scraping은 사용하지 않는다.
+- Codex model 목록도 같은 app-server 연결을 재사용할 수 있게 client 경계를 분리한다.
+- Antigravity `1.1.20`: help/subcommand/print JSON에서 독립 quota 조회 인터페이스를 확인하지 못했다. 구현 전 실제 인증 계정의 interactive status를 추가 검증하고, 안정적인 machine-readable 또는 격리 가능한 PTY source가 없으면 `UNAVAILABLE`로 표시한다.
+- Cache TTL은 성공 60초, 실패 15초, probe timeout 10초로 고정한다. 마지막 성공 cache는 10분까지 `STALE`로 표시하고 그 이후 폐기한다.
+- 강제 새로고침은 Provider별 15초 cooldown을 적용하며 동시 요청은 single-flight로 합친다.
+- Phase 16에서는 quota 자동 경고를 구현하지 않는다.
+
+### 0.6 테스트 경계
+
+- Unit: compact range/cursor/rolling summary/lock/failure rollback, context assembly, reasoning capability/argument mapping, quota parser/cache/single-flight/timeout
+- Integration: migration 013 기본값과 재기동, summary+cursor transaction, Provider/model/reasoning 원자 변경
+- E2E: 수동/자동 compact 후 원문 보존, Provider 전환, 재배포 복구, NORMAL/STEALTH Telegram UI
+- Live smoke: Codex model effort와 rate limit JSON-RPC, Antigravity effort 전달 및 quota source 가용성
 
 ---
 
@@ -47,9 +103,9 @@ Provider native compact를 억지로 호출하지 않고 **Agent Hub 자체 Cano
 최소 상태:
 
 - `rolling_summary`
-- 마지막으로 요약에 포함된 Canonical message ID 또는 안정적인 SQLite cursor
+- 마지막으로 요약에 포함된 Canonical message UUID (`compact_cursor_message_id`)
 - 마지막 압축 시각
-- 가능하면 압축 전/후 추정 token 또는 character count
+- 압축 전/후 estimated character count
 
 규칙:
 

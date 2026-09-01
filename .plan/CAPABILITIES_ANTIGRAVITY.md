@@ -1,7 +1,7 @@
 # Antigravity CLI (`agy`) Capability Baseline
 
 > **Pinned Version:** `agy v1.1.20` (linux-x64, SHA512 Verified)\
-> **Audit Date:** 2026-08-25\
+> **Audit Date:** 2026-09-01\
 > **Audit Environment:** Node.js v20+, Linux x86_64, Docker Debian Bookworm
 
 ---
@@ -15,10 +15,12 @@
 | **JSON / Machine-Readable Output** | `SUPPORTED` | 구조화된 이벤트 및 결과 스트림 지원. |
 | **Native Session Creation & Resume** | `SUPPORTED` | 세션 ID 기반 재개 및 관리 지원. |
 | **Model Specification / Switching** | `SUPPORTED` | `-m, --model <MODEL>` 옵션 지원 (`gemini-2.5-pro`, `gemini-2.5-flash`, `claude-3-7-sonnet`). |
+| **Reasoning Effort** | `SUPPORTED` | v1.1.20 CLI help 기준 `--effort low|medium|high`. `default`는 flag를 생략하고 지원하지 않는 값은 실행 전에 거부한다. |
 | **Dynamic Model Discovery** | `PARTIAL` | Antigravity 제공 모델 풀 연동. |
 | **Health / Auth Diagnosis** | `SUPPORTED` | `agy --version` 및 `~/.gemini` 세션 파일 검증을 통한 실시간 헬스체크 지원. |
 | **Image & Multi-Attachment** | `SUPPORTED` | 워크스페이스 컨텍스트 및 멀티모달 파일 인식 지원. |
 | **Native Compact** | `UNSUPPORTED` | Native Compact 독립 서브커맨드 부재. Agent Hub Canonical Context 및 Summary로 관리. |
+| **Usage / Token Quota** | `UNVERIFIED` | v1.1.20 help/subcommand/print JSON에서 독립 quota source를 확인하지 못했다. 실제 인증 계정의 interactive status를 추가 검증하며 안정적인 source가 없으면 `UNAVAILABLE`로 유지한다. |
 | **Cancellation & Process Control** | `SUPPORTED` | `SIGINT`/`SIGKILL` 시그널 전달로 자식 프로세스 즉시 중단 가능. |
 
 ---

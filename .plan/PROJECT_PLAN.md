@@ -112,7 +112,7 @@ Agent Hub Core
 - Phase 13: Mobile Preview Runtime & Preview Manager — 완료
 - Phase 14: System & Resource Observability — 완료
 - Phase 15: 별도 범위 미지정 — 스킵
-- Phase 16: Feature Stabilization & Optimization — 계획 완료
+- Phase 16: Feature Stabilization & Optimization — 진행 중 (16-1 조사·명세 완료)
 - Phase 17: Backend API Preview & Inspector — 계획 완료
 - Phase 18: Agent Extensibility — MCP & Skills — 계획 완료
 
