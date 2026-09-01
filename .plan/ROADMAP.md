@@ -54,7 +54,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 |---|---|---|---|
 | Phase 12 | Backup/Recovery/Hardening 중복 계획 | `SKIPPED / SUPERSEDED` | Phase 10~11에서 구현·검증 완료된 범위와 중복되어 별도 구현하지 않음 |
 | Phase 13 | Mobile Preview Runtime & Preview Manager | `DONE` | 2026-08-31 모바일 개발 루프 E2E 완료 |
-| Phase 14 | System & Resource Observability (`/system`) | `PLANNED` | 다음 신규 기능 Phase |
+| Phase 14 | System & Resource Observability (`/system`) | `IMPLEMENTED / AUDIT PENDING` | Coolify runtime 검증 후 DONE 전환 |
 | Phase 16 | Feature Stabilization & Optimization | `PLANNED` | Canonical Compact, Model Thinking, Provider Usage/Quota |
 | Phase 17 | Backend API Preview & Inspector | `PLANNED` | NestJS/OpenAPI 기반 API Preview와 개발 데이터 보안 경계 |
 | Phase 18 | Agent Extensibility — MCP & Skills | `PLANNED` | Provider native MCP/Skills 조회·관리·인증·권한 정책 |

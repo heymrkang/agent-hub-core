@@ -2,24 +2,27 @@
 
 ## Status
 
-`PLANNED`
+`IMPLEMENTED / RUNTIME AUDIT PENDING`
 
 ## 1. 목표
 
-Phase 14는 Agent Hub Core가 실행되는 실제 Host의 시스템 리소스를 Telegram에서 안전하게 관찰하고 진단하는 기능을 구축한다.
+Phase 14는 `/server` Registry에 등록된 모든 활성 서버의 시스템 리소스를 Telegram에서 안전하게 관찰하고 진단하는 기능을 구축한다.
 
 대표 명령은 `/system`이다.
 
 기존 `/status`와 역할을 명확히 분리한다.
 
 - `/status`: Agent Hub 기능/통합이 정상인가?
-- `/system`: Host CPU/RAM/Disk/OS/Docker 리소스가 어떤 상태인가?
+- `/system`: 등록 서버 전체의 CPU/RAM/Disk/OS/Docker 리소스가 어떤 상태인가?
+- `/system <alias>`: 특정 등록 서버의 상세 리소스
 
 Phase 14는 관찰/진단 중심이며 자동 삭제, 자동 restart, kill, prune 같은 destructive self-healing은 범위에서 제외한다.
 
 ---
 
 ## 2. System Collector
+
+수집 대상은 코드에 고정하지 않고 `/server` Registry의 활성 서버 목록을 사용한다. 서버 추가·제거·활성 상태 변경은 다음 `/system` 조회에 즉시 반영한다. SSH read-only 명령으로 병렬 수집하며, 한 서버의 접속 실패는 `OFFLINE / UNKNOWN`으로 격리한다.
 
 Telegram UI와 분리된 reusable collector/service를 만든다.
 
@@ -69,7 +72,7 @@ Telegram UI와 분리된 reusable collector/service를 만든다.
 
 ### 2.5 Docker
 
-Phase 9 DockerClient를 재사용/확장한다.
+등록 서버에서 Docker 설치 여부와 daemon 상태를 read-only로 확인한다. Docker 미설치는 장애가 아니라 `N/A`로 표시한다.
 
 - Docker daemon version/state
 - Running container count
@@ -92,7 +95,7 @@ Host metric과 Agent Hub container metric을 별도 section으로 표시한다.
 
 ## 3. `/system` Telegram UI
 
-Root는 Host/CPU/Memory/Disk/Docker/Agent Hub 상태를 빠르게 볼 수 있는 overview로 유지한다.
+Root는 등록된 전체 서버의 상태를 빠르게 볼 수 있는 overview로 유지한다. 서버 버튼 또는 `/system <alias>`로 상세 화면에 진입한다.
 
 상세 정보가 많아지면 다음과 같은 submenu를 사용한다.
 
@@ -177,17 +180,21 @@ Phase 14 `/system`은 read-only observability command다.
 
 ## 8. Acceptance / E2E
 
-- [ ] `/system`에서 Host OS/Kernel/Uptime을 확인할 수 있다.
-- [ ] CPU usage/core/load average를 확인할 수 있다.
-- [ ] Host Memory/Swap 상태를 확인할 수 있다.
-- [ ] Disk capacity와 usage를 확인할 수 있다.
-- [ ] Docker running/stopped/unhealthy summary를 확인할 수 있다.
-- [ ] Agent Hub container/process resource를 Host resource와 구분해 표시한다.
-- [ ] 일부 collector가 실패해도 나머지 system 정보가 표시된다.
-- [ ] Resource threshold에 따라 OK/WARN/CRITICAL이 정확히 표시된다.
-- [ ] `/system` 자체는 destructive operation을 수행하지 않는다.
-- [ ] NORMAL/STEALTH UI 모두 의미가 유지된다.
-- [ ] 반복 refresh가 Core에 과도한 command storm을 만들지 않는다.
+- [x] `/system`이 `/server` Registry의 모든 활성 서버를 동적으로 반영한다.
+- [x] 서버별 SSH 실패를 격리하고 OFFLINE/UNKNOWN으로 표시한다.
+- [x] `/system`에서 Host OS/Kernel/Uptime을 확인할 수 있다.
+- [x] CPU usage/core/load average를 확인할 수 있다.
+- [x] Host Memory/Swap 상태를 확인할 수 있다.
+- [x] Disk capacity와 usage를 확인할 수 있다.
+- [x] Docker running/stopped/unhealthy summary를 확인할 수 있다.
+- [x] Agent Hub container/process resource를 Host resource와 구분해 표시한다.
+- [x] 일부 collector가 실패해도 나머지 system 정보가 표시된다.
+- [x] Resource threshold에 따라 OK/WARN/CRITICAL이 정확히 표시된다.
+- [x] `/system` 자체는 destructive operation을 수행하지 않는다.
+- [x] NORMAL/STEALTH UI 모두 의미가 유지된다.
+- [x] 반복 refresh가 Core에 과도한 command storm을 만들지 않는다.
+
+구현 검증: 2026-09-01 unit/integration/E2E `67 pass / 0 fail / 1 skip`. SSH 실수집으로 `dev`, `local` CPU/RAM/Disk/Docker와 `dev` Agent Hub 컨테이너 식별을 확인했다. Coolify 재배포 후 Telegram UI 수치 대조가 남아 있다.
 
 ## 9. 완료 조건
 
