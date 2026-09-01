@@ -154,7 +154,8 @@ test('execution context excludes compacted originals and keeps summary plus raw 
 
   assert.match(assembled.prompt, /summary-for-context/);
   assert.doesNotMatch(assembled.prompt, /message-1(?:\D|$)/);
-  assert.match(assembled.prompt, /message-7/);
+  assert.doesNotMatch(assembled.prompt, /message-13/);
+  assert.match(assembled.prompt, /message-14/);
   assert.match(assembled.prompt, /message-16/);
   assert.doesNotMatch(assembled.prompt, /current-message/);
   assert.match(assembled.prompt, /current-prompt/);
@@ -184,7 +185,8 @@ test('auto compact is unavailable without trustworthy provider token metrics', a
   assert.equal(prepared.autoCompact.status, 'UNAVAILABLE');
   assert.equal(prepared.autoCompact.attempted, false);
   assert.equal(calls, 0);
-  assert.match(prepared.prompt, /message-7/);
+  assert.doesNotMatch(prepared.prompt, /message-13/);
+  assert.match(prepared.prompt, /message-14/);
 });
 
 test('auto compact failure preserves and returns the pre-compact prompt', async () => {
@@ -192,7 +194,52 @@ test('auto compact failure preserves and returns the pre-compact prompt', async 
   registerMeasuredAdapter({ executePrompt: async () => { throw new Error('auto summary failed'); } });
   const prepared = await ContextAssembler.prepare({ session, currentPrompt: 'survives failure' });
   assert.equal(prepared.autoCompact.status, 'FAILED');
-  assert.match(prepared.prompt, /message-7/);
+  assert.doesNotMatch(prepared.prompt, /message-13/);
+  assert.match(prepared.prompt, /message-14/);
   assert.match(prepared.prompt, /survives failure/);
   assert.equal(SessionManager.getSession(session.id).compact_cursor_message_id, null);
+});
+
+test('execution history abbreviates only assistant code blocks with at least five lines', () => {
+  const session = createSession(0);
+  const userCode = ['user-1', 'user-2', 'user-3', 'user-4', 'user-5'].join('\n');
+  const assistantText = [
+    'before blocks',
+    '```js',
+    'long-1',
+    'long-2',
+    'long-3',
+    'long-4',
+    'long-5',
+    '```',
+    'between blocks',
+    '```text',
+    'short-1',
+    'short-2',
+    'short-3',
+    'short-4',
+    '```',
+    '```sql',
+    'second-1',
+    'second-2',
+    'second-3',
+    'second-4',
+    'second-5',
+    '```',
+    'after blocks'
+  ].join('\n');
+  SessionManager.saveMessage({ sessionId: session.id, role: 'user', text: `user code\n\`\`\`js\n${userCode}\n\`\`\`` });
+  SessionManager.saveMessage({ sessionId: session.id, role: 'assistant', text: assistantText });
+
+  const assembled = ContextAssembler.assemble({ sessionId: session.id, currentPrompt: 'current request' });
+
+  assert.match(assembled.prompt, /user-5/);
+  assert.match(assembled.prompt, /```js\nlong-1\nlong-2\n\/\/ \.\.\. \[중략: 수백 줄의 이전 코드 블록 생략\]\n```/);
+  assert.doesNotMatch(assembled.prompt, /long-3/);
+  assert.match(assembled.prompt, /```text\nshort-1\nshort-2\nshort-3\nshort-4\n```/);
+  assert.match(assembled.prompt, /```sql\nsecond-1\nsecond-2\n\/\/ \.\.\. \[중략: 수백 줄의 이전 코드 블록 생략\]\n```/);
+  assert.doesNotMatch(assembled.prompt, /second-3/);
+  assert.match(assembled.prompt, /before blocks/);
+  assert.match(assembled.prompt, /between blocks/);
+  assert.match(assembled.prompt, /after blocks/);
 });

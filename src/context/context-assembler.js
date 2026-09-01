@@ -2,19 +2,32 @@ import { ContextManager } from './context-manager.js';
 import { Compactor } from './compactor.js';
 import { providerManager } from '../providers/provider-manager.js';
 import { getSettingsManager } from '../settings/settings-manager.js';
+import { runtimeConfig } from '../config/runtime-config.js';
 
-const EXECUTION_TAIL_SIZE = 10;
+const LONG_CODE_BLOCK_MIN_LINES = 5;
+const CODE_BLOCK_OMISSION = '// ... [중략: 수백 줄의 이전 코드 블록 생략]';
+
+function abbreviateLongCodeBlocks(text) {
+  return text.replace(/(^[ \t]*```[^\r\n]*\r?\n)([\s\S]*?)(\r?\n[ \t]*```[ \t]*$)/gm, (block, opening, body, closing) => {
+    const lines = body.split(/\r?\n/);
+    if (lines.length < LONG_CODE_BLOCK_MIN_LINES) return block;
+    return `${opening}${lines.slice(0, 2).join('\n')}\n${CODE_BLOCK_OMISSION}${closing}`;
+  });
+}
 
 function renderHistory(messages) {
   if (!messages.length) return null;
-  return `[\uC774\uC804 \uB300\uD654 \uAE30\uB85D / Context]\n${messages.map((message) => `${message.role === 'user' ? 'User' : 'Assistant'}: ${message.text}`).join('\n\n')}`;
+  return `[\uC774\uC804 \uB300\uD654 \uAE30\uB85D / Context]\n${messages.map((message) => {
+    const text = message.role === 'assistant' ? abbreviateLongCodeBlocks(message.text) : message.text;
+    return `${message.role === 'user' ? 'User' : 'Assistant'}: ${text}`;
+  }).join('\n\n')}`;
 }
 
 export class ContextAssembler {
   static assemble({ sessionId, userMessageId = null, memoryBlock = null, currentPrompt }) {
     const context = ContextManager.buildExecutionContext(sessionId, {
       excludeMessageId: userMessageId,
-      tailSize: EXECUTION_TAIL_SIZE
+      tailSize: runtimeConfig.executionTailSize
     });
     const parts = [];
     if (memoryBlock) parts.push(memoryBlock);

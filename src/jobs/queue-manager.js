@@ -5,24 +5,27 @@ import { ContextManager } from '../context/context-manager.js';
 import { getSettingsManager } from '../settings/settings-manager.js';
 import { Compactor } from '../context/compactor.js';
 import { modelCatalog } from '../providers/model-catalog.js';
+import { runtimeConfig } from '../config/runtime-config.js';
 
 class QueueManager {
   constructor() {
     this.sessionQueues = new Map();
     this.providerRunningCounts = new Map();
     this.providerConcurrencyLimits = new Map([
-      ['codex', parseInt(process.env.CODEX_CONCURRENCY || '2', 10)],
-      ['antigravity', parseInt(process.env.ANTIGRAVITY_CONCURRENCY || '2', 10)]
+      ['codex', runtimeConfig.codexConcurrency],
+      ['antigravity', runtimeConfig.antigravityConcurrency]
     ]);
     this.activeExecutions = new Map();
   }
 
   getConcurrencyLimit(providerName) {
     try {
-      return getSettingsManager().get('concurrency_limit');
+      const settings = getSettingsManager();
+      if (settings.has('concurrency_limit')) return settings.get('concurrency_limit');
     } catch {
-      return this.providerConcurrencyLimits.get(providerName.toLowerCase()) || 2;
+      // Settings are unavailable during early startup and isolated tests.
     }
+    return this.providerConcurrencyLimits.get(providerName.toLowerCase());
   }
 
   enqueueJob({ sessionId, sessionTitle, provider, model, reasoningEffort = 'default', prompt, profile, onStatusUpdate, type = 'CHAT', timeoutMs = null, queueGraceMs = null }) {
@@ -151,12 +154,12 @@ class QueueManager {
   getQueueStats() {
     let totalQueued = 0;
     for (const q of this.sessionQueues.values()) totalQueued += q.length;
-    const configuredLimit = (() => { try { return getSettingsManager().get('concurrency_limit'); } catch { return null; } })();
+    const configuredLimit = (() => { try { const settings = getSettingsManager(); return settings.has('concurrency_limit') ? settings.get('concurrency_limit') : null; } catch { return null; } })();
     return {
       activeExecutionsCount: this.activeExecutions.size,
       totalQueued,
       providerRunning: Object.fromEntries(this.providerRunningCounts),
-      providerLimits: Object.fromEntries(['codex', 'antigravity'].map((p) => [p, configuredLimit ?? this.providerConcurrencyLimits.get(p) ?? 2]))
+      providerLimits: Object.fromEntries(['codex', 'antigravity'].map((p) => [p, configuredLimit ?? this.providerConcurrencyLimits.get(p)]))
     };
   }
 }

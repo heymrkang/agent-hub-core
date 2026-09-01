@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { ProviderAdapter } from '../provider-adapter.js';
+import { runtimeConfig } from '../../config/runtime-config.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -11,7 +12,7 @@ export class CodexAdapter extends ProviderAdapter {
   constructor() {
     super('codex');
     this.workspaceDir = process.env.WORKSPACE_DIR || '/home/dev';
-    this.defaultTimeoutMs = parseInt(process.env.CODEX_TIMEOUT_MS || '120000', 10);
+    this.defaultTimeoutMs = runtimeConfig.codexTimeoutMs;
     this.cachedModels = null;
     this.lastModelCheck = 0;
     this.restrictedRuntime = null;

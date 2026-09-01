@@ -52,8 +52,12 @@ TELEGRAM_BOT_TOKEN
 TELEGRAM_ADMIN_USER_ID
 CODEX_TIMEOUT_MS
 ANTIGRAVITY_TIMEOUT_MS
+ANTIGRAVITY_MODEL_DISCOVERY_TIMEOUT_MS
+EXECUTION_TAIL_SIZE
 CODEX_CONCURRENCY
 ANTIGRAVITY_CONCURRENCY
+MODEL_REFRESH_INTERVAL_SECONDS
+SCHEDULER_QUEUE_GRACE_SECONDS
 DATA_DIR=/data
 WORKSPACE_DIR=/home/dev
 REPOS_ROOT=/home/dev/workspace
@@ -65,6 +69,8 @@ DOCKER_HOST=unix:///var/run/docker.sock
 ```
 
 `TELEGRAM_ADMIN_USER_ID`가 없으면 Telegram 요청은 fail-closed 방식으로 차단됩니다.
+
+숫자형 실행 설정은 환경변수가 없으면 `.env.example`의 기본값을 사용합니다. 값이 설정돼 있지만 양의 정수가 아니면 시작을 중단합니다. `MODEL_REFRESH_INTERVAL_SECONDS`의 최소값은 3600초입니다. Telegram `/settings`에서 concurrency를 명시적으로 저장한 경우 해당 전역값이 Provider별 concurrency 환경변수보다 우선합니다.
 
 ## Execution Profiles
 

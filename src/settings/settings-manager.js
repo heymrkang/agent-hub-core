@@ -99,6 +99,11 @@ export class SettingsManager {
     return row ? deserialize(key, row.value) : definition.default;
   }
 
+  has(key) {
+    if (!SETTING_DEFINITIONS[key]) throw new Error(`지원하지 않는 설정입니다: ${key}`);
+    return Boolean(this.getStmt.get(key));
+  }
+
   getAll() {
     const rows = new Map(this.listStmt.all().map((row) => [row.key, row]));
     return Object.fromEntries(
