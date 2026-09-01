@@ -15,10 +15,10 @@ const title = () => `${isStealthMode() ? '■' : '🖥'} **System Resources**`;
 export function renderOverview(snapshot) {
   if (!snapshot.servers.length) return `${title()}\n\n등록된 활성 서버가 없습니다.\n\`/server\`에서 서버를 등록하거나 활성화하세요.`;
   const servers = snapshot.servers.map((server) => {
-    if (!server.online) return `**[${esc(server.alias)}]**\n\n리소스 모니터링\n${mark('OFFLINE')} OFFLINE · SSH 수집 실패: ${esc(server.error || '응답 없음')}`;
+    if (!server.online) return `\`[${esc(server.alias)}]\`\n\n리소스 모니터링\n${mark('OFFLINE')} OFFLINE · SSH 수집 실패: ${esc(server.error || '응답 없음')}`;
     const docker = !server.docker.installed ? 'Docker N/A' : server.docker.available ? `Docker ${server.docker.running ?? '-'} running` : 'Docker UNKNOWN';
     const state = server.severity === 'OK' ? '' : `\n${mark(server.severity)} 상태: ${server.severity}`;
-    return `**[${esc(server.alias)}]**\n\n리소스 모니터링${state}\nCPU ${pct(server.cpu.usagePercent)} · 온도 ${temp(server.cpu.temperatureCelsius)}\nRAM [${memorySize(server.memory.used)}/${memorySize(server.memory.total)}] · ${pct(server.memory.usagePercent)}\nDisk ${pct(Math.max(...server.disks.items.map((item) => item.usagePercent ?? 0)))} · ${docker}\nUptime ${age(server.host.uptimeSeconds)}`;
+    return `\`[${esc(server.alias)}]\`\n\n리소스 모니터링${state}\nCPU ${pct(server.cpu.usagePercent)} · 온도 ${temp(server.cpu.temperatureCelsius)}\nRAM [${memorySize(server.memory.used)}/${memorySize(server.memory.total)}] · ${pct(server.memory.usagePercent)}\nDisk ${pct(Math.max(...server.disks.items.map((item) => item.usagePercent ?? 0)))} · ${docker}\nUptime ${age(server.host.uptimeSeconds)}`;
   }).join('\n\n');
   return `${title()}\n\n**전체 상태: ${snapshot.severity}**\n\n${servers}\n\nChecked: \`${esc(snapshot.checkedAt)}\``;
 }

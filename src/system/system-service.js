@@ -10,21 +10,28 @@ os_name="$(sed -n 's/^PRETTY_NAME=//p' /etc/os-release 2>/dev/null | sed 's/^"//
 [ -n "$os_name" ] || os_name="$(sed -n 's/^NAME=//p' /etc/os-release 2>/dev/null | sed 's/^"//;s/"$//' | head -1)"
 [ -n "$os_name" ] || os_name=unknown
 printf 'HOST\t'; one_line "$(hostname 2>/dev/null || true)"; printf '\t'; one_line "$os_name"; printf '\t%s\t%s\t%s\n' "$(uname -r)" "$(uname -m)" "$(cut -d. -f1 /proc/uptime)"
+# CPU/Docker 조회가 만드는 열보다 먼저 읽고, SSH 접속 직후 값은 버린다.
+for sensor in /sys/class/hwmon/hwmon*/temp*_input /sys/class/thermal/thermal_zone*/temp; do
+  [ -r "$sensor" ] && cat "$sensor" >/dev/null 2>&1 || true
+done
+for temp_sample in 1 2 3; do
+  sleep 0.5
+  for sensor in /sys/class/hwmon/hwmon*/temp*_input /sys/class/thermal/thermal_zone*/temp; do
+    [ -r "$sensor" ] || continue
+    value="$(cat "$sensor" 2>/dev/null || true)"
+    case "$value" in ''|*[!0-9-]*) continue ;; esac
+    label=""
+    case "$sensor" in
+      */thermal_zone*/temp) label="$(cat "$(dirname "$sensor")/type" 2>/dev/null || true)" ;;
+      *_input) label="$(cat "$(printf '%s' "$sensor" | sed 's/_input$/_label/')" 2>/dev/null || true)" ;;
+    esac
+    printf 'TEMP\t'; one_line "$label"; printf '\t%s\n' "$value"
+  done
+done
 printf 'CPU\t%s\n' "$(sed -n '1p' /proc/stat)"
 for sample in 1 2 3 4; do
   sleep 0.5
   printf 'CPU\t%s\n' "$(sed -n '1p' /proc/stat)"
-done
-for sensor in /sys/class/hwmon/hwmon*/temp*_input /sys/class/thermal/thermal_zone*/temp; do
-  [ -r "$sensor" ] || continue
-  value="$(cat "$sensor" 2>/dev/null || true)"
-  case "$value" in ''|*[!0-9-]*) continue ;; esac
-  label=""
-  case "$sensor" in
-    */thermal_zone*/temp) label="$(cat "\${sensor%/temp}/type" 2>/dev/null || true)" ;;
-    *_input) label="$(cat "\${sensor%_input}_label" 2>/dev/null || true)" ;;
-  esac
-  printf 'TEMP\t'; one_line "$label"; printf '\t%s\n' "$value"
 done
 printf 'LOAD\t%s\n' "$(cat /proc/loadavg)"
 printf 'CORES\t%s\n' "$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc)"
@@ -105,8 +112,14 @@ export class SystemService {
     }
     const usagePercent = cpuSamples.length ? cpuSamples.reduce((sum, value) => sum + value, 0) / cpuSamples.length : null;
     const load = first('LOAD')?.[1]?.split(/\s+/).map(Number) || [], cores = number(first('CORES')?.[1]);
-    const temperatures = rows.filter((row) => row[0] === 'TEMP').map((row) => ({ label: row[1] || '', celsius: number(row[2]) / 1000 }))
+    const temperatureReadings = rows.filter((row) => row[0] === 'TEMP').map((row) => ({ label: row[1] || '', celsius: number(row[2]) / 1000 }))
       .filter((item) => Number.isFinite(item.celsius) && item.celsius > -20 && item.celsius < 150);
+    const temperatureGroups = new Map();
+    for (const reading of temperatureReadings) {
+      const values = temperatureGroups.get(reading.label) || [];
+      values.push(reading.celsius); temperatureGroups.set(reading.label, values);
+    }
+    const temperatures = [...temperatureGroups].map(([label, values]) => ({ label, celsius: values.reduce((sum, value) => sum + value, 0) / values.length }));
     const preferredTemperature = temperatures.find((item) => /package|tctl|cpu/i.test(item.label)) || temperatures.find((item) => /core/i.test(item.label)) || temperatures.sort((a, b) => b.celsius - a.celsius)[0];
     const cpu = { available: Number.isFinite(usagePercent), usagePercent, sampleCount: cpuSamples.length, temperatureCelsius: preferredTemperature?.celsius ?? null, cores, load1: load[0], load5: load[1], load15: load[2] }; cpu.severity = cpuSeverity(cpu);
     const mem = Object.fromEntries(rows.filter((row) => row[0] === 'MEM').map((row) => [row[1].replace(':', ''), number(row[2])]));
