@@ -1,7 +1,15 @@
 import { JobStatus } from '../../jobs/types.js';
 import { isStealthMode } from './ui-theme.js';
+import { safeErrorMessage } from '../transport.js';
+
+const DEFAULT_STATUS_UPDATE_INTERVAL_MS = 15000;
 
 export class JobStatusRenderer {
+  static lastUpdateAt = new Map();
+  static updateIntervalMs = Math.max(5000, Number(process.env.TELEGRAM_STATUS_UPDATE_INTERVAL_MS || DEFAULT_STATUS_UPDATE_INTERVAL_MS));
+
+  static key(chatId, messageId) { return `${chatId}:${messageId}`; }
+
   static async sendInitialStatus(bot, chatId, job) {
     const text = this.formatStatusText(job, JobStatus.QUEUED, 0);
     const options = {
@@ -13,23 +21,50 @@ export class JobStatusRenderer {
         }]]
       }
     };
-    return await bot.sendMessage(chatId, text, options);
+    const message = await bot.sendMessage(chatId, text, options);
+    if (message?.message_id) this.lastUpdateAt.set(this.key(chatId, message.message_id), Date.now());
+    return message;
   }
 
   static async updateStatus(bot, chatId, messageId, job, currentStatus, elapsedSec = 0) {
+    const key = this.key(chatId, messageId);
+    const isTerminal = currentStatus === JobStatus.COMPLETED || currentStatus === JobStatus.FAILED || currentStatus === JobStatus.CANCELLED || currentStatus === JobStatus.INTERRUPTED;
+    if (!isTerminal && currentStatus === JobStatus.RUNNING) {
+      const lastAt = this.lastUpdateAt.get(key) || 0;
+      if (Date.now() - lastAt < this.updateIntervalMs) return false;
+      this.lastUpdateAt.set(key, Date.now());
+    }
+
     try {
       if (currentStatus === JobStatus.COMPLETED) {
         await bot.deleteMessage(chatId, messageId);
-        return;
+        this.lastUpdateAt.delete(key);
+        return true;
       }
       const text = this.formatStatusText(job, currentStatus, elapsedSec);
-      const isTerminal = currentStatus === JobStatus.FAILED || currentStatus === JobStatus.CANCELLED || currentStatus === JobStatus.INTERRUPTED;
       const replyMarkup = isTerminal ? { inline_keyboard: [] } : { inline_keyboard: [[{
         text: isStealthMode() ? '[STOP] 작업 중단 (/stop)' : '🛑 작업 중단 (/stop)',
         callback_data: `job_cancel_session:${job.sessionId}`
       }]] };
       await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: replyMarkup });
-    } catch {}
+      if (isTerminal) this.lastUpdateAt.delete(key);
+      return true;
+    } catch (error) {
+      const transport = bot.__telegramTransport;
+      if (isTerminal && transport?.isRateLimitedError(error)) {
+        if (currentStatus === JobStatus.COMPLETED) {
+          transport.defer(`job-status:${key}`, () => bot.deleteMessage(chatId, messageId));
+        } else {
+          const text = this.formatStatusText(job, currentStatus, elapsedSec);
+          const options = { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [] } };
+          transport.defer(`job-status:${key}`, () => bot.editMessageText(text, options));
+        }
+      } else if (isTerminal) {
+        console.warn(`[JobStatusRenderer] terminal 상태 전달 실패: ${safeErrorMessage(error)}`);
+      }
+      if (isTerminal) this.lastUpdateAt.delete(key);
+      return false;
+    }
   }
 
   static formatStatusText(job, status, elapsedSec) {

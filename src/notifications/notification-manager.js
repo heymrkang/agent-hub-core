@@ -1,5 +1,6 @@
 import { getSettingsManager } from '../settings/settings-manager.js';
 import { redactSecrets } from '../utils/redact.js';
+import { safeErrorMessage } from '../telegram/transport.js';
 
 class NotificationManagerImpl {
   constructor() { this.bot = null; }
@@ -15,8 +16,8 @@ class NotificationManagerImpl {
     try {
       await this.bot.sendMessage(userId, text, isStealth || !parseMode ? {} : { parse_mode: parseMode });
       return true;
-    } catch {
-      await this.bot.sendMessage(userId, text.replace(/[*_`\[]/g, '')).catch(() => {});
+    } catch (error) {
+      console.warn(`[Notification] Telegram 전달 실패: ${safeErrorMessage(error)}`);
       return false;
     }
   }

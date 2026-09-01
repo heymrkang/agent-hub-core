@@ -11,21 +11,24 @@ function sleep(ms) {
 
 function getRetryAfterSeconds(error) {
   const direct = Number(
-    error?.response?.body?.parameters?.retry_after
+    error?.retryAfter
+    ?? error?.response?.body?.parameters?.retry_after
     ?? error?.response?.headers?.['retry-after']
     ?? error?.response?.headers?.['Retry-After']
   );
   if (Number.isFinite(direct) && direct > 0) return Math.ceil(direct);
 
-  const match = String(error?.message || '').match(/retry after\s+(\d+)/i);
+  const match = String(error?.message || '').match(/retry(?:_| )after[=\s]+(\d+)/i);
   if (match) return Number(match[1]);
   return null;
 }
 
 function isRateLimitError(error) {
-  return error?.response?.statusCode === 429
+  return error?.category === 'RATE_LIMIT'
+    || error?.statusCode === 429
+    || error?.response?.statusCode === 429
     || error?.response?.body?.error_code === 429
-    || /429 Too Many Requests/i.test(String(error?.message || ''));
+    || /429 Too Many Requests|rate-limit cooldown|retry_after=/i.test(String(error?.message || ''));
 }
 
 function getCooldownSeconds(chatId) {
@@ -76,8 +79,6 @@ export async function handleClearCommand(bot, msg) {
   let rateLimited = false;
   let retryAfterSeconds = null;
 
-  // Telegram 전용 정리 기능이다. Agent Hub DB/session/message records에는 손대지 않는다.
-  // deleteMessages는 한 번에 최대 100개의 message_id를 처리하므로 기존 개별 삭제 요청을 최대 5회 배치 호출로 줄인다.
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index];
     attempted += batch.length;
@@ -103,8 +104,6 @@ export async function handleClearCommand(bot, msg) {
 
   console.log(`[Command /clear] Telegram 메시지 정리 완료: scanned=${batches.flat().length}, attempted=${attempted}, successful_batches=${successfulBatches}, failed_batches=${failedBatches}, rate_limited=${rateLimited}`);
 
-  // /clear 명령 자체도 삭제 대상이므로 정상 완료 시 별도 성공 메시지는 남기지 않는다.
-  // 429 상태에서는 Telegram API 호출을 더 만들지 않는다.
   if (failedBatches > 0 && !rateLimited) {
     const text = isStealthMode()
       ? `! 일부 Telegram 메시지 배치를 삭제하지 못했습니다. Agent Hub 세션/기록은 변경되지 않았습니다.`

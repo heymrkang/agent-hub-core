@@ -31,30 +31,153 @@ import { handleUsageCommand, handleUsageCallback } from './telegram/commands/usa
 import { handleBackupCommand } from './telegram/commands/backup.js';
 import { handlePreviewCommand, handlePreviewCallback } from './telegram/commands/preview.js';
 import { isStealthMode } from './telegram/renderer/ui-theme.js';
+import { installTelegramTransport, safeErrorMessage } from './telegram/transport.js';
 
 export function initTelegramBot() {
-  const token=process.env.TELEGRAM_BOT_TOKEN;if(!token)throw new Error('TELEGRAM_BOT_TOKEN 환경변수가 설정되지 않았습니다.');
-  const bot=new TelegramBot(token,{polling:true});
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error('TELEGRAM_BOT_TOKEN 환경변수가 설정되지 않았습니다.');
+  const bot = installTelegramTransport(new TelegramBot(token, { polling: true }));
+
+  const safeHandler = (name, handler) => (...args) => {
+    Promise.resolve()
+      .then(() => handler(...args))
+      .catch((error) => console.error(`[Telegram ${name} Error] ${safeErrorMessage(error)}`));
+  };
+
+  const deliver = async (chatId, text, options = {}, deferKey = null) => {
+    try {
+      await bot.sendMessage(chatId, text, options);
+      return true;
+    } catch (error) {
+      const transport = bot.__telegramTransport;
+      if (deferKey && transport?.isRateLimitedError(error)) {
+        transport.defer(deferKey, () => bot.sendMessage(chatId, text, options));
+      }
+      console.warn(`[Telegram Delivery] ${safeErrorMessage(error)}`);
+      return false;
+    }
+  };
+
   bot.setMyCommands([
     { command:'start', description:'Agent Hub 도움말 및 현재 상태' },{ command:'help', description:'사용 가능한 명령어 도움말' },{ command:'new', description:'새 세션 생성' },{ command:'sessions', description:'세션 목록 / 전환 / 보관 / 복구' },{ command:'rename', description:'현재 세션 제목 변경' },{ command:'model', description:'Provider / Model 선택' },{ command:'providers', description:'Provider 상태 확인' },{ command:'profile', description:'Execution Profile 선택' },{ command:'preview', description:'개발 Preview 실행 / 관리' },{ command:'settings', description:'Agent Hub 기본값 및 운영 설정' },{ command:'status', description:'Agent Hub 기능 Health 상태' },{ command:'system', description:'등록 서버 전체 시스템 리소스' },{ command:'usage', description:'Agent Hub 작업 사용량 통계' },{ command:'backup', description:'Core / Full backup 관리' },{ command:'clear', description:'Telegram 화면 메시지만 정리' },{ command:'server', description:'SSH 서버 등록 방법 / 연결 테스트 / 관리' },{ command:'schedule', description:'예약 작업 목록 / 자연어 등록' },{ command:'queue', description:'작업 큐 상태 확인' },{ command:'stop', description:'현재 실행 중인 작업 중단' },{ command:'compact', description:'현재 세션 컨텍스트 압축' },{ command:'files', description:'현재 세션 첨부 파일 목록' },{ command:'download', description:'첨부 파일 다운로드' },{ command:'memory', description:'장기 메모리 확인 / 관리' }
-  ]).then(()=>console.log('[Telegram] Slash command menu 등록 완료.')).catch((error)=>console.warn(`[Telegram] Slash command menu 등록 실패: ${error.message}`));
+  ]).then(()=>console.log('[Telegram] Slash command menu 등록 완료.')).catch((error)=>console.warn(`[Telegram] Slash command menu 등록 실패: ${safeErrorMessage(error)}`));
 
-  async function processPromptJob(chatId,userId,userText,attachedFiles=[]){
-    const activeSession=SessionManager.getActiveSession(userId);const canonicalUserText=userText||`[첨부 파일 ${attachedFiles.length}건 전송]`;
-    const userMessageId=SessionManager.saveMessage({sessionId:activeSession.id,role:'user',text:canonicalUserText});const memoryBlock=MemoryManager.getMemoryForPrompt();let promptWithAttachments=userText;
-    if(attachedFiles.length>0){const list=attachedFiles.map(f=>`- [${f.file_type}] ${f.file_name} (저장 경로: ${f.local_path})`).join('\n');promptWithAttachments=`[첨부 파일 목록]\n${list}\n\n[사용자 지시사항]\n${userText||'첨부된 파일을 확인하고 분석해주세요.'}`;}
-    const preparedContext=await ContextAssembler.prepare({session:activeSession,userMessageId,memoryBlock,currentPrompt:promptWithAttachments||canonicalUserText});const finalPrompt=preparedContext.prompt;
-    console.log(`[Telegram] 작업 실행 [Session: ${activeSession.id} / ${activeSession.title} / ${activeSession.active_provider} / ${activeSession.execution_profile}]: ${canonicalUserText}`);let statusMsg=null;
-    try{const jobView={sessionId:activeSession.id,sessionTitle:activeSession.title,provider:activeSession.active_provider,model:activeSession.active_model,reasoningEffort:activeSession.reasoning_effort||'default'};statusMsg=await JobStatusRenderer.sendInitialStatus(bot,chatId,jobView);const response=await queueManager.enqueueJob({...jobView,prompt:finalPrompt,profile:activeSession.execution_profile,onStatusUpdate:(status,elapsed)=>{if(statusMsg)JobStatusRenderer.updateStatus(bot,chatId,statusMsg.message_id,jobView,status,elapsed);}});SessionManager.saveMessage({sessionId:activeSession.id,role:'assistant',text:response,provider:activeSession.active_provider,model:activeSession.active_model});TitleService.autoGenerateTitleIfEligible(activeSession.id,userText||'첨부 파일 대화',response).catch(()=>{});const currentSession=SessionManager.getActiveSession(userId);if(currentSession?.id!==activeSession.id)NotificationManager.backgroundSessionCompleted(userId,activeSession.title).catch(()=>{});if(response&&String(response).trim()){for(const chunk of splitMessage(response))if(chunk&&chunk.trim())await bot.sendMessage(chatId,chunk,{parse_mode:'Markdown'}).catch(()=>bot.sendMessage(chatId,chunk));}}
-    catch(err){console.error(`[Job Error] ${err.message}`);if(statusMsg)JobStatusRenderer.updateStatus(bot,chatId,statusMsg.message_id,{sessionId:activeSession.id,sessionTitle:activeSession.title,provider:activeSession.active_provider,model:activeSession.active_model,reasoningEffort:activeSession.reasoning_effort||'default'},'FAILED');const currentSession=SessionManager.getActiveSession(userId);if(currentSession?.id!==activeSession.id)NotificationManager.backgroundSessionFailed(userId,activeSession.title,err.message).catch(()=>{});await bot.sendMessage(chatId,`${isStealthMode()?'×':'❌'} 작업 실패:\n${err.message}`);}
+  async function processPromptJob(chatId, userId, userText, attachedFiles = []) {
+    let activeSession = null;
+    let statusMsg = null;
+    let jobView = null;
+    let jobId = null;
+    try {
+      activeSession = SessionManager.getActiveSession(userId);
+      const canonicalUserText = userText || `[첨부 파일 ${attachedFiles.length}건 전송]`;
+      const userMessageId = SessionManager.saveMessage({ sessionId: activeSession.id, role: 'user', text: canonicalUserText });
+      const memoryBlock = MemoryManager.getMemoryForPrompt();
+      let promptWithAttachments = userText;
+      if (attachedFiles.length > 0) {
+        const list = attachedFiles.map(f => `- [${f.file_type}] ${f.file_name} (저장 경로: ${f.local_path})`).join('\n');
+        promptWithAttachments = `[첨부 파일 목록]\n${list}\n\n[사용자 지시사항]\n${userText || '첨부된 파일을 확인하고 분석해주세요.'}`;
+      }
+      const preparedContext = await ContextAssembler.prepare({ session: activeSession, userMessageId, memoryBlock, currentPrompt: promptWithAttachments || canonicalUserText });
+      const finalPrompt = preparedContext.prompt;
+      console.log(`[Telegram] 작업 실행 [Session: ${activeSession.id} / ${activeSession.title} / ${activeSession.active_provider} / ${activeSession.execution_profile}]: ${canonicalUserText}`);
+      jobView = { sessionId: activeSession.id, sessionTitle: activeSession.title, provider: activeSession.active_provider, model: activeSession.active_model, reasoningEffort: activeSession.reasoning_effort || 'default' };
+
+      try {
+        statusMsg = await JobStatusRenderer.sendInitialStatus(bot, chatId, jobView);
+      } catch (error) {
+        console.warn(`[Job Status] 초기 상태 전달 실패, 작업은 계속 실행: ${safeErrorMessage(error)}`);
+      }
+
+      let response;
+      try {
+        const jobPromise = queueManager.enqueueJob({
+          ...jobView,
+          prompt: finalPrompt,
+          profile: activeSession.execution_profile,
+          onStatusUpdate: (status, elapsed) => {
+            if (!statusMsg) return;
+            void JobStatusRenderer.updateStatus(bot, chatId, statusMsg.message_id, jobView, status, elapsed)
+              .catch((error) => console.warn(`[Job Status] ${safeErrorMessage(error)}`));
+          }
+        });
+        jobId = jobPromise.jobId || null;
+        response = await jobPromise;
+      } catch (error) {
+        console.error(`[Job Error] ${safeErrorMessage(error)}`);
+        if (statusMsg && !jobId) await JobStatusRenderer.updateStatus(bot, chatId, statusMsg.message_id, jobView, 'FAILED').catch(() => {});
+        const currentSession = SessionManager.getActiveSession(userId);
+        if (currentSession?.id !== activeSession.id) NotificationManager.backgroundSessionFailed(userId, activeSession.title, safeErrorMessage(error)).catch(() => {});
+        await deliver(chatId, `${isStealthMode() ? '×' : '❌'} 작업 실패:\n${safeErrorMessage(error)}`, {}, `job-failure:${jobId || activeSession.id}`);
+        return;
+      }
+
+      SessionManager.saveMessage({ sessionId: activeSession.id, role: 'assistant', text: response, provider: activeSession.active_provider, model: activeSession.active_model });
+      TitleService.autoGenerateTitleIfEligible(activeSession.id, userText || '첨부 파일 대화', response).catch(() => {});
+      const currentSession = SessionManager.getActiveSession(userId);
+      if (currentSession?.id !== activeSession.id) NotificationManager.backgroundSessionCompleted(userId, activeSession.title).catch(() => {});
+
+      if (response && String(response).trim()) {
+        const chunks = splitMessage(response).filter((chunk) => chunk && chunk.trim());
+        for (let index = 0; index < chunks.length; index += 1) {
+          await deliver(chatId, chunks[index], { parse_mode: 'Markdown' }, `job-response:${jobId || activeSession.id}:${index}`);
+        }
+      }
+    } catch (error) {
+      console.error(`[Prompt Pipeline Error] ${safeErrorMessage(error)}`);
+      if (activeSession) await deliver(chatId, `${isStealthMode() ? '×' : '❌'} 요청 처리 실패:\n${safeErrorMessage(error)}`, {}, `pipeline-failure:${activeSession.id}`);
+    }
   }
 
-  bot.on('message',async msg=>{const chatId=msg.chat.id,from=msg.from,text=msg.text?.trim();if(!isAuthorizedUser(from)||!text)return;const userId=from.id;
-    if(text==='/start'||text==='/help'){const s=SessionManager.getActiveSession(userId),model=s.active_model||'기본 모델';const stealth=isStealthMode();const help=stealth?`■ **Agent Hub Core V1**\n\n현재 활성 세션: **${s.title}**\nProvider: \`${s.active_provider}\` (Model: \`${model}\`)\nProfile: \`${s.execution_profile}\`\n\n**세션 관리**\n• \`/new\` : 새 세션 생성\n• \`/sessions\` : 세션 목록/전환/보관/복구\n• \`/rename <새 제목>\` : 세션 이름 변경\n\n**모델 및 운영**\n• \`/model\` : Provider/Model 변경\n• \`/providers\` : Provider 상태\n• \`/profile\` : Execution Profile 선택\n• \`/settings\` : 기본값 및 운영 설정\n• \`/status\` : 전체 Health 상태\n• \`/usage\` : 작업 사용량 통계\n• \`/backup\` : Core / Full backup 관리\n• \`/clear\` : Telegram 화면 메시지만 정리\n• \`/server\` : SSH 서버 관리\n• \`/schedule\` : 예약 작업\n• \`/files\`, \`/download\`, \`/memory\`, \`/compact\`, \`/queue\`, \`/stop\``:`🤖 **Agent Hub Core V1**\n\n⭐ **현재 활성 세션**: **${s.title}**\n🤖 **Provider**: \`${s.active_provider}\` (Model: \`${model}\`)\n⚙️ **Profile**: \`${s.execution_profile}\`\n\n📌 **세션 관리**:\n• \`/new\` : 새 세션 생성\n• \`/sessions\` : 세션 목록/전환/보관/복구\n• \`/rename <새 제목>\` : 세션 이름 변경\n\n📌 **모델 및 인프라**:\n• \`/model\` : Provider/Model 변경 (캐시 기반)\n• \`/providers\` : Provider 상태\n• \`/profile\` : READ_ONLY / WORKSPACE / FULL_ACCESS 선택\n• \`/settings\` : Agent Hub 기본값 및 운영 설정\n• \`/status\` : 전체 Health 상태\n• \`/usage\` : 작업 사용량 통계\n• \`/backup\` : Core / Full backup 관리\n• \`/clear\` : Telegram 화면 메시지만 정리\n• \`/server\` : SSH 서버 Registry / 연결 테스트\n• \`/schedule\` : 예약 작업 목록 / 자연어 등록\n• \`/files\`, \`/download\`, \`/memory\`, \`/compact\`, \`/queue\`, \`/stop\``;await bot.sendMessage(chatId,help,{parse_mode:'Markdown'});return;}
-    if(text==='/new'){await handleNewCommand(bot,msg);return;}if(text.startsWith('/preview')){await handlePreviewCommand(bot,msg,text.replace(/^\/preview\s*/,''));return;}if(text==='/sessions'){await handleSessionsCommand(bot,msg);return;}if(text.startsWith('/rename')){await handleRenameCommand(bot,msg,text.replace(/^\/rename\s*/,''));return;}if(text==='/model'){await handleModelCommand(bot,msg);return;}if(text==='/providers'){await handleProvidersCommand(bot,msg);return;}if(text==='/profile'){await handleProfileCommand(bot,msg);return;}if(text==='/settings'){await handleSettingsCommand(bot,msg);return;}if(text==='/status'){await handleStatusCommand(bot,msg);return;}if(/^\/system(?:\s|$)/.test(text)){await handleSystemCommand(bot,msg,text.replace(/^\/system\s*/,''));return;}if(text==='/usage'){await handleUsageCommand(bot,msg);return;}if(text.startsWith('/backup')){await handleBackupCommand(bot,msg,text.replace(/^\/backup\s*/,''));return;}if(text==='/clear'){await handleClearCommand(bot,msg);return;}if(/^\/servers?(?:\s|$)/.test(text)){await handleServersCommand(bot,msg,text.replace(/^\/servers?\s*/,''));return;}if(text==='/stop'){await handleStopCommand(bot,msg);return;}if(text==='/queue'){await handleQueueCommand(bot,msg);return;}if(text==='/compact'){await handleCompactCommand(bot,msg);return;}if(text==='/files'){await handleFilesCommand(bot,msg);return;}if(text.startsWith('/download')){await handleDownloadCommand(bot,msg,text.replace(/^\/download\s*/,''));return;}if(text.startsWith('/memory')){await handleMemoryCommand(bot,msg,text.replace(/^\/memory\s*/,''));return;}if(text.startsWith('/schedule')){await handleScheduleCommand(bot,msg,text.replace(/^\/schedule\s*/,''));return;}await processPromptJob(chatId,userId,text,[]);
-  });
-  bot.on('photo',async msg=>{if(!isAuthorizedUser(msg.from))return;const chatId=msg.chat.id,userId=msg.from.id,s=SessionManager.getActiveSession(userId);try{const photo=msg.photo[msg.photo.length-1];const a=await AttachmentManager.saveTelegramFile(bot,photo.file_id,{sessionId:s.id,mediaGroupId:msg.media_group_id,fileName:`photo_${photo.file_unique_id}.jpg`,fileType:'IMAGE',mimeType:'image/jpeg',fileSize:photo.file_size});if(msg.media_group_id)mediaGroupBuffer.add(msg.media_group_id,{msg,attachment:a},async(items,caption)=>processPromptJob(chatId,userId,caption,items.map(i=>i.attachment)));else await processPromptJob(chatId,userId,msg.caption||'',[a]);}catch(err){console.error(`[Photo Upload Error] ${err.message}`);await bot.sendMessage(chatId,`${isStealthMode()?'×':'❌'} 사진 다운로드/처리 실패: ${err.message}`);}});
-  bot.on('document',async msg=>{if(!isAuthorizedUser(msg.from))return;const chatId=msg.chat.id,userId=msg.from.id,s=SessionManager.getActiveSession(userId);try{const d=msg.document;const a=await AttachmentManager.saveTelegramFile(bot,d.file_id,{sessionId:s.id,mediaGroupId:msg.media_group_id,fileName:d.file_name||`doc_${d.file_unique_id}`,fileType:'DOCUMENT',mimeType:d.mime_type,fileSize:d.file_size});if(msg.media_group_id)mediaGroupBuffer.add(msg.media_group_id,{msg,attachment:a},async(items,caption)=>processPromptJob(chatId,userId,caption,items.map(i=>i.attachment)));else await processPromptJob(chatId,userId,msg.caption||'',[a]);}catch(err){console.error(`[Document Upload Error] ${err.message}`);await bot.sendMessage(chatId,`${isStealthMode()?'×':'❌'} 문서 다운로드/처리 실패: ${err.message}`);}});
-  bot.on('callback_query',async q=>{if(!isAuthorizedUser(q.from))return;const data=q.data;if(data.startsWith('usage_'))return handleUsageCallback(bot,q);if(data.startsWith('system_'))return handleSystemCallback(bot,q);if(data.startsWith('preview_'))return handlePreviewCallback(bot,q);if(data.startsWith('session_'))return handleSessionsCallback(bot,q);if(data.startsWith('model_'))return handleModelCallback(bot,q);if(data.startsWith('providers_'))return handleProvidersCallback(bot,q);if(data.startsWith('profile_'))return handleProfileCallback(bot,q);if(data.startsWith('settings_'))return handleSettingsCallback(bot,q);if(data.startsWith('server_'))return handleServersCallback(bot,q);if(data.startsWith('job_cancel'))return handleJobCancelCallback(bot,q);if(data.startsWith('schedule_'))return handleScheduleCallback(bot,q);});
-  bot.on('polling_error',error=>console.error(`[Telegram Polling Error] ${error.code}: ${error.message}`));console.log('[Telegram] Bot Polling 시작 완료.');return bot;
+  bot.on('message', safeHandler('message', async (msg) => {
+    const chatId = msg.chat.id, from = msg.from, text = msg.text?.trim();
+    if (!isAuthorizedUser(from) || !text) return;
+    const userId = from.id;
+    if (text === '/start' || text === '/help') {
+      const s = SessionManager.getActiveSession(userId), model = s.active_model || '기본 모델';
+      const stealth = isStealthMode();
+      const help = stealth ? `■ **Agent Hub Core V1**\n\n현재 활성 세션: **${s.title}**\nProvider: \`${s.active_provider}\` (Model: \`${model}\`)\nProfile: \`${s.execution_profile}\`\n\n**세션 관리**\n• \`/new\` : 새 세션 생성\n• \`/sessions\` : 세션 목록/전환/보관/복구\n• \`/rename <새 제목>\` : 세션 이름 변경\n\n**모델 및 운영**\n• \`/model\` : Provider/Model 변경\n• \`/providers\` : Provider 상태\n• \`/profile\` : Execution Profile 선택\n• \`/settings\` : 기본값 및 운영 설정\n• \`/status\` : 전체 Health 상태\n• \`/usage\` : 작업 사용량 통계\n• \`/backup\` : Core / Full backup 관리\n• \`/clear\` : Telegram 화면 메시지만 정리\n• \`/server\` : SSH 서버 관리\n• \`/schedule\` : 예약 작업\n• \`/files\`, \`/download\`, \`/memory\`, \`/compact\`, \`/queue\`, \`/stop\`` : `🤖 **Agent Hub Core V1**\n\n⭐ **현재 활성 세션**: **${s.title}**\n🤖 **Provider**: \`${s.active_provider}\` (Model: \`${model}\`)\n⚙️ **Profile**: \`${s.execution_profile}\`\n\n📌 **세션 관리**:\n• \`/new\` : 새 세션 생성\n• \`/sessions\` : 세션 목록/전환/보관/복구\n• \`/rename <새 제목>\` : 세션 이름 변경\n\n📌 **모델 및 인프라**:\n• \`/model\` : Provider/Model 변경 (캐시 기반)\n• \`/providers\` : Provider 상태\n• \`/profile\` : READ_ONLY / WORKSPACE / FULL_ACCESS 선택\n• \`/settings\` : Agent Hub 기본값 및 운영 설정\n• \`/status\` : 전체 Health 상태\n• \`/usage\` : 작업 사용량 통계\n• \`/backup\` : Core / Full backup 관리\n• \`/clear\` : Telegram 화면 메시지만 정리\n• \`/server\` : SSH 서버 Registry / 연결 테스트\n• \`/schedule\` : 예약 작업 목록 / 자연어 등록\n• \`/files\`, \`/download\`, \`/memory\`, \`/compact\`, \`/queue\`, \`/stop\``;
+      await bot.sendMessage(chatId, help, { parse_mode: 'Markdown' });
+      return;
+    }
+    if(text==='/new'){await handleNewCommand(bot,msg);return;}if(text.startsWith('/preview')){await handlePreviewCommand(bot,msg,text.replace(/^\/preview\s*/,''));return;}if(text==='/sessions'){await handleSessionsCommand(bot,msg);return;}if(text.startsWith('/rename')){await handleRenameCommand(bot,msg,text.replace(/^\/rename\s*/,''));return;}if(text==='/model'){await handleModelCommand(bot,msg);return;}if(text==='/providers'){await handleProvidersCommand(bot,msg);return;}if(text==='/profile'){await handleProfileCommand(bot,msg);return;}if(text==='/settings'){await handleSettingsCommand(bot,msg);return;}if(text==='/status'){await handleStatusCommand(bot,msg);return;}if(/^\/system(?:\s|$)/.test(text)){await handleSystemCommand(bot,msg,text.replace(/^\/system\s*/,''));return;}if(text==='/usage'){await handleUsageCommand(bot,msg);return;}if(text.startsWith('/backup')){await handleBackupCommand(bot,msg,text.replace(/^\/backup\s*/,''));return;}if(text==='/clear'){await handleClearCommand(bot,msg);return;}if(/^\/servers?(?:\s|$)/.test(text)){await handleServersCommand(bot,msg,text.replace(/^\/servers?\s*/,''));return;}if(text==='/stop'){await handleStopCommand(bot,msg);return;}if(text==='/queue'){await handleQueueCommand(bot,msg);return;}if(text==='/compact'){await handleCompactCommand(bot,msg);return;}if(text==='/files'){await handleFilesCommand(bot,msg);return;}if(text.startsWith('/download')){await handleDownloadCommand(bot,msg,text.replace(/^\/download\s*/,''));return;}if(text.startsWith('/memory')){await handleMemoryCommand(bot,msg,text.replace(/^\/memory\s*/,''));return;}if(text.startsWith('/schedule')){await handleScheduleCommand(bot,msg,text.replace(/^\/schedule\s*/,''));return;}
+    await processPromptJob(chatId, userId, text, []);
+  }));
+
+  bot.on('photo', safeHandler('photo', async (msg) => {
+    if (!isAuthorizedUser(msg.from)) return;
+    const chatId = msg.chat.id, userId = msg.from.id, s = SessionManager.getActiveSession(userId);
+    try {
+      const photo = msg.photo[msg.photo.length - 1];
+      const a = await AttachmentManager.saveTelegramFile(bot, photo.file_id, { sessionId:s.id, mediaGroupId:msg.media_group_id, fileName:`photo_${photo.file_unique_id}.jpg`, fileType:'IMAGE', mimeType:'image/jpeg', fileSize:photo.file_size });
+      if (msg.media_group_id) mediaGroupBuffer.add(msg.media_group_id, { msg, attachment:a }, async(items, caption) => processPromptJob(chatId, userId, caption, items.map(i => i.attachment)));
+      else await processPromptJob(chatId, userId, msg.caption || '', [a]);
+    } catch (error) {
+      console.error(`[Photo Upload Error] ${safeErrorMessage(error)}`);
+      await deliver(chatId, `${isStealthMode() ? '×' : '❌'} 사진 다운로드/처리 실패: ${safeErrorMessage(error)}`);
+    }
+  }));
+
+  bot.on('document', safeHandler('document', async (msg) => {
+    if (!isAuthorizedUser(msg.from)) return;
+    const chatId = msg.chat.id, userId = msg.from.id, s = SessionManager.getActiveSession(userId);
+    try {
+      const d = msg.document;
+      const a = await AttachmentManager.saveTelegramFile(bot, d.file_id, { sessionId:s.id, mediaGroupId:msg.media_group_id, fileName:d.file_name || `doc_${d.file_unique_id}`, fileType:'DOCUMENT', mimeType:d.mime_type, fileSize:d.file_size });
+      if (msg.media_group_id) mediaGroupBuffer.add(msg.media_group_id, { msg, attachment:a }, async(items, caption) => processPromptJob(chatId, userId, caption, items.map(i => i.attachment)));
+      else await processPromptJob(chatId, userId, msg.caption || '', [a]);
+    } catch (error) {
+      console.error(`[Document Upload Error] ${safeErrorMessage(error)}`);
+      await deliver(chatId, `${isStealthMode() ? '×' : '❌'} 문서 다운로드/처리 실패: ${safeErrorMessage(error)}`);
+    }
+  }));
+
+  bot.on('callback_query', safeHandler('callback_query', async (q) => {
+    if (!isAuthorizedUser(q.from)) return;
+    const data = q.data || '';
+    if(data.startsWith('usage_'))return handleUsageCallback(bot,q);if(data.startsWith('system_'))return handleSystemCallback(bot,q);if(data.startsWith('preview_'))return handlePreviewCallback(bot,q);if(data.startsWith('session_'))return handleSessionsCallback(bot,q);if(data.startsWith('model_'))return handleModelCallback(bot,q);if(data.startsWith('providers_'))return handleProvidersCallback(bot,q);if(data.startsWith('profile_'))return handleProfileCallback(bot,q);if(data.startsWith('settings_'))return handleSettingsCallback(bot,q);if(data.startsWith('server_'))return handleServersCallback(bot,q);if(data.startsWith('job_cancel'))return handleJobCancelCallback(bot,q);if(data.startsWith('schedule_'))return handleScheduleCallback(bot,q);
+  }));
+
+  bot.on('polling_error', (error) => console.error(`[Telegram Polling Error] ${safeErrorMessage(error)}`));
+  console.log('[Telegram] Bot Polling 시작 완료.');
+  return bot;
 }
