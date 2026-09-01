@@ -85,10 +85,11 @@ test('강제 새로고침 cooldown과 probe timeout을 구분한다', async () =
   assert.equal(timeout.status, 'ERROR'); assert.match(timeout.error, /시간 초과/);
 });
 
-test('quota UI는 원본 percentage 의미와 모델 그룹을 분리한다', () => {
+test('quota UI는 남은 percentage 형식과 모델 그룹을 분리한다', () => {
   const text = renderQuota({ provider: 'codex', status: 'AVAILABLE', cache: 'HIT', fetchedAt: '2026-09-01T00:00:00Z', windows: [{ label: '5시간 한도', usedPercent: 42, remainingPercent: 58 }] });
   assert.match(text, /`\[CODEX\]` · `AVAILABLE`/);
-  assert.match(text, /42% 사용 \/ 58% 남음/);
+  assert.match(text, /58% 남음/);
+  assert.doesNotMatch(text, /42% 사용/);
   assert.match(text, /Reset 미제공\n\n조회/);
   const antigravity = renderQuota({ provider: 'antigravity', status: 'AVAILABLE', cache: 'MISS', fetchedAt: '2026-09-01T08:30:00Z', windows: [
     { group: 'Gemini Models', label: '주간 한도', remainingPercent: 90, resetsAt: '2026-09-01T11:51:14Z' },
@@ -96,7 +97,8 @@ test('quota UI는 원본 percentage 의미와 모델 그룹을 분리한다', ()
     { group: 'Claude and GPT models', label: '주간 한도', remainingPercent: 100, resetsAt: '2026-09-08T07:52:21Z' }
   ] });
   assert.match(antigravity, /`\[ANTIGRAVITY\]` · `AVAILABLE`/);
-  assert.match(antigravity, /`\[Gemini Models\]`/);
+  assert.match(antigravity, /◆ \*Gemini Models\*/);
+  assert.doesNotMatch(antigravity, /`\[Gemini Models\]`/);
   assert.match(antigravity, /90% 남음/);
-  assert.match(antigravity, /`\[Claude and GPT models\]`/);
+  assert.match(antigravity, /◆ \*Claude and GPT models\*/);
 });

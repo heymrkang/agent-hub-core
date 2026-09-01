@@ -19,12 +19,12 @@ export function renderQuota(result) {
   let currentGroup = null;
   for (const window of result.windows) {
     if (window.group && window.group !== currentGroup) {
-      windows.push(`\`[${esc(window.group)}]\``);
+      windows.push(`◆ *${esc(window.group)}*`);
       currentGroup = window.group;
     }
-    const usage = window.usedPercent !== undefined
-      ? `${window.usedPercent}% 사용${window.remainingPercent !== undefined ? ` / ${window.remainingPercent}% 남음` : ''}`
-      : window.remainingPercent !== undefined ? `${window.remainingPercent}% 남음` : '사용률 미제공';
+    const usage = window.remainingPercent !== undefined
+      ? `${window.remainingPercent}% 남음`
+      : window.usedPercent !== undefined ? `${window.usedPercent}% 사용` : '사용률 미제공';
     const reset = window.resetsAt ? `${kst(window.resetsAt)} (${relative(window.resetsAt)})` : '미제공';
     windows.push(`**${esc(window.label)}**\n${esc(usage)}\nReset ${esc(reset)}`);
   }
@@ -40,8 +40,8 @@ async function buildUsageText(userId, forceRefresh) {
   const models = db.prepare(`SELECT COALESCE(j.model,'CLI Default') AS model, COUNT(*) AS runs FROM jobs j JOIN sessions s ON s.id=j.session_id WHERE s.user_id=? AND j.status='COMPLETED' GROUP BY COALESCE(j.model,'CLI Default') ORDER BY runs DESC LIMIT 10`).all(userId);
   const quotas = await Promise.all(providerManager.listProviderNames().map(name => usageQuotaService.get(name, { forceRefresh })));
   let text = `${uiTitle('📊', 'Agent Hub Usage')}\n\n\`[JOB]\`\n\n완료 작업 **${totals.runs}회**\n실행 시간 합계 **${fmtMs(totals.duration_ms)}**\n\n\`[PROVIDER]\`\n\n`;
-  text += providers.length ? providers.map(r => `• ${esc(r.provider)}: ${r.runs}회 / ${fmtMs(r.duration_ms)}`).join('\n') : '• 기록 없음';
-  text += `\n\n\`[MODEL]\`\n\n${models.length ? models.map(r => `• ${esc(r.model)}: ${r.runs}회`).join('\n') : '• 기록 없음'}`;
+  text += providers.length ? providers.map(r => `• ${esc(r.provider)}: ${r.runs}회 / ${fmtMs(r.duration_ms)}`).join('\n\n') : '• 기록 없음';
+  text += `\n\n\`[MODEL]\`\n\n${models.length ? models.map(r => `• ${esc(r.model)}: ${r.runs}회`).join('\n\n') : '• 기록 없음'}`;
   text += `\n\n${quotas.map(renderQuota).join('\n')}\n_${isStealthMode() ? '미제공 수치는 추정하지 않습니다.' : 'ℹ️ 미제공 수치는 추정하지 않습니다.'}_`;
   return text;
 }
