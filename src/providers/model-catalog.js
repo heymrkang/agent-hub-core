@@ -31,6 +31,19 @@ class ModelCatalog {
     };
   }
 
+  hasReasoningMetadata(provider) {
+    const models = this.getModels(provider);
+    return models.length > 0 && models.every((model) =>
+      Array.isArray(model?.metadata?.reasoningEfforts) && model.metadata.reasoningEfforts.length > 0
+    );
+  }
+
+  async ensureReasoningMetadata(provider) {
+    if (this.hasReasoningMetadata(provider)) return { refreshed: false, models: this.getModels(provider) };
+    const result = await this.refresh(provider, { force: true });
+    return { refreshed: true, ...result };
+  }
+
   validateReasoningEffort(provider, modelId, reasoningEffort) {
     const value = String(reasoningEffort || 'default');
     const { levels } = this.getReasoningOptions(provider, modelId);

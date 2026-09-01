@@ -44,6 +44,27 @@ test('Codex model/list의 모델별 reasoning metadata를 보존한다', async (
   assert.deepEqual(model.metadata, { reasoningEfforts: ['minimal', 'high'], defaultReasoningEffort: 'minimal' });
 });
 
+test('구형 모델 캐시에 Thinking metadata가 없으면 동적 조회로 자동 보강한다', async () => {
+  db.prepare(`INSERT INTO provider_models(provider,model_id,display_name,is_default,metadata_json) VALUES(?,?,?,?,NULL)`)
+    .run('codex-legacy', 'gpt-legacy', 'GPT Legacy', 1);
+  assert.equal(modelCatalog.hasReasoningMetadata('codex-legacy'), false);
+
+  const { providerManager } = await import('../../src/providers/provider-manager.js');
+  const originalGetAdapter = providerManager.getAdapter;
+  providerManager.getAdapter = () => ({ discoverModels: async () => [{
+    id: 'gpt-legacy', name: 'GPT Legacy', default: true,
+    metadata: { reasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' }
+  }] });
+  try {
+    const result = await modelCatalog.ensureReasoningMetadata('codex-legacy');
+    assert.equal(result.refreshed, true);
+    assert.equal(modelCatalog.hasReasoningMetadata('codex-legacy'), true);
+    assert.deepEqual(modelCatalog.getReasoningOptions('codex-legacy', 'gpt-legacy').levels, ['default', 'low', 'medium', 'high']);
+  } finally {
+    providerManager.getAdapter = originalGetAdapter;
+  }
+});
+
 test('모델 metadata에 있는 Thinking만 허용한다', () => {
   cacheModel('reasoning-test', 'model-a', ['low', 'high']);
   assert.deepEqual(modelCatalog.getReasoningOptions('reasoning-test', 'model-a').levels, ['default', 'low', 'high']);

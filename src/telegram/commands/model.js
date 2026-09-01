@@ -66,6 +66,20 @@ async function renderModelsForProvider(bot, { chatId, messageId, userId, provide
 
 async function showModelsForProvider(bot, q, providerName) {
   await bot.answerCallbackQuery(q.id).catch((error) => console.warn(`[Model UI] answerCallbackQuery 실패: ${error.message}`));
+  if (!modelCatalog.hasReasoningMetadata(providerName)) {
+    await editModelMessage(bot, q.message.chat.id, q.message.message_id, `${isStealthMode() ? '[WAIT]' : '⏳'} **[${providerName.toUpperCase()}] Thinking 정보 갱신 중...**`, { inline_keyboard: [] });
+    try {
+      await modelCatalog.ensureReasoningMetadata(providerName);
+    } catch (error) {
+      console.warn(`[Model UI] ${providerName} Thinking metadata 보강 실패: ${error.message}`);
+      return editModelMessage(bot, q.message.chat.id, q.message.message_id, `${uiStatusIcon('error')} **Thinking 정보 갱신 실패**\n\n${escapeMd(error.message)}\n\n구형 모델 캐시는 보존했지만 Thinking 선택에는 사용하지 않는다.`, {
+        inline_keyboard: [
+          [{ text: nav('다시 시도', '🔄'), callback_data: `model_refresh:${providerName}` }],
+          [{ text: nav('Provider 목록', '🔙'), callback_data: 'model_back_to_providers' }]
+        ]
+      });
+    }
+  }
   return renderModelsForProvider(bot, { chatId: q.message.chat.id, messageId: q.message.message_id, userId: q.from.id, providerName });
 }
 
