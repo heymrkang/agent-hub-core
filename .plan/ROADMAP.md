@@ -59,6 +59,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 16 | Feature Stabilization & Optimization | `IN PROGRESS` | 16-3 Auto Compact/Canonical Context Assembly 완료; 다음은 16-4 Thinking |
 | Phase 17 | Backend API Preview & Inspector | `PLANNED` | NestJS/OpenAPI 기반 API Preview와 개발 데이터 보안 경계 |
 | Phase 18 | Agent Extensibility — MCP & Skills | `PLANNED` | Provider native MCP/Skills 조회·관리·인증·권한 정책 |
+| Phase 19 | Deploy Webhooks, Voice Prompting & Smart Quota | `PLANNED` | Coolify 배포 연동(`/deploy`), Whisper STT 음성 코딩, 부하 0% 스마트 Quota 알림 |
 
 ### Phase 12를 스킵하는 이유
 
@@ -90,6 +91,10 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 `PHASE_18_MCP_SKILLS.md`를 기준으로 Codex/Antigravity native MCP와 Skills를 조회·사용하고, 이후 설치·인증·외부 side effect 권한 관리까지 단계적으로 확장한다.
 
+### Phase 19
+
+`PHASE_19_DEPLOY_VOICE_QUOTA.md`를 기준으로 모바일 텔레그램 상에서의 개발 생산성과 운영 편의성을 극대화한다. Coolify Deploy Webhook을 통한 `/deploy` 명령어 및 빌드 결과 알림 연동, OpenAI Whisper STT 기반 텔레그램 음성 코딩 지시, Job 응답 메타데이터를 활용한 부하 0% 스마트 Quota 80%/95% 임계치 알림을 구현한다.
+
 ## 5. Known Operational Notes
 
 - Telegram `409 Conflict: terminated by other getUpdates request`가 지속되면 Coolify에서 동일 Bot Token을 polling하는 instance/process가 둘 이상인지 확인한다.
@@ -111,6 +116,7 @@ Phase 15: SKIPPED / UNASSIGNED
 Phase 16: IN PROGRESS — 16-3 Auto Compact / Canonical Context Assembly 완료
 Phase 17: PLANNED — Backend API Preview & Inspector
 Phase 18: PLANNED — MCP & Skills
+Phase 19: PLANNED — Deploy Webhooks, Voice Prompting & Smart Quota
 Development root: /home/dev
 Git repositories: /home/dev/workspace
 ```
