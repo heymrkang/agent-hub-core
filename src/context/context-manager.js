@@ -1,6 +1,6 @@
-import crypto from 'crypto';
 import { getDb } from '../database/index.js';
 import { SessionManager } from '../sessions/session-manager.js';
+import { ProviderSessionRepository } from '../sessions/provider-session-repository.js';
 
 export class ContextManager {
   static getCanonicalMessages(sessionId, limit = 50) {
@@ -65,21 +65,23 @@ export class ContextManager {
   }
 
   static getProviderSession(sessionId, provider) {
-    return getDb().prepare(`SELECT * FROM provider_sessions WHERE session_id = ? AND provider = ?`).get(sessionId, provider.toLowerCase()) || null;
+    return ProviderSessionRepository.get(sessionId, provider);
   }
 
   static upsertProviderSession({ sessionId, provider, nativeSessionRef, lastSyncedMessageId }) {
-    const db = getDb();
-    const pName = provider.toLowerCase();
-    const existing = this.getProviderSession(sessionId, pName);
-    if (existing) {
-      db.prepare(`UPDATE provider_sessions SET native_session_ref = COALESCE(?, native_session_ref), last_synced_message_id = COALESCE(?, last_synced_message_id), updated_at = datetime('now') WHERE id = ?`)
-        .run(nativeSessionRef || null, lastSyncedMessageId || null, existing.id);
-    } else {
-      db.prepare(`INSERT INTO provider_sessions (id, session_id, provider, native_session_ref, last_synced_message_id) VALUES (?, ?, ?, ?, ?)`)
-        .run(crypto.randomUUID(), sessionId, pName, nativeSessionRef || null, lastSyncedMessageId || null);
+    ProviderSessionRepository.ensure({ sessionId, provider });
+    if (nativeSessionRef) {
+      return ProviderSessionRepository.bind({
+        sessionId,
+        provider,
+        nativeSessionRef,
+        lastSyncedMessageId: lastSyncedMessageId || null
+      });
     }
-    return this.getProviderSession(sessionId, pName);
+    if (lastSyncedMessageId) {
+      return ProviderSessionRepository.setSyncCursor({ sessionId, provider, lastSyncedMessageId });
+    }
+    return ProviderSessionRepository.get(sessionId, provider);
   }
 
   static buildContextPackage(sessionId, fromMessageId = null) {
