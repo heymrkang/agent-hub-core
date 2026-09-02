@@ -5,7 +5,6 @@ import { TitleService } from './sessions/title-service.js';
 import { ContextAssembler } from './context/context-assembler.js';
 import { AttachmentManager } from './attachments/attachment-manager.js';
 import { mediaGroupBuffer } from './attachments/media-group-buffer.js';
-import { MemoryManager } from './memory/memory-manager.js';
 import { queueManager } from './jobs/queue-manager.js';
 import { NotificationManager } from './notifications/notification-manager.js';
 import { JobStatusRenderer } from './telegram/renderer/job-status.js';
@@ -86,13 +85,12 @@ export function initTelegramBot() {
       activeSession = SessionManager.getActiveSession(userId);
       const canonicalUserText = userText || `[첨부 파일 ${attachedFiles.length}건 전송]`;
       const userMessageId = SessionManager.saveMessage({ sessionId: activeSession.id, role: 'user', text: canonicalUserText });
-      const memoryBlock = MemoryManager.getMemoryForPrompt();
       let promptWithAttachments = userText;
       if (attachedFiles.length > 0) {
         const list = attachedFiles.map(f => `- [${f.file_type}] ${f.file_name} (저장 경로: ${f.local_path})`).join('\n');
         promptWithAttachments = `[첨부 파일 목록]\n${list}\n\n[사용자 지시사항]\n${userText || '첨부된 파일을 확인하고 분석해주세요.'}`;
       }
-      const preparedContext = await ContextAssembler.prepareForProvider({ session: activeSession, userMessageId, memoryBlock, currentPrompt: promptWithAttachments || canonicalUserText });
+      const preparedContext = await ContextAssembler.prepareForProvider({ session: activeSession, userMessageId, currentPrompt: promptWithAttachments || canonicalUserText });
       const finalPrompt = preparedContext.prompt;
       console.log(`[Telegram] 작업 실행 [Session: ${activeSession.id} / ${activeSession.title} / ${activeSession.active_provider} / ${activeSession.execution_profile} / Context:${preparedContext.mode}]: ${canonicalUserText}`);
       jobView = { sessionId: activeSession.id, sessionTitle: activeSession.title, provider: activeSession.active_provider, model: activeSession.active_model, reasoningEffort: activeSession.reasoning_effort || 'default' };
