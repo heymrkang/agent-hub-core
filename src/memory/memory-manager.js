@@ -110,6 +110,14 @@ export class MemoryManager {
     fs.writeFileSync(tmpPath, normalized, 'utf-8');
     fs.renameSync(tmpPath, filePath);
 
+    let syncResult;
+    try {
+      syncResult = this.syncProviderRules(normalized);
+    } catch (error) {
+      atomicWrite(filePath, prevContent);
+      throw error;
+    }
+
     const auditEntry = {
       timestamp: new Date().toISOString(),
       action,
@@ -130,12 +138,7 @@ export class MemoryManager {
       console.warn(`[MemoryManager] DB 로그 기록 경고: ${err.message}`);
     }
 
-    try {
-      return this.syncProviderRules(normalized);
-    } catch (error) {
-      atomicWrite(filePath, prevContent);
-      throw error;
-    }
+    return syncResult;
   }
 
   static appendEntry(entry) {
