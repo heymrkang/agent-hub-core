@@ -36,21 +36,18 @@ export function selectCrossProviderDelta(messages, provider) {
   });
   if (firstExternalAssistant < 0) return [];
 
-  // Include the user request immediately preceding the first external Provider answer.
-  // Leading assistant output from this same native Provider is already in its own thread and must not be duplicated.
   let start = firstExternalAssistant;
   if (start > 0 && rows[start - 1]?.role === 'user') start -= 1;
   return rows.slice(start);
 }
 
 export class ContextAssembler {
-  static assemble({ sessionId, userMessageId = null, memoryBlock = null, currentPrompt }) {
+  static assemble({ sessionId, userMessageId = null, currentPrompt }) {
     const context = ContextManager.buildExecutionContext(sessionId, {
       excludeMessageId: userMessageId,
       tailSize: runtimeConfig.executionTailSize
     });
     const parts = [];
-    if (memoryBlock) parts.push(memoryBlock);
     if (context.rollingSummary) parts.push(`[대화 요약]\n${context.rollingSummary}`);
     const history = renderHistory(context.messages);
     if (history) parts.push(history);
@@ -58,8 +55,8 @@ export class ContextAssembler {
     return { prompt: joinPromptParts(parts), context };
   }
 
-  static async prepare({ session, userMessageId = null, memoryBlock = null, currentPrompt }) {
-    const build = () => this.assemble({ sessionId: session.id, userMessageId, memoryBlock, currentPrompt });
+  static async prepare({ session, userMessageId = null, currentPrompt }) {
+    const build = () => this.assemble({ sessionId: session.id, userMessageId, currentPrompt });
     const initial = build();
     const adapter = providerManager.getAdapter(session.active_provider);
     const contextWindow = await adapter.getContextWindowTokens?.(session.active_model);
@@ -89,21 +86,20 @@ export class ContextAssembler {
 
   /**
    * V2 provider-native execution router.
-   * - UNBOUND: one-time V1 canonical bootstrap to create/adopt a native session.
-   * - READY + same-provider continuation: current prompt only (plus global memory), native session owns history.
+   * Global memory is not injected here; Codex/Antigravity load the mirrored native Rules files themselves.
+   * - UNBOUND: one-time canonical bootstrap to create/adopt a native session.
+   * - READY + same-provider continuation: current prompt only; native session owns history.
    * - READY + another Provider answered since this provider's cursor: one-time cross-provider delta, then current prompt.
    */
-  static async prepareForProvider({ session, userMessageId = null, memoryBlock = null, currentPrompt }) {
+  static async prepareForProvider({ session, userMessageId = null, currentPrompt }) {
     const provider = String(session.active_provider || '').toLowerCase();
     const providerSession = ContextManager.getProviderSession(session.id, provider);
 
     if (!providerSession?.native_session_ref) {
-      return this.prepare({ session, userMessageId, memoryBlock, currentPrompt });
+      return this.prepare({ session, userMessageId, currentPrompt });
     }
 
     const parts = [];
-    if (memoryBlock) parts.push(memoryBlock);
-
     let missedMessages = [];
     if (providerSession.last_synced_message_id) {
       const delta = ContextManager.buildContextPackage(session.id, providerSession.last_synced_message_id);
