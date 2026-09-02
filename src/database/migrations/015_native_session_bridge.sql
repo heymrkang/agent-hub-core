@@ -22,3 +22,9 @@ SET state = CASE
 -- If historical duplicate rows exist, fail migration visibly rather than silently deleting or guessing which ref wins.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_provider_sessions_session_provider
 ON provider_sessions(session_id, provider);
+
+-- A provider-native conversation has one logical owner inside Agent Hub.
+-- This makes /sessions adoption deterministic and prevents one native thread from being mutated through two logical sessions.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_provider_sessions_provider_native_ref
+ON provider_sessions(provider, native_session_ref)
+WHERE native_session_ref IS NOT NULL AND trim(native_session_ref) <> '';
