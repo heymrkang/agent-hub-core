@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "node --test tests/unit/*.test.js tests/integration/*.test.js tests/e2e/*.test.js",
+    "test:phase17:live": "PHASE17_LIVE_E2E=1 node --test tests/e2e/phase17-live.test.js",
     "test:live": "PHASE11_LIVE_E2E=1 node --test tests/e2e/v1-lifecycle.test.js"
   },
   "dependencies": {

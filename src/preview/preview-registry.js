@@ -1,6 +1,11 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { getDb } from '../database/index.js';
+import {
+  getPreviewCapabilities,
+  normalizePreviewContract,
+  PreviewRuntimeType
+} from './preview-contract.js';
 
 export const PreviewStatus = Object.freeze({
   STARTING: 'STARTING',
@@ -65,6 +70,15 @@ function normalizeWorkspacePath(value) {
   return path.resolve(value);
 }
 
+function hydratePreview(row) {
+  if (!row) return null;
+  return Object.freeze({
+    ...row,
+    access_verified: Boolean(row.access_verified),
+    capabilities: getPreviewCapabilities(row)
+  });
+}
+
 export class PreviewRegistry {
   constructor({ db = null, domain = process.env.PREVIEW_DOMAIN || DEFAULT_DOMAIN, maxActive = DEFAULT_MAX_ACTIVE, randomBytes = crypto.randomBytes } = {}) {
     this.db = db || getDb();
@@ -82,12 +96,23 @@ export class PreviewRegistry {
     return value;
   }
 
-  create({ sessionId, workspacePath, projectName }) {
+  create({
+    sessionId,
+    workspacePath,
+    projectName,
+    runtimeType = PreviewRuntimeType.WEB,
+    framework = null,
+    openapiUiPath = null,
+    openapiJsonPath = null,
+    healthPath = null,
+    accessVerified = false
+  }) {
     if (!sessionId) throw new PreviewRegistryError('INVALID_SESSION', 'Session ID가 필요합니다.');
     const normalizedWorkspace = normalizeWorkspacePath(workspacePath);
     const normalizedProject = String(projectName || path.basename(normalizedWorkspace)).trim();
     if (!normalizedProject) throw new PreviewRegistryError('INVALID_PROJECT', '프로젝트 이름이 필요합니다.');
     const slug = toPreviewSlug(normalizedProject);
+    const contract = normalizePreviewContract({ runtimeType, framework, openapiUiPath, openapiJsonPath, healthPath, accessVerified });
 
     const insert = this.db.transaction(() => {
       const session = this.db.prepare('SELECT id FROM sessions WHERE id=?').get(sessionId);
@@ -112,12 +137,19 @@ export class PreviewRegistry {
           projectName: normalizedProject,
           slug,
           hostname,
-          url: `https://${hostname}`
+          url: `https://${hostname}`,
+          ...contract,
+          accessVerified: Number(contract.accessVerified)
         };
         try {
           this.db.prepare(`
-            INSERT INTO previews(id,session_id,workspace_path,project_name,slug,public_hostname,public_url,status)
-            VALUES(@id,@sessionId,@workspacePath,@projectName,@slug,@hostname,@url,'STARTING')
+            INSERT INTO previews(
+              id,session_id,workspace_path,project_name,slug,public_hostname,public_url,status,
+              runtime_type,framework,openapi_ui_path,openapi_json_path,health_path,access_verified
+            ) VALUES(
+              @id,@sessionId,@workspacePath,@projectName,@slug,@hostname,@url,'STARTING',
+              @runtimeType,@framework,@openapiUiPath,@openapiJsonPath,@healthPath,@accessVerified
+            )
           `).run(preview);
           return this.getById(preview.id);
         } catch (error) {
@@ -131,30 +163,34 @@ export class PreviewRegistry {
   }
 
   getById(id) {
-    return this.db.prepare('SELECT * FROM previews WHERE id=?').get(id) || null;
+    return hydratePreview(this.db.prepare('SELECT * FROM previews WHERE id=?').get(id));
   }
 
   getByHostname(hostname) {
-    return this.db.prepare('SELECT * FROM previews WHERE public_hostname=?').get(String(hostname || '').toLowerCase()) || null;
+    return hydratePreview(this.db.prepare('SELECT * FROM previews WHERE public_hostname=?').get(String(hostname || '').toLowerCase()));
   }
 
   getByWorkspace(workspacePath, { activeOnly = false } = {}) {
     const normalizedWorkspace = normalizeWorkspacePath(workspacePath);
     const activeClause = activeOnly ? "AND status IN ('STARTING','RUNNING','STOPPING')" : '';
-    return this.db.prepare(`SELECT * FROM previews WHERE workspace_path=? ${activeClause} ORDER BY created_at DESC LIMIT 1`).get(normalizedWorkspace) || null;
+    return hydratePreview(this.db.prepare(`SELECT * FROM previews WHERE workspace_path=? ${activeClause} ORDER BY created_at DESC LIMIT 1`).get(normalizedWorkspace));
   }
 
-  list({ sessionId = null, status = null, limit = 100 } = {}) {
+  list({ sessionId = null, userId = null, status = null, limit = 100 } = {}) {
     const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
     const clauses = [];
     const params = [];
-    if (sessionId) { clauses.push('session_id=?'); params.push(sessionId); }
+    if (sessionId) { clauses.push('p.session_id=?'); params.push(sessionId); }
+    if (userId !== null && userId !== undefined) { clauses.push('s.user_id=?'); params.push(userId); }
     if (status) {
       if (!Object.hasOwn(PreviewStatus, status)) throw new PreviewRegistryError('INVALID_STATUS', `올바르지 않은 Preview 상태: ${status}`);
-      clauses.push('status=?'); params.push(status);
+      clauses.push('p.status=?'); params.push(status);
     }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-    return this.db.prepare(`SELECT * FROM previews ${where} ORDER BY created_at DESC LIMIT ?`).all(...params, safeLimit);
+    const from = userId !== null && userId !== undefined
+      ? 'previews p JOIN sessions s ON s.id=p.session_id'
+      : 'previews p';
+    return this.db.prepare(`SELECT p.* FROM ${from} ${where} ORDER BY p.created_at DESC LIMIT ?`).all(...params, safeLimit).map(hydratePreview);
   }
 
   countActive() {
@@ -169,6 +205,32 @@ export class PreviewRegistry {
     }
     this.db.prepare(`UPDATE previews SET container_id=?,command=?,package_manager=?,port=?,updated_at=datetime('now') WHERE id=?`)
       .run(containerId === undefined ? current.container_id : containerId, command ?? current.command, packageManager ?? current.package_manager, nextPort, id);
+    return this.getById(id);
+  }
+
+  updateContract(id, values = {}) {
+    const current = this.require(id);
+    const contract = normalizePreviewContract({
+      runtimeType: values.runtimeType === undefined ? current.runtime_type : values.runtimeType,
+      framework: values.framework === undefined ? current.framework : values.framework,
+      openapiUiPath: values.openapiUiPath === undefined ? current.openapi_ui_path : values.openapiUiPath,
+      openapiJsonPath: values.openapiJsonPath === undefined ? current.openapi_json_path : values.openapiJsonPath,
+      healthPath: values.healthPath === undefined ? current.health_path : values.healthPath,
+      accessVerified: values.accessVerified === undefined ? current.access_verified : values.accessVerified
+    });
+    this.db.prepare(`
+      UPDATE previews
+      SET runtime_type=?,framework=?,openapi_ui_path=?,openapi_json_path=?,health_path=?,access_verified=?,updated_at=datetime('now')
+      WHERE id=?
+    `).run(
+      contract.runtimeType,
+      contract.framework,
+      contract.openapiUiPath,
+      contract.openapiJsonPath,
+      contract.healthPath,
+      Number(contract.accessVerified),
+      id
+    );
     return this.getById(id);
   }
 
@@ -207,6 +269,16 @@ export class PreviewRegistry {
   require(id) {
     const preview = this.getById(id);
     if (!preview) throw new PreviewRegistryError('NOT_FOUND', `Preview를 찾을 수 없습니다: ${id}`);
+    return preview;
+  }
+
+  requireOwned(id, userId) {
+    const preview = hydratePreview(this.db.prepare(`
+      SELECT p.* FROM previews p
+      JOIN sessions s ON s.id=p.session_id
+      WHERE p.id=? AND s.user_id=?
+    `).get(id, userId));
+    if (!preview) throw new PreviewRegistryError('NOT_FOUND', `소유한 Preview를 찾을 수 없습니다: ${id}`);
     return preview;
   }
 }

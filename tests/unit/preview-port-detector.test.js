@@ -14,10 +14,11 @@ function runtime({ logs = [''], ports = [[]], running = true, exitCode = 0 } = {
 test('Next.js와 Vite ANSI 로그에서 실제 port를 감지한다', () => {
   assert.deepEqual(portsFromLogs('\u001b[32m- Local: http://localhost:3001\u001b[0m'), [3001]);
   assert.deepEqual(portsFromLogs('  ➜  Local:   http://localhost:5174/'), [5174]);
+  assert.deepEqual(portsFromLogs('at bootstrap (/workspace/src/main.ts:31:9)'), []);
 });
 
 test('로그를 우선하고 listening socket을 보조 감지한다', async () => {
-  const fromLog = new PreviewPortDetector({ runtime: runtime({ logs: ['Local: http://localhost:3010'] }), timeoutMs: 20, pollIntervalMs: 1 });
+  const fromLog = new PreviewPortDetector({ runtime: runtime({ logs: ['Local: http://localhost:3010'], ports: [[3010, 9229]] }), timeoutMs: 20, pollIntervalMs: 1 });
   assert.equal(await fromLog.detect('container-1'), 3010);
   const fromSocket = new PreviewPortDetector({ runtime: runtime({ ports: [[4173]] }), timeoutMs: 20, pollIntervalMs: 1 });
   assert.equal(await fromSocket.detect('container-1'), 4173);

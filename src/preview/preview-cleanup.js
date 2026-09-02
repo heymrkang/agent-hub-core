@@ -26,7 +26,7 @@ export class PreviewCleanup {
           await this.#disableAndRemove(preview, PreviewStatus.STOPPED);
           continue;
         }
-        const reconciled = await this.manager.reconcile(preview.id);
+        const reconciled = await this.manager.reconcile(preview.id, { verifyHttp: true });
         if (reconciled.status === PreviewStatus.FAILED) {
           summary.failed += 1;
           this.consoleLogger.warn(`[Preview] 복구 실패: project=${preview.project_name || 'unknown'} preview=${preview.id} container=${preview.container_id || 'none'} reason=${reconciled.failure_reason || 'unknown'}`);

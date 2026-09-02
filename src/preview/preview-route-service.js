@@ -1,5 +1,6 @@
 import { PreviewStatus } from './preview-registry.js';
 import { previewContainerName } from './preview-runtime.js';
+import { PreviewRuntimeType } from './preview-contract.js';
 
 const HOSTNAME_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const CONTAINER_ID_PATTERN = /^[a-f0-9]{12,64}$/;
@@ -35,6 +36,9 @@ export class PreviewRouteService {
     if (preview.status !== PreviewStatus.RUNNING) {
       throw new PreviewRouteError('UNAVAILABLE', '실행 중인 Preview가 아닙니다.', 409);
     }
+    if (preview.runtime_type === PreviewRuntimeType.BACKEND_API && !preview.access_verified) {
+      throw new PreviewRouteError('EXTERNAL_ACCESS_BLOCKED', 'Cloudflare Access가 검증되지 않은 API Preview입니다.', 403);
+    }
     if (!CONTAINER_ID_PATTERN.test(String(preview.container_id || ''))) {
       throw new PreviewRouteError('INVALID_TARGET', 'Preview target이 준비되지 않았습니다.', 503);
     }
@@ -50,7 +54,9 @@ export class PreviewRouteService {
       previewId: preview.id,
       hostname: preview.public_hostname,
       targetHost,
-      targetPort: preview.port
+      targetPort: preview.port,
+      runtimeType: preview.runtime_type || 'WEB',
+      openapiJsonPath: preview.openapi_json_path || null
     };
   }
 }

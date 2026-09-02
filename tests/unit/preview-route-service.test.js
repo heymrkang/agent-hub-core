@@ -13,11 +13,17 @@ function registryFake(preview) {
   };
 }
 
-test('RUNNING Preview만 고정 container/port target으로 해석하고 activity를 갱신한다', () => {
-  const preview = { id: 'preview-1', public_hostname: 'app-a31f.12190529.xyz', status: 'RUNNING', container_id: containerId, port: 3000 };
+test('RUNNING Preview만 고정 container/port target과 Gateway metadata로 해석하고 activity를 갱신한다', () => {
+  const preview = {
+    id: 'preview-1', public_hostname: 'app-a31f.12190529.xyz', status: 'RUNNING', container_id: containerId, port: 3000,
+    runtime_type: 'BACKEND_API', openapi_json_path: '/docs-json', access_verified: true
+  };
   const registry = registryFake(preview);
   const route = new PreviewRouteService({ registry }).resolve('APP-A31F.12190529.XYZ.');
-  assert.deepEqual(route, { previewId: 'preview-1', hostname: preview.public_hostname, targetHost: 'agent-hub-preview-preview-1', targetPort: 3000 });
+  assert.deepEqual(route, {
+    previewId: 'preview-1', hostname: preview.public_hostname, targetHost: 'agent-hub-preview-preview-1', targetPort: 3000,
+    runtimeType: 'BACKEND_API', openapiJsonPath: '/docs-json'
+  });
   assert.equal(registry.touches(), 1);
 });
 
@@ -26,6 +32,17 @@ test('없는 hostname과 정지 Preview는 route를 반환하지 않는다', () 
   assert.throws(() => missing.resolve('missing.12190529.xyz'), (error) => error instanceof PreviewRouteError && error.statusCode === 404);
   const stopped = new PreviewRouteService({ registry: registryFake({ public_hostname: 'app.12190529.xyz', status: 'STOPPED' }) });
   assert.throws(() => stopped.resolve('app.12190529.xyz'), (error) => error.code === 'UNAVAILABLE');
+});
+
+test('BACKEND_API는 Cloudflare Access가 검증돼야 외부 route를 반환한다', () => {
+  const row = {
+    id: 'preview-1', public_hostname: 'api.12190529.xyz', status: 'RUNNING', container_id: containerId,
+    port: 3000, runtime_type: 'BACKEND_API', access_verified: false
+  };
+  assert.throws(
+    () => new PreviewRouteService({ registry: registryFake(row) }).resolve(row.public_hostname),
+    (error) => error.code === 'EXTERNAL_ACCESS_BLOCKED' && error.statusCode === 403
+  );
 });
 
 test('임의 hostname과 잘못된 Registry target을 거부한다', () => {

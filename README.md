@@ -106,10 +106,17 @@ Telegram `/settings`에 provider concurrency가 저장돼 있으면 DB 설정값
 | `PREVIEW_GATEWAY_PORT` | `8080` | Gateway | Preview Gateway port. 1~65535 정수만 허용합니다. |
 | `PREVIEW_ROUTE_API` | `http://agent-telegram:8790` | Gateway | Gateway가 조회할 Core Preview route API의 내부 URL입니다. |
 | `PREVIEW_GATEWAY_ACCESS_LOG` | 비활성 | Gateway | 문자열 `true`일 때만 요청 access log를 활성화합니다. |
+| `PREVIEW_TUNNEL_ONLY` | `false` | Core | `true`일 때만 Backend API Preview의 Cloudflare Access 검증을 시도합니다. |
+| `PREVIEW_CLOUDFLARE_TEAM_DOMAIN` | 없음 | Core | `https://<team>.cloudflareaccess.com` 형식의 Access team domain입니다. |
+| `PREVIEW_CLOUDFLARE_ACCESS_AUD` | 없음 | Core | Backend API Preview를 보호하는 Access application audience입니다. 실제 값은 Coolify secret으로만 둡니다. |
 | `HEALTH_HOST` | `127.0.0.1` | Core | 내부 health server bind 주소입니다. |
 | `HEALTH_PORT` | `8787` | Core | 내부 health server port입니다. |
 
-현재 `docker-compose.yml`에서 실제로 service에 전달하는 Preview 값은 `PREVIEW_INTERNAL_TOKEN`, Gateway의 `PREVIEW_ROUTE_API`, `PREVIEW_GATEWAY_HOST`, `PREVIEW_GATEWAY_PORT`입니다. 나머지를 Coolify에서 조절하려면 해당 키를 대상 service의 `environment`에도 추가해야 합니다. `.env.example`에 값을 적는 것만으로 container 내부에 자동 전달되지는 않습니다.
+현재 `docker-compose.yml`은 Preview 내부 token, Gateway 설정과 Access 검증 설정을 service에 명시적으로 전달한다.
+
+Backend API Preview는 Access 설정값만으로 공개 승인하지 않는다. 생성 hostname에서 실제 Cloudflare Access challenge를 확인하고, 환경 파일 격리 label까지 확인된 경우에만 Gateway route를 연다. 프로젝트 루트에 `.env.preview`가 있으면 그 파일만 container 환경 변수로 주입하고, 없으면 환경 변수 없이 정상 실행한다. `.env`, `.env.local`, monorepo의 다른 환경 파일은 container에서 마스킹한다. DB 종류와 변수 이름은 프로젝트가 정하며 Agent Hub가 MariaDB, MongoDB, Redis 등을 구분하지 않는다.
+
+Phase 17 실제 서버 검증은 Telegram, Access, OpenAPI, 개발 MariaDB CRUD, 재시작, cleanup, 기존 Web Preview를 확인한 뒤 해당 `PHASE17_*_OK=1` evidence만 일회성 shell에 주입해 `npm run test:phase17:live`로 닫는다. 이 값들은 기능을 우회하는 설정이 아니라 수동 확인 결과를 누락 없이 모으는 release gate다.
 
 ### 런타임이 관리하는 값
 

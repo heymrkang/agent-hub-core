@@ -34,6 +34,10 @@ test('slug와 public hostname을 만들고 Session/Workspace에 연결한다', (
     assert.equal(preview.public_url, 'https://preview-my-cool-app-a31f.12190529.xyz');
     assert.equal(preview.workspace_path, '/home/dev/workspace/My App');
     assert.equal(preview.status, 'STARTING');
+    assert.equal(preview.runtime_type, 'WEB');
+    assert.equal(preview.framework, null);
+    assert.equal(preview.access_verified, false);
+    assert.deepEqual(preview.capabilities, ['HTTP']);
     assert.equal(registry.getByHostname(preview.public_hostname).id, preview.id);
     assert.equal(registry.getByWorkspace(preview.workspace_path, { activeOnly: true }).id, preview.id);
   } finally { db.close(); }
@@ -115,5 +119,48 @@ test('없는 Session과 잘못된 port를 거부한다', () => {
     );
     const preview = registry.create({ sessionId: 'session-1', workspacePath: '/home/dev/app', projectName: 'app' });
     assert.throws(() => registry.updateRuntime(preview.id, { port: 70000 }), (error) => error.code === 'INVALID_PORT');
+  } finally { db.close(); }
+});
+
+test('Preview 조회와 제어 대상을 Session user 소유권으로 제한한다', () => {
+  const db = createDb();
+  try {
+    db.prepare('INSERT INTO users(id) VALUES(2)').run();
+    db.prepare("INSERT INTO sessions(id,user_id,title) VALUES('session-other',2,'other')").run();
+    const registry = new PreviewRegistry({ db, randomBytes: fixedRandom(['1111', '2222']) });
+    const mine = registry.create({ sessionId: 'session-1', workspacePath: '/home/dev/mine', projectName: 'mine' });
+    registry.create({ sessionId: 'session-other', workspacePath: '/home/dev/other', projectName: 'other' });
+    assert.deepEqual(registry.list({ userId: 1 }).map(({ id }) => id), [mine.id]);
+    assert.equal(registry.requireOwned(mine.id, 1).id, mine.id);
+    assert.throws(() => registry.requireOwned(mine.id, 2), (error) => error.code === 'NOT_FOUND');
+  } finally { db.close(); }
+});
+
+test('BACKEND_API 계약과 파생 capability를 저장·갱신한다', () => {
+  const db = createDb();
+  try {
+    const registry = new PreviewRegistry({ db, randomBytes: fixedRandom(['4321']) });
+    let preview = registry.create({
+      sessionId: 'session-1',
+      workspacePath: '/home/dev/api',
+      projectName: 'api',
+      runtimeType: 'BACKEND_API',
+      framework: 'NESTJS',
+      healthPath: '/health'
+    });
+    assert.equal(preview.runtime_type, 'BACKEND_API');
+    assert.equal(preview.framework, 'NESTJS');
+    assert.deepEqual(preview.capabilities, ['HTTP', 'HEALTH']);
+
+    preview = registry.updateContract(preview.id, {
+      openapiUiPath: '/docs',
+      openapiJsonPath: '/docs-json',
+      accessVerified: true
+    });
+    assert.equal(preview.openapi_ui_path, '/docs');
+    assert.equal(preview.openapi_json_path, '/docs-json');
+    assert.equal(preview.access_verified, true);
+    assert.deepEqual(preview.capabilities, ['HTTP', 'OPENAPI', 'HEALTH']);
+    assert.deepEqual(registry.list({ sessionId: 'session-1' })[0].capabilities, preview.capabilities);
   } finally { db.close(); }
 });

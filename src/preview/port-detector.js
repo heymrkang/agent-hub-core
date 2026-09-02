@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 
-const URL_PORT_PATTERN = /(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::\]|[a-z0-9.-]+):(\d{1,5})(?:\b|\/)/gi;
+const URL_PORT_PATTERN = /(?:https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::\]|[a-z0-9.-]+)|(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::\])):(\d{1,5})(?:\b|\/)/gi;
 
 export class PreviewPortDetectionError extends Error {
   constructor(code, message) {
@@ -54,7 +54,10 @@ export class PreviewPortDetector {
       lastSocketPorts = await this.runtime.listeningPorts(containerId);
       if (requestedPort !== null) {
         if (lastSocketPorts.includes(requestedPort)) return requestedPort;
-      } else if (logPorts.length) return logPorts.at(-1);
+      } else {
+        const confirmedLogPorts = logPorts.filter((port) => lastSocketPorts.includes(port));
+        if (confirmedLogPorts.length) return confirmedLogPorts.at(-1);
+      }
       if (requestedPort === null && lastSocketPorts.length === 1) return lastSocketPorts[0];
       await delay(Math.min(this.pollIntervalMs, Math.max(deadline - Date.now(), 0)), undefined, signal ? { signal } : undefined).catch((error) => {
         if (error?.name === 'AbortError') throw new PreviewPortDetectionError('ABORTED', 'Preview port 감지가 취소됐습니다.');

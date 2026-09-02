@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -44,19 +45,24 @@ function packageManagerCommand(executable, args) {
   return [executable, ...args];
 }
 
-function runtimeCommand(command, packageManager) {
+function runtimeCommand(command, packageManager, { installAtWorkspaceRoot = false } = {}) {
   const executable = requireText(command?.executable, '실행 명령');
   const args = command?.args ?? [];
   if (!Array.isArray(args) || args.some((arg) => typeof arg !== 'string')) {
     throw new PreviewRuntimeError('INVALID_INPUT', '실행 명령 인자는 문자열 배열이어야 합니다.');
   }
 
-  const installCommands = {
+  const localInstallCommands = {
     npm: ['npm', 'ci', '--include=dev'],
     pnpm: ['corepack', 'pnpm', 'install', '--frozen-lockfile', '--prod=false'],
     yarn: ['corepack', 'yarn', 'install', '--immutable']
   };
-  const install = installCommands[packageManager];
+  const workspaceInstallCommands = {
+    npm: ['npm', '--prefix', '/workspace', 'ci', '--include=dev'],
+    pnpm: ['corepack', 'pnpm', '--dir', '/workspace', 'install', '--frozen-lockfile', '--prod=false'],
+    yarn: ['corepack', 'yarn', '--cwd', '/workspace', 'install', '--immutable']
+  };
+  const install = (installAtWorkspaceRoot ? workspaceInstallCommands : localInstallCommands)[packageManager];
   if (!install) {
     throw new PreviewRuntimeError('INVALID_INPUT', `지원하지 않는 package manager입니다: ${packageManager}`);
   }
@@ -64,6 +70,39 @@ function runtimeCommand(command, packageManager) {
   const development = packageManagerCommand(executable, args);
   const script = `${install.join(' ')} && exec "$@"`;
   return ['sh', '-c', script, 'preview-runtime', ...development];
+}
+
+function previewEnvironmentArgs(environment) {
+  if (!environment || typeof environment !== 'object' || Array.isArray(environment)) return [];
+  return Object.keys(environment).flatMap((name) => ['--env', name]);
+}
+
+function environmentFileTargets(installPath, projectPath) {
+  const targets = [];
+  const stack = [installPath];
+  while (stack.length) {
+    const directory = stack.pop();
+    let entries;
+    try { entries = fs.readdirSync(directory, { withFileTypes: true }); }
+    catch (error) { throw new PreviewRuntimeError('ENV_MASK_FAILED', `환경 파일 검색에 실패했습니다: ${error.message}`, error); }
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      const filename = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(filename);
+        continue;
+      }
+      if (entry.name !== '.env' && !entry.name.startsWith('.env.')) continue;
+      if (!entry.isFile()) {
+        throw new PreviewRuntimeError('UNSAFE_ENV_FILE', `symlink 등 일반 파일이 아닌 환경 파일은 Preview에서 허용하지 않습니다: ${filename}`);
+      }
+      const relative = path.relative(installPath, filename);
+      if (relative === '..' || relative.startsWith(`..${path.sep}`)) continue;
+      targets.push(path.posix.join('/workspace', relative.split(path.sep).join('/')));
+      if (targets.length > 256) throw new PreviewRuntimeError('TOO_MANY_ENV_FILES', '마스킹할 환경 파일이 256개를 초과했습니다.');
+    }
+  }
+  return targets.sort();
 }
 
 export class PreviewRuntime {
@@ -108,32 +147,58 @@ export class PreviewRuntime {
     if (!path.isAbsolute(runtime?.projectPath)) {
       throw new PreviewRuntimeError('INVALID_INPUT', '프로젝트 경로는 절대 경로여야 합니다.');
     }
-    const command = runtimeCommand(runtime.command, runtime.packageManager);
+    const installPath = path.resolve(runtime?.installPath || projectPath);
+    if (!path.isAbsolute(runtime?.installPath || runtime?.projectPath)) {
+      throw new PreviewRuntimeError('INVALID_INPUT', '설치 경로는 절대 경로여야 합니다.');
+    }
+    const relativeProjectPath = path.relative(installPath, projectPath);
+    if (relativeProjectPath === '..' || relativeProjectPath.startsWith(`..${path.sep}`) || path.isAbsolute(relativeProjectPath)) {
+      throw new PreviewRuntimeError('INVALID_INPUT', '프로젝트 경로는 package manager 설치 경로 내부여야 합니다.');
+    }
+    const command = runtimeCommand(runtime.command, runtime.packageManager, { installAtWorkspaceRoot: Boolean(relativeProjectPath) });
     await this.ensureNetwork();
     await this.#ensureImage();
-    const bindSource = await this.#resolveBindSource(projectPath);
+    const bindSource = await this.#resolveBindSource(installPath);
+    const containerWorkdir = relativeProjectPath ? path.posix.join('/workspace', relativeProjectPath.split(path.sep).join('/')) : '/workspace';
+
+    const expectedEnvironmentFile = path.join(projectPath, '.env.preview');
+    if (runtime.previewEnvironmentFile) {
+      if (path.resolve(runtime.previewEnvironmentFile) !== expectedEnvironmentFile) {
+        throw new PreviewRuntimeError('INVALID_INPUT', '프로젝트 루트의 .env.preview만 사용할 수 있습니다.');
+      }
+    }
 
     const name = previewContainerName(previewId);
+    const maskedEnvironmentFiles = runtime.maskEnvironmentFiles ? environmentFileTargets(installPath, projectPath) : [];
     const args = [
       'create', '--name', name, '--init',
       '--network', this.network,
       '--network-alias', name,
-      '--workdir', '/workspace',
+      '--read-only',
+      '--cap-drop', 'ALL',
+      '--security-opt', 'no-new-privileges:true',
+      '--pids-limit', '256',
+      '--memory', '2g',
+      '--cpus', '2',
+      '--workdir', containerWorkdir,
       '--mount', `type=bind,source=${bindSource},target=/workspace`,
+      ...maskedEnvironmentFiles.flatMap((target) => ['--mount', `type=bind,source=/dev/null,target=${target},readonly`]),
       // Yarn Berry creates executable shims below /tmp. A noexec tmpfs makes
       // valid Yarn projects fail with "permission denied" before dev starts.
       '--tmpfs', '/tmp:rw,exec,nosuid,nodev,size=256m',
       '--env', 'HOME=/tmp',
       '--env', 'CI=true',
       '--env', `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=${preview.public_hostname}`,
+      ...previewEnvironmentArgs(runtime.previewEnvironment),
       '--label', 'agent-hub.managed=true',
       '--label', 'agent-hub.type=preview',
+      ...(runtime.maskEnvironmentFiles ? ['--label', 'agent-hub.data-isolation=verified'] : []),
       '--label', `agent-hub.preview-id=${previewId}`,
       '--label', `agent-hub.session-id=${sessionId}`,
       this.image,
       ...command
     ];
-    const { stdout } = await this.#docker(args, 'CONTAINER_CREATE_FAILED');
+    const { stdout } = await this.#docker(args, 'CONTAINER_CREATE_FAILED', 30_000, runtime.previewEnvironment);
     return { id: stdout.trim(), name, command };
   }
 
@@ -192,6 +257,57 @@ export class PreviewRuntime {
       return ports;
     } catch (error) {
       throw new PreviewRuntimeError('INVALID_DOCKER_RESPONSE', 'Container listening port 응답을 해석할 수 없습니다.', error);
+    }
+  }
+
+  async probeHttp(containerId, { port, path: requestPath = '/', timeoutMs = 2_000, maxBodyBytes = 0 } = {}) {
+    const container = await this.#requireManaged(containerId);
+    const targetPort = Number(port);
+    if (!Number.isInteger(targetPort) || targetPort < 1 || targetPort > 65535) {
+      throw new PreviewRuntimeError('INVALID_INPUT', `올바르지 않은 HTTP probe port: ${port}`);
+    }
+    if (typeof requestPath !== 'string' || !requestPath.startsWith('/') || requestPath.startsWith('//') || /[\r\n]/.test(requestPath)) {
+      throw new PreviewRuntimeError('INVALID_INPUT', `올바르지 않은 HTTP probe path: ${requestPath}`);
+    }
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) {
+      throw new PreviewRuntimeError('INVALID_INPUT', 'HTTP probe timeout은 1~30000ms 정수여야 합니다.');
+    }
+    if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 0 || maxBodyBytes > 1024 * 1024) {
+      throw new PreviewRuntimeError('INVALID_INPUT', 'HTTP probe body 제한은 0~1048576 bytes 정수여야 합니다.');
+    }
+    const targetHost = String(container.Name || '').replace(/^\//, '');
+    if (!targetHost) throw new PreviewRuntimeError('INVALID_DOCKER_RESPONSE', 'Container hostname을 확인할 수 없습니다.');
+    const script = [
+      "const http=require('http')",
+      "const [host,port,path,timeout]=process.argv.slice(1)",
+      "const maxBodyBytes=Number(process.argv[5]||0)",
+      "let done=false",
+      "const finish=(value)=>{if(done)return;done=true;process.stdout.write(JSON.stringify(value))}",
+      "const req=http.request({hostname:host,port:Number(port),path,method:'GET',headers:{host,accept:'application/json,text/html;q=0.9,*/*;q=0.1'}},res=>{const chunks=[];let size=0;res.on('data',chunk=>{if(size>=maxBodyBytes)return;const part=chunk.subarray(0,Math.max(0,maxBodyBytes-size));chunks.push(part);size+=part.length});res.on('end',()=>finish({reachable:true,statusCode:res.statusCode,contentType:res.headers['content-type']||null,body:maxBodyBytes?Buffer.concat(chunks).toString('utf8'):null}))})",
+      "req.once('error',error=>finish({reachable:false,errorCode:error.code||'HTTP_ERROR',errorMessage:error.message}))",
+      "req.setTimeout(Number(timeout),()=>req.destroy(Object.assign(new Error('request timeout'),{code:'ETIMEDOUT'})))",
+      "req.end()"
+    ].join(';');
+    const { stdout } = await this.#docker([
+      'exec', containerId, 'node', '-e', script,
+      targetHost, String(targetPort), requestPath, String(timeoutMs), String(maxBodyBytes)
+    ], 'HTTP_PROBE_FAILED', timeoutMs + 5_000);
+    try {
+      const result = JSON.parse(stdout);
+      if (
+        !result || typeof result !== 'object' || typeof result.reachable !== 'boolean'
+        || (result.reachable && (!Number.isInteger(result.statusCode) || result.statusCode < 100 || result.statusCode > 599))
+      ) throw new Error('invalid HTTP probe response');
+      return Object.freeze({
+        reachable: result.reachable,
+        statusCode: result.statusCode ?? null,
+        contentType: typeof result.contentType === 'string' ? result.contentType : null,
+        body: typeof result.body === 'string' ? result.body : null,
+        errorCode: typeof result.errorCode === 'string' ? result.errorCode : null,
+        errorMessage: typeof result.errorMessage === 'string' ? result.errorMessage.slice(0, 500) : null
+      });
+    } catch (error) {
+      throw new PreviewRuntimeError('INVALID_DOCKER_RESPONSE', 'Container HTTP probe 응답을 해석할 수 없습니다.', error);
     }
   }
 
@@ -268,9 +384,13 @@ export class PreviewRuntime {
     }
   }
 
-  async #docker(args, code, timeout = 30_000) {
+  async #docker(args, code, timeout = 30_000, environment = null) {
     try {
-      return await this.run(args, { timeout, maxBuffer: 10 * 1024 * 1024 });
+      return await this.run(args, {
+        timeout,
+        maxBuffer: 10 * 1024 * 1024,
+        ...(environment && Object.keys(environment).length ? { env: { ...process.env, ...environment } } : {})
+      });
     } catch (error) {
       const detail = String(error?.stderr || error?.message || '').trim().slice(0, 700);
       throw new PreviewRuntimeError(code, detail || `Docker 명령이 실패했습니다: ${args[0]}`, error);

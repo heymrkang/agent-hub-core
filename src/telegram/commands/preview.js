@@ -7,6 +7,28 @@ import { isStealthMode } from '../renderer/ui-theme.js';
 function escapeMarkdown(value) { return String(value ?? '').replace(/([_*`\[])/g, '\\$1'); }
 function sourceInfo(source) { return { chatId: source.chat ? source.chat.id : source.message.chat.id, messageId: source.chat ? null : source.message?.message_id }; }
 
+function runtimeLabel(preview) {
+  const framework = ({ NESTJS: 'NestJS', NEXTJS: 'Next.js', VITE: 'Vite' })[preview.framework] || preview.framework || preview.runtime_type || 'UNKNOWN';
+  return `${framework} / Port ${preview.port ?? '-'}`;
+}
+
+export function buildPreviewEndpointUrl(preview, endpointPath = '/') {
+  const path = String(endpointPath || '');
+  if (!preview?.public_url || !path.startsWith('/') || path.startsWith('//') || /[\\\s?#]/.test(path)) return null;
+  try {
+    const origin = new URL(preview.public_url);
+    const url = new URL(path, origin);
+    return origin.protocol === 'https:' && url.origin === origin.origin ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function formatDetectedRuntime(detectedRuntime) {
+  const command = [detectedRuntime.command.executable, ...detectedRuntime.command.args].join(' ');
+  return `Runtime: \`${escapeMarkdown(detectedRuntime.runtimeType)} / ${escapeMarkdown(detectedRuntime.framework || 'UNKNOWN')}\`\nCommand: \`${escapeMarkdown(command)}\``;
+}
+
 export function parsePreviewStartArgs(raw) {
   const value = String(raw || '').trim();
   if (!value) throw new Error('사용법: /preview start <절대경로> [--port N]');
@@ -36,9 +58,13 @@ async function sendOrEdit(bot, source, text, keyboard) {
 }
 
 async function renderList(bot, source, services) {
-  const active = services.registry.list({ limit: 30 }).filter((item) => ACTIVE_PREVIEW_STATUSES.includes(item.status));
+  const active = services.registry.list({ userId: source.from?.id, limit: 30 }).filter((item) => ACTIVE_PREVIEW_STATUSES.includes(item.status));
   const max = getSettingsManager().get('preview_max_concurrent');
-  const lines = active.length ? active.map((item) => `• **${escapeMarkdown(item.project_name)}** · \`${item.status}\`\n  \`${item.public_hostname}\``).join('\n\n') : '실행 중인 Preview 없음.';
+  const lines = active.length ? active.map((item) => {
+    const external = item.runtime_type !== 'BACKEND_API' || item.access_verified;
+    const kind = item.runtime_type === 'BACKEND_API' ? `API · ${escapeMarkdown(({ NESTJS: 'NestJS' })[item.framework] || item.framework || 'Backend')}` : 'Web';
+    return `• **${escapeMarkdown(item.project_name)}** · \`${item.status}\` · ${kind}\n  ${external ? `\`${item.public_hostname}\`` : '`외부 URL 차단됨`'}`;
+  }).join('\n\n') : '실행 중인 Preview 없음.';
   const keyboard = active.map((item) => [{ text: `${item.status === 'RUNNING' ? '●' : '○'} ${item.project_name}`, callback_data: `preview_detail:${item.id}` }]);
   keyboard.push([{ text: '새로고침', callback_data: 'preview_list' }]);
   return sendOrEdit(bot, source, `${isStealthMode() ? '■' : '🖥'} **Preview · ${active.length}/${max}**\n\n${lines}\n\n시작: \`/preview start /home/dev/workspace/프로젝트\``, keyboard);
@@ -46,10 +72,32 @@ async function renderList(bot, source, services) {
 
 async function renderDetail(bot, source, preview, services) {
   const running = preview.status === 'RUNNING';
+  const backendApi = preview.runtime_type === 'BACKEND_API';
+  const external = preview.runtime_type !== 'BACKEND_API' || preview.access_verified;
   const failure = preview.failure_reason ? `\n오류: ${escapeMarkdown(preview.failure_reason).slice(0, 500)}` : '';
-  const text = `${isStealthMode() ? '■' : '🖥'} **Preview · ${escapeMarkdown(preview.project_name)}**\n\n상태: \`${preview.status}\`\nURL: ${preview.public_url}\nPort: \`${preview.port ?? '-'}\`\nUptime: \`${uptime(preview)}\`${failure}`;
+  const urlLine = external ? `URL: ${preview.public_url}` : '외부 URL: `차단됨 (Cloudflare Access 미검증)`';
+  const openapi = preview.openapi_ui_path || preview.openapi_json_path
+    ? [preview.openapi_ui_path && `UI \`${escapeMarkdown(preview.openapi_ui_path)}\``, preview.openapi_json_path && `JSON \`${escapeMarkdown(preview.openapi_json_path)}\``].filter(Boolean).join(' · ')
+    : '`미탐지`';
+  const apiDetails = backendApi
+    ? `\nRuntime: \`${escapeMarkdown(runtimeLabel(preview))}\`\nOpenAPI: ${openapi}\nHealth: ${preview.health_path ? `\`${escapeMarkdown(preview.health_path)}\`` : '`미탐지`'}\n데이터 대상: \`dev 전용\`\n${isStealthMode() ? '!' : '⚠️'} 문서/API 요청은 개발 데이터를 실제 변경할 수 있음.`
+    : `\nPort: \`${preview.port ?? '-'}\``;
+  const title = backendApi ? 'API Preview' : 'Preview';
+  const text = `${isStealthMode() ? '■' : backendApi ? '🧩' : '🖥'} **${title} · ${escapeMarkdown(preview.project_name)}**\n\n상태: \`${preview.status}\`\n${urlLine}${apiDetails}\nUptime: \`${uptime(preview)}\`${failure}`;
   const keyboard = [];
-  if (running) keyboard.push([{ text: '🌐 열기', url: preview.public_url }]);
+  if (running && external) {
+    keyboard.push([{ text: backendApi ? '🌐 API 열기' : '🌐 열기', url: preview.public_url }]);
+    if (backendApi) {
+      const endpoints = [];
+      const openapiUiUrl = buildPreviewEndpointUrl(preview, preview.openapi_ui_path);
+      const openapiJsonUrl = buildPreviewEndpointUrl(preview, preview.openapi_json_path);
+      const healthUrl = buildPreviewEndpointUrl(preview, preview.health_path);
+      if (openapiUiUrl) endpoints.push({ text: '📚 API 문서', url: openapiUiUrl });
+      if (openapiJsonUrl) endpoints.push({ text: '🧾 OpenAPI JSON', url: openapiJsonUrl });
+      if (endpoints.length) keyboard.push(endpoints);
+      if (healthUrl) keyboard.push([{ text: '🩺 Health 확인', url: healthUrl }]);
+    }
+  }
   if (running) keyboard.push([{ text: '↻ 재시작', callback_data: `preview_restart:${preview.id}` }, { text: '📋 로그', callback_data: `preview_logs:${preview.id}` }]);
   if (ACTIVE_PREVIEW_STATUSES.includes(preview.status) || preview.status === 'FAILED') keyboard.push([{ text: '■ 종료', callback_data: `preview_stop:${preview.id}` }]);
   keyboard.push([{ text: '‹ 목록', callback_data: 'preview_list' }]);
@@ -65,7 +113,7 @@ export async function handlePreviewCommand(bot, msg, rawArgs = '', dependencies 
     const { workspacePath, manualPort } = parsePreviewStartArgs(args.slice(6));
     const session = SessionManager.getActiveSession(msg.from.id);
     const detectedRuntime = services.detector.detect({ workspacePath });
-    await bot.sendMessage(msg.chat.id, `${isStealthMode() ? '>' : '⏳'} Preview 시작 중: \`${escapeMarkdown(detectedRuntime.projectName)}\``, { parse_mode: 'Markdown' });
+    await bot.sendMessage(msg.chat.id, `${isStealthMode() ? '>' : '⏳'} Preview 시작 중: \`${escapeMarkdown(detectedRuntime.projectName)}\`\n${formatDetectedRuntime(detectedRuntime)}`, { parse_mode: 'Markdown' });
     const preview = await services.manager.start({ sessionId: session.id, detectedRuntime, manualPort });
     return renderDetail(bot, msg, preview, services);
   } catch (error) {
@@ -83,6 +131,7 @@ export async function handlePreviewCallback(bot, q, dependencies = null) {
     if (separator < 1) return;
     const action = data.slice(0, separator);
     const id = data.slice(separator + 1);
+    services.registry.requireOwned(id, q.from.id);
     if (action === 'preview_detail') return renderDetail(bot, q, services.registry.require(id), services);
     if (action === 'preview_restart') return renderDetail(bot, q, await services.manager.restart(id), services);
     if (action === 'preview_stop') { await services.manager.stop(id); return renderList(bot, q, services); }

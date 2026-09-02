@@ -2,7 +2,21 @@
 
 ## Status
 
-`PLANNED`
+`IN_PROGRESS`
+
+진행 현황:
+
+- [x] 17-0 기준선 및 데이터 계약: runtime/framework/API endpoint/Access 메타데이터와 v14 migration, 기존 `WEB` Preview 보정
+- [x] 17-1 NestJS 테스트 fixture: Swagger 미설치/설치 독립 프로젝트, 메모리 CRUD·upload·SSE, 고정 버전/lockfile, 자체 HTTP 테스트
+- [x] 17-2 NestJS 감지와 실행 명령 결정
+- [x] 17-3 HTTP readiness와 실패 진단: Docker hostname HTTP probe 이후에만 RUNNING, 404 허용, localhost bind/timeout/process exit 진단, command·exit·redacted log·수정 힌트 제공
+- [x] 17-4 OpenAPI/Swagger 탐지: source direct literal 우선 + 제한 후보 probe, HTML/JSON signature 검증, override와 health 탐지, 문서 미탐지 허용
+- [x] 17-5 Gateway HTTP 호환성 보강: method/query/body/header 보존, multipart·SSE·WebSocket 회귀, host-only cookie, forwarded metadata, OpenAPI same-origin 보정
+- [x] 17-6-1 외부 공개 보안 경계: 실제 Cloudflare Access challenge probe, Gateway route와 Telegram URL fail-closed
+- [x] 17-6-2 개발 데이터 격리: env allowlist/.env masking, 개발 DB·R2 target guard, container 권한 축소, OpenAPI/log secret 제거
+- [x] 17-7 Telegram API Preview UI: API/Web 구분, runtime·OpenAPI·health·dev 경고 표시, Access 검증 기반 endpoint action
+- [x] 17-8 자동 E2E와 재시작 복구: 실제 Docker fixture lifecycle, restart/Core 재기동 HTTP 재검증, stop·expiry·route/container cleanup
+- [ ] 17-9 MariaDB 및 실제 서버 공동 검증: 격리 MariaDB 자동 E2E 완료, 실제 Coolify/Telegram 공동 검증 대기
 
 Phase 17은 기존 Preview Manager를 HTTP 백엔드 개발 서버까지 확장한다. 첫 지원 대상은 NestJS이며, Agent Hub가 API 문서 엔진을 새로 만들지 않고 프로젝트가 제공하는 OpenAPI/Swagger UI와 실제 API를 안전하게 프록시한다.
 
@@ -62,6 +76,15 @@ NestJS Preview Container
 - 시작 실패 시 command, exit status, redacted log와 수정 가능한 원인을 보여준다.
 - 기존 Preview의 owner/session, TTL, restart, stop, cleanup 규칙을 동일하게 적용한다.
 
+### 2.3 HTTP readiness 및 실패 진단 구현
+
+- port 감지 뒤 container의 Docker hostname으로 실제 HTTP GET을 보내 외부 network bind 가능 여부까지 확인한다.
+- endpoint의 404도 유효한 HTTP 응답이므로 ready로 인정하며 connection 거부와 request timeout만 재시도한다.
+- stack trace의 `main.ts:31` 같은 문자열을 port로 오인하지 않도록 log port는 HTTP URL만 해석하고 listening socket과 교차 검증한다.
+- 제한 시간 전 process가 종료되면 exit code와 함께 즉시 실패한다.
+- 시작 실패는 단계, argv command, process 상태, secret 제거 로그, 원인별 수정 힌트를 Registry와 Telegram 오류에 남긴다.
+- readiness 실패 container는 강제 제거하고 container ID를 Registry에서 해제해 route가 발급되지 않게 한다.
+
 ---
 
 ## 3. OpenAPI / Swagger Discovery
@@ -72,6 +95,16 @@ NestJS Preview Container
 - 사용자가 프로젝트별 문서 경로와 health path를 override할 수 있다.
 - 문서가 없더라도 HTTP API Preview 자체는 실행할 수 있으며 UI에 `문서 미탐지`로 표시한다.
 - 문서 자동 생성이 필요하면 별도의 Agent 코드 변경 요청으로 처리하고 Preview Manager가 source를 묵시적으로 수정하지 않는다.
+
+### 3.1 구현 결과
+
+- NestJS `src/main.ts`의 `SwaggerModule.setup()`과 `jsonDocumentUrl`이 직접 문자열이면 우선 후보로 사용한다.
+- 정적 탐지 결과도 신뢰만 하지 않고 container hostname에 실제 HTTP GET을 보내 최종 검증한다.
+- Swagger UI는 성공 응답의 `text/html` content type과 `swagger-ui`/`SwaggerUIBundle` signature를 함께 확인한다.
+- OpenAPI JSON은 성공 응답의 JSON content type과 root `openapi` 또는 `swagger` 문자열 field를 함께 확인한다.
+- 응답 body는 probe당 최대 1 MiB만 읽고, 후보는 UI 3개, JSON 5개, health 2개로 제한한다.
+- 프로젝트 override가 있으면 해당 종류는 override 경로만 확인한다. 미탐지 경고를 남기되 Preview는 `RUNNING`으로 전환한다.
+- 탐지된 UI/JSON/health path는 Registry에 저장하며 restart 때 다시 검증한다.
 
 Telegram UI 예시:
 
@@ -84,6 +117,16 @@ OpenAPI: /docs-json
 [API 문서 열기] [Health 확인]
 [로그] [재시작] [종료]
 ```
+
+### 3.2 Telegram API Preview UI 구현 결과
+
+- Preview 목록에서 Web과 Backend API를 구분하고 Backend API framework를 함께 표시한다.
+- Backend API 상세 화면은 framework/port, OpenAPI UI·JSON path, health path, uptime과 실패 원인을 표시한다.
+- OpenAPI가 없으면 `문서 미탐지`로 표시하되 `RUNNING` 상태와 API·health·로그·재시작·종료 기능은 유지한다.
+- Access와 데이터 격리가 검증된 외부 Preview에만 API root, Swagger UI, OpenAPI JSON, health HTTPS 버튼을 제공한다.
+- Access 미검증 상태에서는 탐지된 endpoint path만 상태 정보로 보여주고 hostname과 모든 외부 URL 버튼은 숨긴다.
+- API 요청이 dev 데이터를 실제 변경할 수 있다는 경고와 `dev 전용` 데이터 대상을 상세 화면에 명시한다.
+- endpoint URL은 동일 HTTPS Preview origin의 안전한 절대 path로만 만든다.
 
 ---
 
@@ -105,6 +148,20 @@ Preview Gateway는 다음을 손실 없이 전달해야 한다.
 - CORS는 same-origin 구성을 우선하고 wildcard credential 조합을 기본값으로 만들지 않는다.
 - WebSocket/SSE를 사용하는 API도 기존 Gateway capability 범위에서 회귀 검증한다.
 
+### 4.1 구현 결과
+
+- Route API가 `runtimeType`과 검증된 `openapiJsonPath`를 Gateway에 전달한다.
+- Gateway는 GET/POST/PATCH/DELETE, query string, JSON, form, multipart body와 `Authorization`/`Accept`/`Origin`/cookie 등 application header를 그대로 전달한다.
+- 고정 hop-by-hop header뿐 아니라 `Connection`에 열거된 동적 hop-by-hop header도 upstream으로 넘기지 않는다.
+- `X-Forwarded-Host`, `X-Forwarded-Proto`, `X-Forwarded-Port`, `X-Forwarded-For`를 일관되게 구성하며 지원하지 않는 proto 값은 외부 기본값인 HTTPS로 제한한다.
+- 일반 JSON payload는 rewrite하지 않는다. 탐지된 OpenAPI JSON endpoint의 `servers[].url`과 Swagger v2 `host`/`schemes` 중 container/localhost/public host만 구조적으로 외부 Preview origin으로 보정한다.
+- 내부 target으로 향하는 absolute redirect `Location`도 같은 Preview origin으로 바꾼다.
+- upstream `Set-Cookie`의 내부 `Domain` 속성을 제거해 Preview hostname의 host-only cookie로 격리하고 기존 `Path`/`Secure`/`HttpOnly`/`SameSite`는 유지한다.
+- OpenAPI 문서는 최대 4 MiB까지만 buffering/rewrite하고 초과·비정상 JSON 응답은 credential 우회 노출을 막기 위해 거부한다. 일반 API/SSE 응답은 streaming한다.
+- same-origin을 기본으로 두며 Gateway가 wildcard CORS나 credential header를 임의로 추가하지 않는다.
+- Gateway 자체 `/health`는 localhost 요청과 `/_agent-hub/health`로 제한해 Preview API의 `/health` endpoint를 가로채지 않는다.
+- 기존 Next.js HMR WebSocket과 NestJS SSE를 함께 회귀 검증한다.
+
 ---
 
 ## 5. Security & Data Isolation
@@ -116,13 +173,30 @@ API Preview는 조회 화면이 아니라 실제 데이터 변경 endpoint를 �
 - Preview는 프로젝트별 개발 DB와 전용 MariaDB 계정만 사용한다.
 - 운영 DB hostname/account/secret 주입을 거부하거나 allowlist 정책으로 차단한다.
 - R2도 프로젝트별 개발 bucket/credential만 주입한다.
-- `.env` 전체 자동 전달을 금지하고 Preview용 secret allowlist를 사용한다.
+- 선택 프로젝트 루트의 `.env.preview`만 선택적으로 전달하고, 파일이 없으면 환경 변수 없이 실행한다.
 - secret은 Telegram, URL, OpenAPI document, log, DB metadata에 노출하지 않는다.
 - container network egress와 내부 인프라 접근은 필요한 대상만 허용한다.
 - Swagger UI에서 변경 요청이 가능하다는 경고와 현재 연결 대상(dev)을 명시한다.
 - Preview URL은 session/project ownership과 TTL을 적용하고 stop/expiry 후 route를 제거한다.
 
 Cloudflare Access가 설정되지 않았거나 개발 데이터 격리를 검증할 수 없으면 외부 URL 발급을 실패 처리한다.
+
+### 5.1 17-6-1 구현 결과
+
+- `PREVIEW_TUNNEL_ONLY`, Access team domain/audience 설정을 확인한 뒤 생성 hostname을 비인증 probe한다. 실제 Access challenge가 확인된 경우에만 `access_verified`를 기록한다.
+- `BACKEND_API` route는 `access_verified`가 참일 때만 Gateway에 target을 반환한다. 미검증 상태에서는 runtime 내부 검증은 유지하지만 Telegram의 URL/열기 버튼과 외부 route는 차단한다.
+- 설정 누락, probe timeout/오류, 공개 origin의 `200`, 엉뚱한 redirect는 모두 승인하지 않는 fail-closed 정책이다.
+- 시작, reconcile, restart 때 Access 상태를 다시 확인한다.
+
+### 5.2 17-6-2 구현 결과
+
+- Backend API Preview는 선택 프로젝트 루트의 `.env.preview`가 있을 때만 읽는다. 비밀값은 Docker 명령 인자에 넣지 않고 Docker CLI의 일시적 프로세스 환경을 통해 선택 container에만 전달한다. 파일이 없으면 실패하지 않고 환경 변수 없이 실행한다.
+- MariaDB, MongoDB, Redis, R2 등 서비스 종류와 변수 이름은 프로젝트가 결정하며 Core/Coolify 전역 환경 변수에서 값을 가져오지 않는다.
+- 프로젝트와 monorepo install root 아래 `.env`, `.env.*`는 Preview container에서 `/dev/null` read-only mount로 마스킹한다. 선택한 `.env.preview`도 값 주입 후 container 파일 경로는 마스킹하며 symlink는 시작을 거부한다.
+- `.env.preview`는 Git ignore 대상이고 값은 Docker 명령 인자, Telegram, URL, OpenAPI document, log에 출력하지 않는다.
+- container root filesystem은 read-only로 두고 Linux capability 전체 제거, `no-new-privileges`, PID/CPU/memory 제한, 제한된 tmpfs를 적용한다. workspace만 기존 개발 동작을 위해 write mount로 유지한다.
+- 격리 완료 container에 관리 label을 기록하고 reconcile/restart에서도 label과 Cloudflare Access를 함께 확인한다. 기존 또는 미검증 container의 외부 route는 열지 않는다.
+- OpenAPI JSON은 URL 보정 전에 실제 secret key/example/connection URL을 재귀 제거한다. 로그 redaction은 quoted env, DB URL, JWT, private key까지 처리한다.
 
 ---
 
@@ -133,7 +207,7 @@ Cloudflare Access가 설정되지 않았거나 개발 데이터 격리를 검증
 - OpenAPI/Swagger/health endpoint discovery 및 project override
 - Preview Gateway의 HTTP method/body/header/cookie/streaming 회귀 보강
 - Telegram API Preview renderer와 actions
-- Preview env/secret allowlist 및 production target guard
+- 프로젝트별 `.env.preview` 선택 로더와 secret 격리
 - Cloudflare Access readiness/config validation
 - NestJS fixture와 실제 개발 DB를 분리한 E2E 환경
 
@@ -201,24 +275,40 @@ Swagger 있음 -> API Preview 성공 + OPENAPI capability 활성
 Swagger 없음 -> API Preview 성공 + OPENAPI capability만 비활성
 ```
 
+### 7.4 17-8 자동 E2E와 재시작 복구 구현 결과
+
+- Docker daemon을 사용할 수 있는 테스트 환경에서는 `nest-openapi`와 `nest-no-openapi`를 임시 workspace에 복사하고 실제 `npm ci` + `start:dev` container로 자동 실행한다. Docker가 없는 환경만 명시적으로 skip한다.
+- Swagger fixture는 `/docs`, `/docs-json`, `/health`와 route 활성화를 확인하고, 미설치 fixture는 OpenAPI path 없이 `/health`만 탐지된 `RUNNING` 상태를 확인한다.
+- 재시작은 고정 port를 다시 찾고 HTTP readiness, Cloudflare Access, OpenAPI/health endpoint를 모두 다시 검증한다.
+- Core가 `STARTING` 상태를 남기고 재기동된 상황도 살아 있는 container의 port/readiness/endpoint를 재구성한 뒤 `RUNNING`으로 복구한다. HTTP 재검증에 실패하면 route를 유지하지 않고 `FAILED` 처리한다.
+- 수동 종료와 idle 만료 뒤에는 Registry 상태가 각각 `STOPPED`, `EXPIRED`가 되고 route가 즉시 비활성화되며 관리 container가 남지 않는지 확인한다.
+- E2E orphan 검색은 해당 테스트가 만든 container ID로 범위를 제한해 실행 중인 실제 Preview를 건드리지 않는다.
+
+### 7.5 17-9 MariaDB 검증 구현 결과와 실서버 게이트
+
+- `nest-openapi`는 기본 메모리 저장소를 유지하고, allowlist로 검증된 `DATABASE_URL`이 있을 때만 MariaDB의 Phase 17 전용 테이블을 사용한다.
+- Docker E2E는 임시 MariaDB DB/계정/암호를 매 실행 생성하고 Preview network 안에서만 연결한다. CRUD의 DB 직접 반영, Preview 재시작 후 영속성, OpenAPI/health 유지, 로그 secret 미노출, 종료 cleanup을 자동 검증한다.
+- 운영/개발 credential은 fixture, test source, log에 저장하지 않는다. 테스트가 만든 MariaDB와 Preview container는 성공/실패와 관계없이 제거한다.
+- 실제 서버 완료 판정은 `tests/e2e/phase17-live.test.js`의 명시적 evidence gate를 사용한다. Telegram UI, Cloudflare Access, 외부 Swagger, 인증된 CRUD, 개발 MariaDB 반영, 로그, 재시작, cleanup, 기존 Web Preview 회귀를 모두 직접 확인하기 전에는 Phase 17을 `DONE`으로 바꾸지 않는다.
+
 ---
 
 ## 8. Acceptance / E2E
 
-- [ ] NestJS 프로젝트를 감지하고 올바른 workspace에서 `start:dev`로 실행한다.
-- [ ] 서버가 `0.0.0.0`에 bind되고 HTTP readiness 이후에만 `RUNNING`이 된다.
-- [ ] Swagger UI와 OpenAPI JSON endpoint를 탐지해 Telegram에서 연다.
-- [ ] 문서가 없는 API도 `문서 미탐지` 상태로 실행·health·로그 관리가 가능하다.
-- [ ] Swagger 패키지가 설치되지 않은 fixture와 설치됐지만 bootstrap되지 않은 경우 모두 문서 미탐지로 처리한다.
-- [ ] 잘못된 Swagger 경로는 Preview를 중단하지 않고 custom 경로 override는 정상 탐지한다.
-- [ ] GET/POST/PATCH/DELETE, query, JSON body, multipart 및 Authorization header가 정상 프록시된다.
-- [ ] Swagger `Try it out`이 동일 Preview host의 실제 API를 호출한다.
-- [ ] cookie, CORS, forwarded host/proto와 OpenAPI server URL이 외부 URL에서 정상 동작한다.
-- [ ] 로그·오류·문서에 credential과 DB connection secret이 노출되지 않는다.
-- [ ] 운영 DB/R2 credential 또는 금지된 내부 target 연결 시 시작이 차단된다.
-- [ ] Cloudflare Access가 없는 외부 API Preview URL은 발급되지 않는다.
-- [ ] Preview 종료·만료·Core 재시작 시 process/container/route cleanup이 일관된다.
-- [ ] 기존 Next.js/Vite/Mobile Preview E2E가 회귀하지 않는다.
+- [x] NestJS 프로젝트를 감지하고 올바른 workspace에서 `start:dev`로 실행한다.
+- [x] 서버가 `0.0.0.0`에 bind되고 HTTP readiness 이후에만 `RUNNING`이 된다.
+- [x] Swagger UI와 OpenAPI JSON endpoint를 탐지해 Telegram에서 연다.
+- [x] 문서가 없는 API도 OpenAPI capability 없이 `RUNNING` 상태를 유지하고 health를 별도 탐지한다.
+- [x] Swagger 패키지가 설치되지 않은 fixture와 설치됐지만 bootstrap되지 않은 경우 모두 문서 미탐지로 처리한다.
+- [x] 잘못된 Swagger 경로는 Preview를 중단하지 않고 custom 경로 override는 정상 탐지한다.
+- [x] GET/POST/PATCH/DELETE, query, JSON body, multipart 및 Authorization header가 정상 프록시된다.
+- [x] Swagger `Try it out` 대상이 동일 Preview origin의 실제 API가 되도록 OpenAPI v2/v3 문서를 제한적으로 보정한다.
+- [x] cookie, same-origin CORS 정책, forwarded host/proto와 OpenAPI server URL이 외부 URL 기준으로 정상 동작한다.
+- [x] 로그·오류·문서에 credential과 DB connection secret이 노출되지 않는다.
+- [x] 운영 DB/R2 credential 또는 금지된 내부 target 연결 시 시작이 차단된다.
+- [x] Cloudflare Access가 없는 외부 API Preview URL은 발급되지 않는다.
+- [x] Preview 종료·만료·Core 재시작 시 process/container/route cleanup이 일관된다.
+- [x] 기존 Next.js/Vite/Mobile Preview E2E가 회귀하지 않는다.
 
 ---
 
