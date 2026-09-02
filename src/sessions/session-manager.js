@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import { getDb } from '../database/index.js';
+import { ProviderSessionRepository } from './provider-session-repository.js';
 
 const EXECUTION_PROFILES = new Set(['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS']);
 
@@ -25,8 +26,13 @@ export class SessionManager {
     const profile = EXECUTION_PROFILES.has(options.profile) ? options.profile : 'WORKSPACE';
     const isSystem = options.isSystem ? 1 : 0;
     const status = options.status || (isSystem ? 'ARCHIVED' : 'ACTIVE');
-    db.prepare(`INSERT INTO sessions (id,user_id,title,title_locked,active_provider,active_model,reasoning_effort,execution_profile,status,is_system) VALUES (?,?,?,0,?,?,?,?,?,?)`)
-      .run(sessionId, userId, title, provider, model, reasoningEffort, profile, status, isSystem);
+
+    db.transaction(() => {
+      db.prepare(`INSERT INTO sessions (id,user_id,title,title_locked,active_provider,active_model,reasoning_effort,execution_profile,status,is_system) VALUES (?,?,?,0,?,?,?,?,?,?)`)
+        .run(sessionId, userId, title, provider, model, reasoningEffort, profile, status, isSystem);
+      if (!isSystem) ProviderSessionRepository.ensure({ sessionId, provider });
+    })();
+
     if (!isSystem) this.setActiveSession(userId, sessionId);
     return this.getSession(sessionId);
   }
