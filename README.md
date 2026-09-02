@@ -1,8 +1,37 @@
-# Agent Hub Core V1
+# Agent Hub Core V2
 
-Telegram을 중심으로 Codex CLI와 Antigravity CLI를 실행하고, 세션·메모리·스케줄러·Git/SSH/Docker 작업을 하나의 persistent runtime에서 관리하는 개인용 Agent Hub입니다.
+Telegram을 중심으로 Codex CLI와 Antigravity CLI를 실행하고, Logical Session·Provider native conversation·장기 메모리·스케줄러·Git/SSH/Docker 작업을 하나의 persistent runtime에서 관리하는 개인용 Agent Hub입니다.
 
-> Phase 11 hardening 및 release verification을 완료했으며 현재 V1 Released baseline입니다.
+> **Current release: 2.0.0.** V1 → V2 Native Session Bridge와 Provider-native Rules Memory 전환을 완료했고, clean-state live validation을 거쳐 V2 baseline으로 승격했습니다.
+
+## V2 Architecture
+
+V2의 핵심 원칙은 **Agent Hub가 Provider의 대화를 재구성해 소유하지 않고, Provider native conversation을 연결하고 중계하는 것**입니다.
+
+```text
+Agent Hub Logical Session A
+├─ Codex native thread A
+└─ Antigravity native conversation A
+```
+
+- `/sessions`는 항상 Agent Hub Logical Session을 선택합니다.
+- `/model`은 현재 Logical Session 안에서 Provider만 전환합니다.
+- same-provider turn은 기존 Provider native session을 resume합니다.
+- cross-provider return은 상대 Provider가 놓친 delta만 전달합니다.
+- `/new`는 Logical Session을 만들고 Provider native session은 첫 실행 때 lazy bind합니다.
+- native resume 실패를 조용히 새 blank session으로 대체하지 않습니다.
+
+Global Memory도 V2에서는 매 turn prompt에 붙이지 않습니다.
+
+```text
+/data/memory/MEMORY.md             = Agent Hub canonical memory
+/root/.codex/AGENTS.md             = Codex native Rules mirror
+/root/.gemini/GEMINI.md            = Antigravity native Rules mirror
+```
+
+Agent Hub는 Provider Rules 파일 전체를 덮어쓰지 않고 `AGENT_HUB_MEMORY_START/END` marker 사이만 관리합니다. `/memory` 변경과 startup 시 두 Provider Rules를 canonical memory에서 동기화합니다.
+
+상세한 migration/validation 기록은 `.plan/V1_V2_NATIVE_SESSION_BRIDGE.md`를 참고합니다.
 
 ## Runtime
 
@@ -23,10 +52,10 @@ Dockerfile 기준 provider CLI는 Codex `0.149.1`, Antigravity `1.1.20`으로 �
 Coolify/Docker 재배포 후에도 상태를 유지하려면 다음 경로를 persistent storage에 연결합니다.
 
 ```text
-/data           -> Agent Hub SQLite, backup, SSH registry, uploads, logs
+/data           -> Agent Hub SQLite, backup, SSH registry, uploads, logs, canonical memory
 /home/dev       -> Agent의 persistent development root
-/root/.codex    -> Codex authentication state
-/root/.gemini   -> Antigravity authentication state
+/root/.codex    -> Codex authentication, native sessions, AGENTS.md
+/root/.gemini   -> Antigravity authentication, native conversations, GEMINI.md
 ```
 
 `/home/dev/workspace`는 Git repository를 두는 기본 영역이며, notes/ideas/docs/scripts 등 다른 개발 자료도 `/home/dev` 아래에 둘 수 있습니다. Linux의 `/dev`는 device namespace이므로 일반 persistent volume으로 덮어쓰지 않습니다.
@@ -71,7 +100,7 @@ SSH private key는 repository나 환경변수에 넣지 않고 `/data/ssh/keys` 
 | `CODEX_TIMEOUT_MS` | `120000` | ms, 1 이상 | Codex 작업 1회의 기본 실행 제한 시간입니다. |
 | `ANTIGRAVITY_TIMEOUT_MS` | `120000` | ms, 1 이상 | Antigravity 작업 1회의 기본 실행 제한 시간입니다. |
 | `ANTIGRAVITY_MODEL_DISCOVERY_TIMEOUT_MS` | `60000` | ms, 1 이상 | `agy models`를 이용한 모델 목록 조회 제한 시간입니다. |
-| `EXECUTION_TAIL_SIZE` | `3` | DB message 수, 1 이상 | 실행 prompt에 rolling summary와 함께 넣는 직전 원문 메시지 수입니다. 대화 쌍이나 턴 수가 아닙니다. 현재 사용자 요청은 별도로 조립되므로 여기에 중복 포함하지 않습니다. |
+| `EXECUTION_TAIL_SIZE` | `3` | DB message 수, 1 이상 | legacy bootstrap/recovery context에 사용하는 직전 원문 메시지 수입니다. Provider native session이 READY인 same-provider normal turn에는 canonical history를 재구성하지 않습니다. |
 | `CODEX_CONCURRENCY` | `2` | 동시 job 수, 1 이상 | Codex provider 전역 동시 실행 수입니다. |
 | `ANTIGRAVITY_CONCURRENCY` | `2` | 동시 job 수, 1 이상 | Antigravity provider 전역 동시 실행 수입니다. |
 | `MODEL_REFRESH_INTERVAL_SECONDS` | `21600` | 초, 3600 이상 | Provider model catalog 자동 갱신 간격입니다. 기본값은 6시간입니다. |
@@ -83,7 +112,7 @@ Telegram `/settings`에 provider concurrency가 저장돼 있으면 DB 설정값
 
 | 키 | 코드 기본값 | 현재 Compose 값 | 설명 |
 | --- | --- | --- | --- |
-| `DATA_DIR` | 실행 위치의 `data` 또는 `/data` | `/data` | SQLite, backup, log, attachment 등 영속 데이터의 root입니다. 운영에서는 persistent volume이 필요합니다. |
+| `DATA_DIR` | 실행 위치의 `data` 또는 `/data` | `/data` | SQLite, backup, log, attachment, canonical memory 등 영속 데이터의 root입니다. 운영에서는 persistent volume이 필요합니다. |
 | `WORKSPACE_DIR` | 대부분 `/home/dev`, 일부 보조 기능 `/workspace` | `/home/dev` | Provider 실행과 full backup이 사용하는 개발 root입니다. 운영에서는 항상 명시합니다. |
 | `DEVELOPMENT_ROOT` | `/home/dev` | 미지정 | Preview가 프로젝트 경로를 탐색할 때 사용하는 개발 root입니다. 일반적으로 `WORKSPACE_DIR`와 같은 경로를 사용합니다. |
 | `REPOS_ROOT` | `/home/dev/workspace` | `/home/dev/workspace` | Git repository 생성·조회 기준 경로입니다. |
@@ -112,11 +141,11 @@ Telegram `/settings`에 provider concurrency가 저장돼 있으면 DB 설정값
 | `HEALTH_HOST` | `127.0.0.1` | Core | 내부 health server bind 주소입니다. |
 | `HEALTH_PORT` | `8787` | Core | 내부 health server port입니다. |
 
-현재 `docker-compose.yml`은 Preview 내부 token, Gateway 설정과 Access 검증 설정을 service에 명시적으로 전달한다.
+현재 `docker-compose.yml`은 Preview 내부 token, Gateway 설정과 Access 검증 설정을 service에 명시적으로 전달합니다.
 
-Backend API Preview는 Access 설정값만으로 공개 승인하지 않는다. 생성 hostname에서 실제 Cloudflare Access challenge를 확인하고, 환경 파일 격리 label까지 확인된 경우에만 Gateway route를 연다. 프로젝트 루트에 `.env.preview`가 있으면 그 파일만 container 환경 변수로 주입하고, 없으면 환경 변수 없이 정상 실행한다. `.env`, `.env.local`, monorepo의 다른 환경 파일은 container에서 마스킹한다. DB 종류와 변수 이름은 프로젝트가 정하며 Agent Hub가 MariaDB, MongoDB, Redis 등을 구분하지 않는다.
+Backend API Preview는 Access 설정값만으로 공개 승인하지 않습니다. 생성 hostname에서 실제 Cloudflare Access challenge를 확인하고, 환경 파일 격리 label까지 확인된 경우에만 Gateway route를 엽니다. 프로젝트 루트에 `.env.preview`가 있으면 그 파일만 container 환경 변수로 주입하고, 없으면 환경 변수 없이 정상 실행합니다. `.env`, `.env.local`, monorepo의 다른 환경 파일은 container에서 마스킹합니다. DB 종류와 변수 이름은 프로젝트가 정하며 Agent Hub가 MariaDB, MongoDB, Redis 등을 구분하지 않습니다.
 
-Phase 17 실제 서버 검증은 Telegram, Access, OpenAPI, 개발 MariaDB CRUD, 재시작, cleanup, 기존 Web Preview를 확인한 뒤 해당 `PHASE17_*_OK=1` evidence만 일회성 shell에 주입해 `npm run test:phase17:live`로 닫는다. 이 값들은 기능을 우회하는 설정이 아니라 수동 확인 결과를 누락 없이 모으는 release gate다.
+Phase 17 실제 서버 검증은 Telegram, Access, OpenAPI, 개발 MariaDB CRUD, 재시작, cleanup, 기존 Web Preview를 확인한 뒤 해당 `PHASE17_*_OK=1` evidence만 일회성 shell에 주입해 `npm run test:phase17:live`로 닫습니다. 이 값들은 기능을 우회하는 설정이 아니라 수동 확인 결과를 누락 없이 모으는 release gate입니다.
 
 ### 런타임이 관리하는 값
 
@@ -146,7 +175,19 @@ Antigravity는 container shell에서 `agy`를 대화형으로 실행하고 Googl
 agy
 ```
 
-로그인 이후 `/root/.codex`, `/root/.gemini`가 persistent mount되어 있어야 redeploy 뒤에도 CLI 정책이 허용하는 범위에서 인증 상태가 유지됩니다.
+로그인 이후 `/root/.codex`, `/root/.gemini`가 persistent mount되어 있어야 redeploy 뒤에도 CLI 정책이 허용하는 범위에서 인증 상태와 native conversation/rules가 유지됩니다.
+
+## Memory
+
+```text
+/memory
+/memory <내용>
+/memory add <내용>
+/memory set <전체 내용>
+/memory clear
+```
+
+`/memory`의 source of truth는 `/data/memory/MEMORY.md`입니다. mutation이 성공하면 Codex `AGENTS.md`와 Antigravity `GEMINI.md`의 Agent Hub managed block도 함께 동기화됩니다. Provider rules write가 부분 실패하면 가능한 범위에서 rollback하고 명령을 실패로 노출합니다.
 
 ## Git / GitHub
 
@@ -166,7 +207,7 @@ Private key를 예를 들어 다음 위치에 배치합니다.
 /data/ssh/keys/dev.key
 ```
 
-그 후 Telegram `/servers`에서 host alias를 등록하고 test합니다. 비밀번호 SSH는 V1 범위가 아니며 key authentication만 사용합니다.
+그 후 Telegram `/servers`에서 host alias를 등록하고 test합니다. 현재 운영 정책은 key authentication을 기준으로 합니다.
 
 ## Backup
 
@@ -224,18 +265,20 @@ Node.js 내장 `node:test`를 사용합니다.
 npm test
 ```
 
-Suite는 Telegram authorization, WAL-safe pre-migration snapshot, DB schema version guard, restart interruption recovery, redeploy persistence, Core backup restore, queue concurrency 등을 자동 검증합니다. 실제 Telegram/provider/Coolify 전체 lifecycle은 외부 credential과 runtime이 필요하므로 live verification으로 별도 확인합니다.
+Suite는 Telegram authorization, WAL-safe pre-migration snapshot, DB schema version guard, restart interruption recovery, redeploy persistence, Core backup restore, queue concurrency, Logical Session-first routing, Provider native session bridge, Provider Rules memory sync 등을 자동 검증합니다. 실제 Telegram/provider/Coolify 전체 lifecycle은 외부 credential과 runtime이 필요하므로 live verification으로 별도 확인합니다.
 
 ## Deploy / redeploy checklist
 
-1. `/data`, `/home/dev`, provider auth persistent mounts가 기존 storage를 가리키는지 확인
+1. `/data`, `/home/dev`, `/root/.codex`, `/root/.gemini` persistent mounts가 기존 storage를 가리키는지 확인
 2. Linux device namespace `/dev`를 일반 storage mount로 덮어쓰지 않았는지 확인
 3. 동일 Telegram Bot Token으로 polling하는 container가 하나뿐인지 확인
 4. deploy 후 container health가 `Healthy`인지 확인
-5. `/status`에서 Core health 확인
-6. `/profile`에서 READ_ONLY/WORKSPACE/FULL_ACCESS 설명이 `/home/dev` 기준인지 확인
-7. Codex와 Antigravity 각각 짧은 요청 1회 확인
-8. `/backup status`에서 최근 Core Backup 확인
+5. startup banner가 `Agent Hub Core V2 · 2.0.0`인지 확인
+6. `/status`에서 Core health 확인
+7. `/sessions`에서 Logical Session과 Provider native mapping 상태 확인
+8. Codex와 Antigravity 각각 짧은 continuation 요청 1회 확인
+9. `/memory` mirror 상태 확인
+10. `/backup status`에서 최근 Core Backup 확인
 
 Telegram에서 다음 오류가 계속 반복되면 같은 bot token을 사용하는 polling instance가 둘 이상 존재하는지 먼저 확인합니다.
 
