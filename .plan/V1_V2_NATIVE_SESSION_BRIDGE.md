@@ -2,7 +2,7 @@
 
 ## Status
 
-`LIVE_VALIDATION — native continuity 구현 완료, Logical Session-first UX 교정 중`
+`LIVE_VALIDATION — native continuity, Logical Session-first UX, Provider Rules memory 구현 완료; 실환경 재검증 중`
 
 이 문서는 Agent Hub Core가 V1의 **Agent Hub-owned context reconstruction**에서 V2의 **Provider-native session first** 구조로 넘어간 과정을 기록한다.
 
@@ -14,7 +14,7 @@
 PLANNED → IN_PROGRESS → LIVE_VALIDATION → DONE
 ```
 
-현재는 코드/CI 수준의 native-session 전환은 완료됐고, Telegram 실사용 검증에서 발견된 session UX 결함을 수정하는 단계다.
+현재는 코드/CI 수준의 native-session 전환과 Global Memory의 Provider-native Rules 전환이 완료됐고, Telegram 실사용 검증을 진행하는 단계다.
 
 ---
 
@@ -45,6 +45,15 @@ Agent Hub messages
 = transcript / audit / provider handoff / recovery evidence
 = same-provider normal turn의 primary memory가 아님
 
+Agent Hub Global Memory
+= 장기 사용자 규칙의 canonical source
+= /data/memory/MEMORY.md
+
+Provider Native Rules
+= Agent Hub Global Memory의 실행 mirror
+= Codex: $CODEX_HOME/AGENTS.md
+= Antigravity: ~/.gemini/GEMINI.md
+
 rolling_summary + recent canonical messages
 = cross-provider handoff / legacy bootstrap / recovery 용도
 = same-provider normal turn마다 재주입하지 않음
@@ -61,6 +70,11 @@ rolling_summary + recent canonical messages
 
 same-provider turn
 → 해당 Logical Session에 매핑된 native session을 resume한다.
+
+/memory
+→ Agent Hub canonical memory를 수정한다.
+→ Codex/Antigravity native Rules에 동일한 managed block을 동기화한다.
+→ normal prompt에는 memory block을 매번 붙이지 않는다.
 ```
 
 ---
@@ -78,7 +92,9 @@ Global Memory
 
 이 방식에서는 실제 Provider conversation에서 작업 1~10이 끝났어도 Agent Hub summary/recent tail에 4~10 완료 사실이 없으면 다음 요청에서 과거 단계로 회귀할 수 있다.
 
-Bridge의 핵심 목적은 이 문제를 없애는 것이다.
+또한 Global Memory를 매 turn prompt에 다시 붙이는 구조는 Provider가 자체적으로 제공하는 persistent Rules 기능과 역할이 중복됐다.
+
+Bridge의 핵심 목적은 conversation continuity와 global instructions 모두에서 **Provider native capability를 우선 사용**하도록 authority를 재배치하는 것이다.
 
 ---
 
@@ -169,6 +185,14 @@ READY
 
 `--ephemeral`은 사용하지 않는다.
 
+Global Rules mirror:
+
+```text
+$CODEX_HOME/AGENTS.md
+```
+
+Agent Hub는 파일 전체를 소유하지 않고 `AGENT_HUB_MEMORY_START/END` marker 사이만 관리한다.
+
 ---
 
 ## 5. Antigravity Live Contract
@@ -198,7 +222,13 @@ agy --print /resume --output-format json
 
 즉 Antigravity는 현재 headless 환경에서 native conversation 전체 목록 picker/list API를 제공하지 않는다.
 
-이 제약은 native create/resume 자체에는 문제가 없지만 `/sessions` UX 설계에 영향을 줬다.
+Global Rules mirror:
+
+```text
+~/.gemini/GEMINI.md
+```
+
+Agent Hub는 Codex와 동일한 canonical memory managed block을 이 파일에도 동기화한다.
 
 ---
 
@@ -209,11 +239,12 @@ agy --print /resume --output-format json
 Provider mapping이 READY면:
 
 ```text
-Global Memory (현재 정책 범위)
-+ current prompt
+current prompt
 ```
 
-과거 chat transcript를 매번 재주입하지 않는다.
+과거 chat transcript와 Global Memory를 매번 재주입하지 않는다.
+
+Global Memory는 Provider가 자체 Rules 파일에서 읽는다.
 
 Runtime log 예:
 
@@ -245,7 +276,51 @@ native ref가 아직 없는 경우에만 canonical context reconstruction을 1�
 Context:BOOTSTRAP
 ```
 
+이 bootstrap에도 Global Memory를 별도 prompt block으로 중복 주입하지 않는다. Provider-native Rules가 전역 규칙을 공급한다.
+
 첫 native ref가 bind된 뒤에는 같은 Provider에서 native continuation으로 전환한다.
+
+### Global Memory / Provider Rules
+
+Canonical source:
+
+```text
+/data/memory/MEMORY.md
+```
+
+Mirror targets:
+
+```text
+Codex       → $CODEX_HOME/AGENTS.md
+Antigravity → ~/.gemini/GEMINI.md
+```
+
+Managed block:
+
+```text
+<!-- AGENT_HUB_MEMORY_START -->
+<canonical memory>
+<!-- AGENT_HUB_MEMORY_END -->
+```
+
+원칙:
+
+- Provider rules 파일의 기존 사용자 작성 내용은 보존한다.
+- Agent Hub는 marker 사이만 교체한다.
+- `/memory`, `/memory add`, `/memory set`, `/memory clear` mutation마다 두 Provider에 동기화한다.
+- `/memory <내용>` shorthand는 add와 동일하게 동작한다.
+- Agent Hub 시작 시 canonical memory를 Provider Rules에 재동기화한다.
+- 한 Provider rules write가 실패하면 이미 변경한 다른 Provider target을 rollback하고 command를 실패로 노출한다.
+- `MemoryManager.getMemoryForPrompt()`는 V2 호환용으로 남아 있지만 `null`을 반환하며 normal prompt memory injection은 하지 않는다.
+
+Persistent volume:
+
+```text
+/mnt/storage/agent-hub-core/providers/codex  → /root/.codex
+/mnt/storage/agent-hub-core/providers/gemini → /root/.gemini
+```
+
+따라서 Rules mirror는 container redeploy 후에도 유지된다.
 
 ---
 
@@ -389,6 +464,8 @@ resume 실패
 
 Logical Session purge도 Provider native history를 자동 삭제하지 않는다.
 
+Memory sync 역시 silent partial success를 허용하지 않는다. 두 Provider 중 하나의 Rules write가 실패하면 command는 실패로 반환하며 가능한 범위에서 이미 변경된 target을 rollback한다.
+
 ---
 
 ## 11. Observability
@@ -401,6 +478,8 @@ native ref는 전체를 로그에 노출하지 않고 short ref로 남긴다.
 [Sessions] logical switch: user=<id> session=<logical-id> active_provider=codex mappings=codex:READY:01a061db…e1be,antigravity:READY:abc…xyz
 
 [NativeSession] handoff logical=<logical-id> codex(READY:<short>) -> antigravity(READY:<short>) messages=N
+
+[MemorySync] provider rules 동기화 완료: codex=<path>, antigravity=<path>
 ```
 
 이 로그의 목적:
@@ -409,6 +488,7 @@ native ref는 전체를 로그에 노출하지 않고 short ref로 남긴다.
 - Provider별 mapping state 확인
 - 예상 native ref가 실제로 유지되는지 확인
 - restart/handoff continuity 문제를 즉시 분류
+- Global Memory mirror 성공 여부 확인
 
 ---
 
@@ -444,6 +524,18 @@ native ref는 전체를 로그에 노출하지 않고 short ref로 남긴다.
 - cross-provider delta handoff
 - bootstrap fallback only when native ref 없음
 - same-provider normal-turn history reconstruction 제거
+- Global Memory per-turn injection 제거
+
+### Global Memory / Provider Rules
+
+- `/data/memory/MEMORY.md` canonical source 유지
+- Codex `AGENTS.md` mirror
+- Antigravity `GEMINI.md` mirror
+- managed marker 기반 기존 Rules 보존
+- startup sync
+- mutation sync
+- `/memory <내용>` shorthand
+- focused mirror/marker/prompt-omission tests
 
 ### Session UX
 
@@ -504,22 +596,49 @@ Trigger:
 Live validation test #14 failed and exposed ambiguous session authority.
 ```
 
-Changes:
-
-- `/sessions` no longer lists Codex provider-native threads as primary choices
-- `/sessions` always lists Agent Hub Logical Sessions
-- each Logical Session displays Provider native mapping state
-- native direct-adopt from stale `/sessions` buttons is blocked
-- session switch / provider handoff mapping logs added
-- focused Logical Session UI regression tests added
-
-Status:
+PR:
 
 ```text
-Implementation in progress
-CI pending
-Live re-validation pending
+#9 fix: make /sessions logical-session first
 ```
+
+Main SHA:
+
+```text
+f66003370257b12cc02c83bdcf25ccf368c31893
+```
+
+Regression: SUCCESS.
+
+### Provider-native Rules memory
+
+Decision:
+
+```text
+Agent Hub Global Memory = canonical source
+Provider Rules = execution mirrors
+Per-turn memory prompt injection = removed
+```
+
+PR:
+
+```text
+#10 feat: mirror /memory into provider native rules
+```
+
+Code/test HEAD before documentation commit:
+
+```text
+a0ed0c684b52a05ea8b9777c297e1afc6db2f405
+```
+
+GitHub Actions Phase 11 Regression run #138:
+
+```text
+Run regression tests = SUCCESS
+```
+
+Live validation: pending redeploy.
 
 ---
 
@@ -560,6 +679,26 @@ Test #14 = INVALIDATED BY SESSION UX AMBIGUITY
 ```
 
 It must be repeated after Logical Session-first `/sessions` is deployed.
+
+### Clean-state revalidation start
+
+User cleared Agent Hub SQLite and Provider native conversation stores, then restarted validation from a clean environment.
+
+Observed after `/new` before first prompt:
+
+```text
+CODEX: UNBOUND
+```
+
+After first Codex message:
+
+```text
+CODEX: READY · <thread-id>
+```
+
+This matches lazy native binding design.
+
+Provider Rules memory live validation is still pending deployment of PR #10.
 
 ---
 
@@ -640,7 +779,25 @@ same provider native refs
 native continuation after restart
 ```
 
-### E. Real development workflow
+### E. Provider Rules memory
+
+```text
+/memory 테스트 메모리 999
+```
+
+Expected:
+
+```text
+/data/memory/MEMORY.md contains 999
+/root/.codex/AGENTS.md managed block contains same canonical memory
+/root/.gemini/GEMINI.md managed block contains same canonical memory
+```
+
+Then create a fresh Codex native session and a fresh Antigravity native session and ask what global memory/rules they received. The value must be available without Agent Hub prepending a Global Memory prompt block every turn.
+
+After redeploy, startup sync must retain/repair both mirrors from canonical memory.
+
+### F. Real development workflow
 
 5~10 turns of actual implementation work must continue without reverting to old completed steps due to Agent Hub summary truncation.
 
@@ -660,10 +817,11 @@ Bridge is `DONE` only when all conditions are satisfied:
 8. cross-provider return uses delta handoff rather than rebuilding every turn.
 9. restart/redeploy preserves Logical Session → Provider native mapping continuity.
 10. missing native sessions do not silently fall back to a new blank session.
-11. full regression CI succeeds.
-12. mandatory Telegram live scenarios succeed.
-13. this architecture record is updated with final live results.
-14. Status is changed to `DONE`.
+11. `/memory` canonical content is mirrored identically into Codex/Antigravity native Rules and is not injected per turn.
+12. full regression CI succeeds.
+13. mandatory Telegram live scenarios succeed.
+14. this architecture record is updated with final live results.
+15. Status is changed to `DONE`.
 
 ---
 
@@ -691,24 +849,41 @@ Bridge 검증 전에는 version branding만 먼저 바꾸지 않는다.
 - provider-switch delta handoff
 - lazy native binding
 - native identity persistence in DB
+- Agent Hub Global Memory = canonical long-term rules source
 
 ### Changed after live validation
 
-Initial idea:
+Initial session idea:
 
 ```text
 /sessions = current Provider native session picker
 ```
 
-Final decision:
+Final session decision:
 
 ```text
 /sessions = Agent Hub Logical Session picker
 Provider native sessions = internal mappings under that Logical Session
 ```
 
+Initial memory idea:
+
+```text
+Global Memory + current prompt
+→ every Provider turn
+```
+
+Final memory decision:
+
+```text
+Agent Hub MEMORY.md
+→ Codex AGENTS.md managed mirror
+→ Antigravity GEMINI.md managed mirror
+→ Provider loads Rules natively
+```
+
 Reason:
 
-> Provider-native memory should be invisible infrastructure for continuity, not the user-facing identity of an Agent Hub conversation.
+> Provider-native memory and rules should be invisible infrastructure for continuity; Agent Hub owns the user's logical work unit and canonical synchronization data, not every reconstructed model prompt.
 
-이 변경은 Bridge의 원칙을 약화한 것이 아니라, **Logical Session과 Provider Native Session의 책임을 더 정확히 분리한 것**이다.
+이 변경은 Bridge의 원칙을 약화한 것이 아니라, **Logical Session / Provider Native Session / Global Rules의 책임을 더 정확히 분리한 것**이다.
