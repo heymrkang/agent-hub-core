@@ -16,6 +16,7 @@ import { PreviewSecurityPolicy } from '../../src/preview/preview-security-policy
 const repositoryRoot = path.resolve('.');
 const fixturesRoot = path.join(repositoryRoot, 'tests', 'fixtures');
 const migrationRoot = path.join(repositoryRoot, 'src', 'database', 'migrations');
+const previewNodeImage = process.env.PREVIEW_NODE_IMAGE || 'node:22-bookworm-slim';
 
 function dockerAvailable() {
   try {
@@ -35,6 +36,18 @@ function copyFixture(name, target) {
   // different from the checkout owner. The fixture is intentionally disposable,
   // so make only its project root writable for npm ci/node_modules creation.
   fs.chmodSync(target, 0o777);
+}
+
+function restoreFixtureCleanupPermissions(target) {
+  if (!fs.existsSync(target)) return;
+  try {
+    execFileSync('docker', [
+      'run', '--rm',
+      '--mount', `type=bind,source=${path.resolve(target)},target=/cleanup`,
+      previewNodeImage,
+      'sh', '-c', 'chmod -R a+rwX /cleanup'
+    ], { stdio: 'ignore', timeout: 30_000 });
+  } catch {}
 }
 
 function createRegistry() {
@@ -190,6 +203,7 @@ test('NestJS Backend Preview Docker lifecycle과 Core 재시작 복구', {
       try { await runtime.remove(containerId, { force: true }); } catch {}
     }
     db.close();
+    restoreFixtureCleanupPermissions(temporaryRoot);
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }
 });
@@ -274,6 +288,7 @@ test('NestJS Backend Preview가 격리된 MariaDB에 CRUD를 반영하고 재시
     }
     try { execFileSync('docker', ['rm', '--force', databaseContainer], { stdio: 'ignore', timeout: 10_000 }); } catch {}
     db.close();
+    restoreFixtureCleanupPermissions(temporaryRoot);
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }
 });
