@@ -101,14 +101,15 @@ class QueueManager {
       const providerSession = ContextManager.getProviderSession(job.session_id, providerName);
       const result = await adapter.executePrompt({ prompt, model: job.model, reasoningEffort: job.reasoningEffort, sessionId: job.session_id, nativeSessionRef: providerSession?.native_session_ref || null, profile, signal: abortController.signal });
 
-      // Native identity is persisted as soon as the Provider turn succeeds. The sync cursor is intentionally
-      // NOT advanced here: the assistant canonical message is stored by the caller after this promise resolves.
-      // Advancing to the pre-response user message would make cross-provider delta handoff one message stale.
+      // last_synced_message_id is the canonical user-turn boundary successfully submitted to this Provider.
+      // The following same-provider assistant row already exists inside the Provider native thread and is
+      // intentionally ignored by ContextAssembler's cross-provider delta selector on the next turn.
+      const canonical = ContextManager.buildContextPackage(job.session_id);
       ContextManager.upsertProviderSession({
         sessionId: job.session_id,
         provider: providerName,
         nativeSessionRef: result.nativeSessionRef || null,
-        lastSyncedMessageId: null
+        lastSyncedMessageId: canonical.latestMessageId
       });
 
       const durationMs = Date.now() - startTime;
