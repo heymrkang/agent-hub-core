@@ -33,6 +33,24 @@ import { handlePreviewCommand, handlePreviewCallback } from './telegram/commands
 import { isStealthMode } from './telegram/renderer/ui-theme.js';
 import { installTelegramTransport, safeErrorMessage } from './telegram/transport.js';
 
+export async function deliverTelegramText(bot, chatId, text, options = {}, deferKey = null) {
+  const chunks = splitMessage(String(text ?? '')).filter((chunk) => chunk && chunk.trim());
+  if (!chunks.length) chunks.push('');
+
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunkDeferKey = deferKey ? `${deferKey}:${index}` : null;
+    await bot.sendMessage(chatId, chunks[index], options).catch((error) => {
+      const transport = bot.__telegramTransport;
+      if (chunkDeferKey && transport?.isRateLimitedError(error)) {
+        transport.defer(chunkDeferKey, () => bot.sendMessage(chatId, chunks[index], options));
+      }
+      throw error;
+    });
+  }
+
+  return true;
+}
+
 export function initTelegramBot() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error('TELEGRAM_BOT_TOKEN 환경변수가 설정되지 않았습니다.');
@@ -46,13 +64,9 @@ export function initTelegramBot() {
 
   const deliver = async (chatId, text, options = {}, deferKey = null) => {
     try {
-      await bot.sendMessage(chatId, text, options);
+      await deliverTelegramText(bot, chatId, text, options, deferKey);
       return true;
     } catch (error) {
-      const transport = bot.__telegramTransport;
-      if (deferKey && transport?.isRateLimitedError(error)) {
-        transport.defer(deferKey, () => bot.sendMessage(chatId, text, options));
-      }
       console.warn(`[Telegram Delivery] ${safeErrorMessage(error)}`);
       return false;
     }
@@ -117,10 +131,7 @@ export function initTelegramBot() {
       if (currentSession?.id !== activeSession.id) NotificationManager.backgroundSessionCompleted(userId, activeSession.title).catch(() => {});
 
       if (response && String(response).trim()) {
-        const chunks = splitMessage(response).filter((chunk) => chunk && chunk.trim());
-        for (let index = 0; index < chunks.length; index += 1) {
-          await deliver(chatId, chunks[index], { parse_mode: 'Markdown' }, `job-response:${jobId || activeSession.id}:${index}`);
-        }
+        await deliver(chatId, response, { parse_mode: 'Markdown' }, `job-response:${jobId || activeSession.id}`);
       }
     } catch (error) {
       console.error(`[Prompt Pipeline Error] ${safeErrorMessage(error)}`);
