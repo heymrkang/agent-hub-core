@@ -5,6 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import { ProviderAdapter } from '../provider-adapter.js';
 import { runtimeConfig } from '../../config/runtime-config.js';
+import { parseAntigravityExecutionResponse } from './execution-response.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -28,7 +29,35 @@ export class AntigravityAdapter extends ProviderAdapter {
     return parseAntigravityUsage(payload);
   }
   buildArgs({ prompt, model, reasoningEffort = 'default', nativeSessionRef, profile = 'WORKSPACE' }) { const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE'; const profileGuard = normalizedProfile === 'READ_ONLY' ? `[Execution Profile: READ_ONLY] ${this.workspaceDir}를 포함해 파일/설정/외부 시스템을 변경하지 말고 읽기와 분석만 수행하세요.` : normalizedProfile === 'WORKSPACE' ? `[Execution Profile: WORKSPACE] 파일 변경은 ${this.workspaceDir} 아래로 제한하세요. SSH/Docker 등 외부 인프라 변경은 수행하지 마세요.` : '[Execution Profile: FULL_ACCESS] 사용자가 요청한 범위에서 인프라 도구 사용이 허용됩니다.'; const args = ['--print', `${profileGuard}\n\n${prompt}`, '--output-format', 'json']; if (reasoningEffort && reasoningEffort !== 'default') args.push('--effort', reasoningEffort); if (normalizedProfile !== 'READ_ONLY') args.push('--dangerously-skip-permissions'); if (model && model !== 'default') args.push('--model', model); if (nativeSessionRef) args.push('--conversation', nativeSessionRef); return args; }
-  async executePrompt(options = {}) { const { prompt, model, reasoningEffort = 'default', nativeSessionRef, profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options; return new Promise((resolve, reject) => { const args = this.buildArgs({ prompt, model, reasoningEffort, nativeSessionRef, profile }); const child = spawn('agy', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] }); let stdout = '', stderr = '', isFinished = false; const timer = setTimeout(() => { if (!isFinished) { isFinished = true; child.kill('SIGKILL'); reject(new Error(`Antigravity 실행 타임아웃 (${timeoutMs / 1000}초 초과)`)); } }, timeoutMs); if (signal) signal.addEventListener('abort', () => { if (!isFinished) { isFinished = true; clearTimeout(timer); child.kill('SIGKILL'); reject(new Error('Antigravity 작업이 사용자에 의해 중단되었습니다.')); } }, { once: true }); child.stdout.on('data', c => { stdout += c.toString(); }); child.stderr.on('data', c => { stderr += c.toString(); }); child.on('error', err => { if (isFinished) return; isFinished = true; clearTimeout(timer); reject(new Error(`Antigravity 프로세스 시작 실패: ${err.message}`)); }); child.on('close', code => { if (isFinished) return; isFinished = true; clearTimeout(timer); const raw = stdout.trim(), diagnostic = stderr.trim(); if (code !== 0) return reject(new Error(`Antigravity 실행 실패 (Exit code: ${code}):\n${diagnostic || raw || `Exit code: ${code}`}`)); try { const parsed = JSON.parse(raw); if (parsed.status && parsed.status !== 'SUCCESS') throw new Error(parsed.error || `status=${parsed.status}`); resolve({ response: parsed.response ?? parsed.result ?? '', nativeSessionRef: parsed.conversation_id ?? parsed.conversationId ?? parsed.session_id ?? parsed.sessionId ?? nativeSessionRef ?? null, usage: parsed.usage ?? null }); } catch (error) { if (error instanceof SyntaxError) return resolve({ response: raw || 'Antigravity로부터 빈 응답을 받았습니다.', nativeSessionRef: nativeSessionRef ?? null }); reject(new Error(`Antigravity 응답 상태 오류: ${error.message}`)); } }); }); }
+  async executePrompt(options = {}) {
+    const { prompt, model, reasoningEffort = 'default', nativeSessionRef = null, profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
+    return new Promise((resolve, reject) => {
+      const args = this.buildArgs({ prompt, model, reasoningEffort, nativeSessionRef, profile });
+      const child = spawn('agy', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
+      let stdout = '', stderr = '', isFinished = false;
+      const timer = setTimeout(() => { if (!isFinished) { isFinished = true; child.kill('SIGKILL'); reject(new Error(`Antigravity 실행 타임아웃 (${timeoutMs / 1000}초 초과)`)); } }, timeoutMs);
+      if (signal) signal.addEventListener('abort', () => { if (!isFinished) { isFinished = true; clearTimeout(timer); child.kill('SIGKILL'); reject(new Error('Antigravity 작업이 사용자에 의해 중단되었습니다.')); } }, { once: true });
+      child.stdout.on('data', c => { stdout += c.toString(); });
+      child.stderr.on('data', c => { stderr += c.toString(); });
+      child.on('error', err => { if (isFinished) return; isFinished = true; clearTimeout(timer); reject(new Error(`Antigravity 프로세스 시작 실패: ${err.message}`)); });
+      child.on('close', code => {
+        if (isFinished) return;
+        isFinished = true;
+        clearTimeout(timer);
+        const raw = stdout.trim(), diagnostic = stderr.trim();
+        if (code !== 0) {
+          const error = new Error(`Antigravity 실행 실패 (Exit code: ${code}):\n${diagnostic || raw || `Exit code: ${code}`}`);
+          if (nativeSessionRef) error.code = 'ANTIGRAVITY_NATIVE_RESUME_FAILED';
+          return reject(error);
+        }
+        try {
+          resolve(parseAntigravityExecutionResponse(raw, { nativeSessionRef }));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+  }
 }
 
 export function parseAntigravityUsage(payload, fetchedAt = new Date().toISOString()) {
