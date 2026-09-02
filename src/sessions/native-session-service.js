@@ -8,14 +8,44 @@ function normalizeProvider(provider) {
   return value;
 }
 
+function mappedRowToNativeSession(row) {
+  return {
+    nativeSessionRef: row.native_session_ref,
+    title: row.logical_title || `${row.provider} native session`,
+    preview: row.logical_title || '',
+    cwd: null,
+    model: row.logical_model || null,
+    reasoningEffort: row.logical_reasoning_effort || null,
+    source: 'agent-hub-mapping',
+    status: row.state,
+    createdAt: row.bound_at || null,
+    updatedAt: row.last_verified_at || row.updated_at || row.logical_updated_at || null,
+    mappedLogicalSessionId: row.session_id,
+    mappedLogicalTitle: row.logical_title || null,
+    mappedLogicalStatus: row.logical_status || null,
+    mappedUserId: row.user_id
+  };
+}
+
 export class NativeSessionService {
-  static async listForProvider({ provider, cursor = null, limit = 20 }) {
+  static async listForProvider({ userId = null, provider, cursor = null, limit = 20 }) {
     const pName = normalizeProvider(provider);
     const adapter = providerManager.getAdapter(pName);
+
     if (typeof adapter.listNativeSessions !== 'function') {
-      const error = new Error(`${pName} Provider는 native session 목록 조회를 지원하지 않습니다.`);
-      error.code = 'NATIVE_SESSION_LIST_UNSUPPORTED';
-      throw error;
+      if (userId === null || userId === undefined) {
+        const error = new Error(`${pName} Provider는 native session 목록 조회를 지원하지 않습니다.`);
+        error.code = 'NATIVE_SESSION_LIST_UNSUPPORTED';
+        throw error;
+      }
+      const rows = ProviderSessionRepository.listReadyByUserProvider(userId, pName, limit);
+      return {
+        provider: pName,
+        sessions: rows.map(mappedRowToNativeSession),
+        nextCursor: null,
+        source: 'mapping-fallback',
+        listCapability: 'MAPPED_ONLY'
+      };
     }
 
     const result = await adapter.listNativeSessions({ cursor, limit });
@@ -29,7 +59,13 @@ export class NativeSessionService {
         mappedUserId: mapping?.user_id ?? null
       };
     });
-    return { provider: pName, sessions, nextCursor: result?.nextCursor || null };
+    return {
+      provider: pName,
+      sessions,
+      nextCursor: result?.nextCursor || null,
+      source: 'provider-native',
+      listCapability: 'FULL'
+    };
   }
 
   static adopt({ userId, provider, nativeSession, profile = 'WORKSPACE' }) {
