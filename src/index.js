@@ -17,7 +17,7 @@ import { safeErrorMessage } from './telegram/transport.js';
 import { MemoryManager } from './memory/memory-manager.js';
 
 console.log('==========================================');
-console.log('            Agent Hub Core V1');
+console.log('          Agent Hub Core V2 · 2.0.0');
 console.log('==========================================');
 
 process.on('uncaughtException', (err) => {
@@ -66,7 +66,7 @@ try {
   }
   const ownerId = String(process.env.TELEGRAM_ADMIN_USER_ID || process.env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map((v) => v.trim()).find(Boolean) || null;
   SystemJobs.start(ownerId);
-  Logger.info('app', 'startup_complete', { schema: db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get()?.v || 0 });
+  Logger.info('app', 'startup_complete', { schema: db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get()?.v || 0, version: '2.0.0' });
 } catch (error) {
   console.error(`[Fatal Init Error] ${safeErrorMessage(error)}`);
   process.exit(1);
