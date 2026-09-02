@@ -24,20 +24,21 @@ async function renderPreview(preview) {
   return rendered;
 }
 
-test('Preview start 인자에서 절대경로와 수동 port를 파싱한다', () => {
-  assert.deepEqual(parsePreviewStartArgs('/home/dev/workspace/my app --port 4173'), {
-    workspacePath: '/home/dev/workspace/my app',
+test('Preview start 인자에서 레포명과 수동 port를 파싱한다', () => {
+  assert.deepEqual(parsePreviewStartArgs('my-app --port 4173'), {
+    repositoryName: 'my-app',
     manualPort: 4173
   });
-  assert.deepEqual(parsePreviewStartArgs('/home/dev/workspace/app'), {
-    workspacePath: '/home/dev/workspace/app',
+  assert.deepEqual(parsePreviewStartArgs('app.repo'), {
+    repositoryName: 'app.repo',
     manualPort: null
   });
 });
 
-test('Preview start는 상대경로와 잘못된 port를 거부한다', () => {
-  assert.throws(() => parsePreviewStartArgs('workspace/app'), /절대경로/);
-  assert.throws(() => parsePreviewStartArgs('/home/dev/app --port 70000'), /1~65535/);
+test('Preview start는 경로 입력과 잘못된 port를 거부한다', () => {
+  assert.throws(() => parsePreviewStartArgs('/home/dev/workspace/app'), /레포명/);
+  assert.throws(() => parsePreviewStartArgs('workspace/app'), /레포명/);
+  assert.throws(() => parsePreviewStartArgs('repo-name --port 70000'), /1~65535/);
   assert.throws(() => parsePreviewStartArgs(''), /사용법/);
 });
 

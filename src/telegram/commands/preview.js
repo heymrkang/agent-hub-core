@@ -2,6 +2,7 @@ import { ACTIVE_PREVIEW_STATUSES } from '../../preview/preview-registry.js';
 import { getPreviewService } from '../../preview/preview-service.js';
 import { SessionManager } from '../../sessions/session-manager.js';
 import { getSettingsManager } from '../../settings/settings-manager.js';
+import { resolveRepositoryPath } from '../../git/git-manager.js';
 import { isStealthMode } from '../renderer/ui-theme.js';
 
 function escapeMarkdown(value) { return String(value ?? '').replace(/([_*`\[])/g, '\\$1'); }
@@ -31,13 +32,14 @@ export function formatDetectedRuntime(detectedRuntime) {
 
 export function parsePreviewStartArgs(raw) {
   const value = String(raw || '').trim();
-  if (!value) throw new Error('사용법: /preview start <절대경로> [--port N]');
+  if (!value) throw new Error('사용법: /preview start <레포명> [--port N]');
   const match = value.match(/^(.*?)(?:\s+--port\s+(\d+))?$/);
-  const workspacePath = match?.[1]?.trim();
+  const repositoryName = match?.[1]?.trim();
   const manualPort = match?.[2] === undefined ? null : Number(match[2]);
-  if (!workspacePath?.startsWith('/')) throw new Error('Workspace 절대경로가 필요합니다.');
+  if (!repositoryName) throw new Error('레포명이 필요합니다.');
+  if (!/^[A-Za-z0-9._-]{1,120}$/.test(repositoryName)) throw new Error('레포명은 영문, 숫자, 점, 밑줄, 대시만 사용할 수 있습니다.');
   if (manualPort !== null && (!Number.isInteger(manualPort) || manualPort < 1 || manualPort > 65535)) throw new Error('port는 1~65535 범위여야 합니다.');
-  return { workspacePath, manualPort };
+  return { repositoryName, manualPort };
 }
 
 function uptime(preview) {
@@ -67,7 +69,7 @@ async function renderList(bot, source, services) {
   }).join('\n\n') : '실행 중인 Preview 없음.';
   const keyboard = active.map((item) => [{ text: `${item.status === 'RUNNING' ? '●' : '○'} ${item.project_name}`, callback_data: `preview_detail:${item.id}` }]);
   keyboard.push([{ text: '새로고침', callback_data: 'preview_list' }]);
-  return sendOrEdit(bot, source, `${isStealthMode() ? '■' : '🖥'} **Preview · ${active.length}/${max}**\n\n${lines}\n\n시작: \`/preview start /home/dev/workspace/프로젝트\``, keyboard);
+  return sendOrEdit(bot, source, `${isStealthMode() ? '■' : '🖥'} **Preview · ${active.length}/${max}**\n\n${lines}\n\n시작: \`/preview start 레포명\``, keyboard);
 }
 
 async function renderDetail(bot, source, preview, services) {
@@ -109,9 +111,10 @@ export async function handlePreviewCommand(bot, msg, rawArgs = '', dependencies 
     const services = dependencies || getPreviewService();
     const args = String(rawArgs || '').trim();
     if (!args) return renderList(bot, msg, services);
-    if (!args.startsWith('start ')) throw new Error('지원 명령: /preview, /preview start <절대경로> [--port N]');
-    const { workspacePath, manualPort } = parsePreviewStartArgs(args.slice(6));
+    if (!args.startsWith('start ')) throw new Error('지원 명령: /preview, /preview start <레포명> [--port N]');
+    const { repositoryName, manualPort } = parsePreviewStartArgs(args.slice(6));
     const session = SessionManager.getActiveSession(msg.from.id);
+    const workspacePath = resolveRepositoryPath(repositoryName);
     const detectedRuntime = services.detector.detect({ workspacePath });
     await bot.sendMessage(msg.chat.id, `${isStealthMode() ? '>' : '⏳'} Preview 시작 중: \`${escapeMarkdown(detectedRuntime.projectName)}\`\n${formatDetectedRuntime(detectedRuntime)}`, { parse_mode: 'Markdown' });
     const preview = await services.manager.start({ sessionId: session.id, detectedRuntime, manualPort });

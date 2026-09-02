@@ -256,6 +256,8 @@ tests/fixtures/
 
 각 단계는 자동 테스트 결과와 함께 Telegram 화면, 외부 HTTP status, redacted runtime log를 검증 증거로 남긴다. 수동 확인에만 의존하지 않으며 재현된 동작은 바로 integration/E2E test로 고정한다.
 
+`/preview start`는 절대경로가 아니라 `/home/dev/workspace` 아래 Git repository 이름으로 호출하는 것을 기준으로 유지한다. 수동 검증용 샘플 앱도 같은 root 아래 독립 repo로 두고, 자동 테스트만 저장소 내부 fixture를 임시 workspace로 복사해 사용한다.
+
 ### 7.3 핵심 시나리오 판정표
 
 | 시나리오 | Preview 상태 | OpenAPI capability | 필수 확인 |

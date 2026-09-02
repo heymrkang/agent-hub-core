@@ -114,7 +114,7 @@ Telegram `/settings`에 provider concurrency가 저장돼 있으면 DB 설정값
 | --- | --- | --- | --- |
 | `DATA_DIR` | 실행 위치의 `data` 또는 `/data` | `/data` | SQLite, backup, log, attachment, canonical memory 등 영속 데이터의 root입니다. 운영에서는 persistent volume이 필요합니다. |
 | `WORKSPACE_DIR` | 대부분 `/home/dev`, 일부 보조 기능 `/workspace` | `/home/dev` | Provider 실행과 full backup이 사용하는 개발 root입니다. 운영에서는 항상 명시합니다. |
-| `DEVELOPMENT_ROOT` | `/home/dev` | 미지정 | Preview가 프로젝트 경로를 탐색할 때 사용하는 개발 root입니다. 일반적으로 `WORKSPACE_DIR`와 같은 경로를 사용합니다. |
+| `DEVELOPMENT_ROOT` | `/home/dev/workspace` | 미지정 | Preview가 프로젝트 경로를 탐색할 때 사용하는 Git repository root입니다. 일반적으로 `REPOS_ROOT`와 같은 경로를 사용합니다. |
 | `REPOS_ROOT` | `/home/dev/workspace` | `/home/dev/workspace` | Git repository 생성·조회 기준 경로입니다. |
 | `SSH_DATA_DIR` | `/data/ssh` | `/data/ssh` | SSH host registry와 key directory의 root입니다. |
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | 미지정 | 연결할 Docker daemon socket입니다. 미지정 시 같은 기본 socket을 사용합니다. |

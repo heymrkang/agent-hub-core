@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PreviewFramework, PreviewRuntimeType } from './preview-contract.js';
 
-const DEFAULT_DEVELOPMENT_ROOT = '/home/dev';
+const DEFAULT_DEVELOPMENT_ROOT = '/home/dev/workspace';
 const PACKAGE_MANAGERS = Object.freeze([
   { name: 'pnpm', lockfile: 'pnpm-lock.yaml', executable: 'pnpm' },
   { name: 'npm', lockfile: 'package-lock.json', executable: 'npm' },
@@ -143,7 +143,7 @@ export class PreviewRuntimeDetector {
   detect({ workspacePath, commandOverride } = {}) {
     const projectPath = resolveDirectory(workspacePath, 'Workspace');
     if (!isWithin(this.developmentRoot, projectPath)) {
-      throw new RuntimeDetectionError('WORKSPACE_OUTSIDE_ROOT', `Workspace는 ${this.developmentRoot} 내부여야 합니다.`);
+      throw new RuntimeDetectionError('WORKSPACE_OUTSIDE_ROOT', `Workspace는 ${this.developmentRoot} 아래의 Git repository여야 합니다.`);
     }
 
     const manifest = readPackageJson(projectPath);

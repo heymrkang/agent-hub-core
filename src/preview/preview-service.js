@@ -1,4 +1,5 @@
 import { getDb } from '../database/index.js';
+import { REPOS_ROOT } from '../git/git-manager.js';
 import { getSettingsManager } from '../settings/settings-manager.js';
 import { PreviewManager } from './preview-manager.js';
 import { PreviewRegistry } from './preview-registry.js';
@@ -26,7 +27,7 @@ export function getPreviewService() {
       manager,
       idleTimeoutHours: () => settings.get('preview_idle_timeout_hours')
     }),
-    detector: new PreviewRuntimeDetector({ developmentRoot: process.env.DEVELOPMENT_ROOT || '/home/dev' })
+    detector: new PreviewRuntimeDetector({ developmentRoot: process.env.DEVELOPMENT_ROOT || REPOS_ROOT })
   };
   return service;
 }
