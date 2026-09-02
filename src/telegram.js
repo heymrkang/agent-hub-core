@@ -19,7 +19,7 @@ import { handleStopCommand, handleJobCancelCallback } from './telegram/commands/
 import { handleQueueCommand } from './telegram/commands/queue.js';
 import { handleCompactCommand } from './telegram/commands/compact.js';
 import { handleFilesCommand, handleDownloadCommand } from './telegram/commands/files.js';
-import { handleMemoryCommand } from './memory/memory-manager.js';
+import { handleMemoryCommand } from './telegram/commands/memory.js';
 import { handleScheduleCommand, handleScheduleCallback } from './telegram/commands/schedule.js';
 import { handleServersCommand, handleServersCallback } from './telegram/commands/servers.js';
 import { handleProfileCommand, handleProfileCallback } from './telegram/commands/profile.js';
