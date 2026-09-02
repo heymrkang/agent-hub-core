@@ -27,6 +27,22 @@ function joinPromptParts(parts) {
   return parts.filter((part) => part && String(part).trim()).join('\n\n');
 }
 
+export function selectCrossProviderDelta(messages, provider) {
+  const pName = String(provider || '').toLowerCase();
+  const rows = Array.isArray(messages) ? messages : [];
+  const firstExternalAssistant = rows.findIndex((message) => {
+    if (message?.role !== 'assistant' || !message?.provider) return false;
+    return String(message.provider).toLowerCase() !== pName;
+  });
+  if (firstExternalAssistant < 0) return [];
+
+  // Include the user request immediately preceding the first external Provider answer.
+  // Leading assistant output from this same native Provider is already in its own thread and must not be duplicated.
+  let start = firstExternalAssistant;
+  if (start > 0 && rows[start - 1]?.role === 'user') start -= 1;
+  return rows.slice(start);
+}
+
 export class ContextAssembler {
   static assemble({ sessionId, userMessageId = null, memoryBlock = null, currentPrompt }) {
     const context = ContextManager.buildExecutionContext(sessionId, {
@@ -74,8 +90,8 @@ export class ContextAssembler {
   /**
    * V2 provider-native execution router.
    * - UNBOUND: one-time V1 canonical bootstrap to create/adopt a native session.
-   * - READY + no missed canonical messages: current prompt only (plus global memory), native session owns history.
-   * - READY + missed messages since this provider's cursor: one-time cross-provider delta, then current prompt.
+   * - READY + same-provider continuation: current prompt only (plus global memory), native session owns history.
+   * - READY + another Provider answered since this provider's cursor: one-time cross-provider delta, then current prompt.
    */
   static async prepareForProvider({ session, userMessageId = null, memoryBlock = null, currentPrompt }) {
     const provider = String(session.active_provider || '').toLowerCase();
@@ -91,12 +107,13 @@ export class ContextAssembler {
     let missedMessages = [];
     if (providerSession.last_synced_message_id) {
       const delta = ContextManager.buildContextPackage(session.id, providerSession.last_synced_message_id);
-      missedMessages = delta.messages.filter((message) => message.id !== userMessageId);
+      const priorRows = delta.messages.filter((message) => message.id !== userMessageId);
+      missedMessages = selectCrossProviderDelta(priorRows, provider);
     }
 
     if (missedMessages.length > 0) {
       const history = renderHistory(missedMessages);
-      parts.push(`[Provider Handoff Delta]\n다음 기록은 이 Provider native session이 마지막으로 동기화된 이후 다른 Provider 또는 Agent Hub에서 진행된 대화입니다. 이 내용을 현재 native conversation에 반영한 뒤 사용자의 새 요청을 이어서 처리하세요.\n\n${history}`);
+      parts.push(`[Provider Handoff Delta]\n다음 기록은 이 Provider native session이 마지막으로 처리한 turn 이후 다른 Provider에서 진행된 대화입니다. 이 내용을 현재 native conversation에 반영한 뒤 사용자의 새 요청을 이어서 처리하세요.\n\n${history}`);
     }
 
     parts.push(currentPrompt);
