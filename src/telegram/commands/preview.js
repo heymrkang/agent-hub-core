@@ -63,9 +63,8 @@ async function renderList(bot, source, services) {
   const active = services.registry.list({ userId: source.from?.id, limit: 30 }).filter((item) => ACTIVE_PREVIEW_STATUSES.includes(item.status));
   const max = getSettingsManager().get('preview_max_concurrent');
   const lines = active.length ? active.map((item) => {
-    const external = item.runtime_type !== 'BACKEND_API' || item.access_verified;
     const kind = item.runtime_type === 'BACKEND_API' ? `API · ${escapeMarkdown(({ NESTJS: 'NestJS' })[item.framework] || item.framework || 'Backend')}` : 'Web';
-    return `• **${escapeMarkdown(item.project_name)}** · \`${item.status}\` · ${kind}\n  ${external ? `\`${item.public_hostname}\`` : '`외부 URL 차단됨`'}`;
+    return `• **${escapeMarkdown(item.project_name)}** · \`${item.status}\` · ${kind}\n  \`${item.public_hostname}\``;
   }).join('\n\n') : '실행 중인 Preview 없음.';
   const keyboard = active.map((item) => [{ text: `${item.status === 'RUNNING' ? '●' : '○'} ${item.project_name}`, callback_data: `preview_detail:${item.id}` }]);
   keyboard.push([{ text: '새로고침', callback_data: 'preview_list' }]);
@@ -75,9 +74,8 @@ async function renderList(bot, source, services) {
 async function renderDetail(bot, source, preview, services) {
   const running = preview.status === 'RUNNING';
   const backendApi = preview.runtime_type === 'BACKEND_API';
-  const external = preview.runtime_type !== 'BACKEND_API' || preview.access_verified;
   const failure = preview.failure_reason ? `\n오류: ${escapeMarkdown(preview.failure_reason).slice(0, 500)}` : '';
-  const urlLine = external ? `URL: ${preview.public_url}` : '외부 URL: `차단됨 (Cloudflare Access 미검증)`';
+  const urlLine = `URL: ${preview.public_url}`;
   const openapi = preview.openapi_ui_path || preview.openapi_json_path
     ? [preview.openapi_ui_path && `UI \`${escapeMarkdown(preview.openapi_ui_path)}\``, preview.openapi_json_path && `JSON \`${escapeMarkdown(preview.openapi_json_path)}\``].filter(Boolean).join(' · ')
     : '`미탐지`';
@@ -87,7 +85,7 @@ async function renderDetail(bot, source, preview, services) {
   const title = backendApi ? 'API Preview' : 'Preview';
   const text = `${isStealthMode() ? '■' : backendApi ? '🧩' : '🖥'} **${title} · ${escapeMarkdown(preview.project_name)}**\n\n상태: \`${preview.status}\`\n${urlLine}${apiDetails}\nUptime: \`${uptime(preview)}\`${failure}`;
   const keyboard = [];
-  if (running && external) {
+  if (running) {
     keyboard.push([{ text: backendApi ? '🌐 API 열기' : '🌐 열기', url: preview.public_url }]);
     if (backendApi) {
       const endpoints = [];

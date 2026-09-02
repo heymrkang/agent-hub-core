@@ -36,9 +36,6 @@ export class PreviewRouteService {
     if (preview.status !== PreviewStatus.RUNNING) {
       throw new PreviewRouteError('UNAVAILABLE', '실행 중인 Preview가 아닙니다.', 409);
     }
-    if (preview.runtime_type === PreviewRuntimeType.BACKEND_API && !preview.access_verified) {
-      throw new PreviewRouteError('EXTERNAL_ACCESS_BLOCKED', 'Cloudflare Access가 검증되지 않은 API Preview입니다.', 403);
-    }
     if (!CONTAINER_ID_PATTERN.test(String(preview.container_id || ''))) {
       throw new PreviewRouteError('INVALID_TARGET', 'Preview target이 준비되지 않았습니다.', 503);
     }

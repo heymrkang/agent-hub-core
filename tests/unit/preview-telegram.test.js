@@ -52,17 +52,16 @@ test('시작 전 감지 runtime과 argv command를 표시한다', () => {
   assert.match(text, /npm run start:dev/);
 });
 
-test('Access 미검증 BACKEND_API 상세 화면은 외부 URL과 열기 버튼을 숨긴다', async () => {
+test('BACKEND_API 상세 화면은 외부 URL과 API 열기 버튼을 표시한다', async () => {
   const preview = {
     id: 'preview-1', project_name: 'api', runtime_type: 'BACKEND_API', access_verified: false,
     framework: 'NESTJS', status: 'RUNNING', public_url: 'https://preview-api.12190529.xyz', port: 3000,
     openapi_ui_path: '/docs', openapi_json_path: '/docs-json', health_path: '/health', started_at: null
   };
   const rendered = await renderPreview(preview);
-  assert.match(rendered.text, /Cloudflare Access 미검증/);
-  assert.doesNotMatch(rendered.text, /https:\/\/preview-api/);
+  assert.match(rendered.text, /URL: https:\/\/preview-api\.12190529\.xyz/);
   assert.match(rendered.text, /OpenAPI: UI `\/docs` · JSON `\/docs-json`/);
-  assert.equal(rendered.options.reply_markup.inline_keyboard.flat().some(({ url }) => Boolean(url)), false);
+  assert.equal(rendered.options.reply_markup.inline_keyboard.flat().some(({ url }) => Boolean(url)), true);
 });
 
 test('Access 검증된 BACKEND_API 상세 화면은 API 상태와 endpoint action을 표시한다', async () => {
