@@ -14,6 +14,7 @@ import { Logger } from './logging/logger.js';
 import { startPreviewRouteServer } from './preview/preview-route-server.js';
 import { getPreviewService } from './preview/preview-service.js';
 import { safeErrorMessage } from './telegram/transport.js';
+import { MemoryManager } from './memory/memory-manager.js';
 
 console.log('==========================================');
 console.log('            Agent Hub Core V1');
@@ -34,6 +35,11 @@ try {
   const db = initDatabase();
   initSettingsManager(db);
   console.log('[Settings] persistent settings 준비 완료.');
+  try {
+    MemoryManager.syncProviderRules();
+  } catch (error) {
+    console.warn(`[MemorySync] 시작 시 Provider Rules 동기화 실패: ${safeErrorMessage(error)}`);
+  }
   JobRuntime.recoverInterruptedJobs();
 
   const sshSummary = SshManager.init();
