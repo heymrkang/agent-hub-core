@@ -2,11 +2,9 @@
 
 ## Status
 
-`LIVE_VALIDATION — native continuity, Logical Session-first UX, Provider Rules memory 구현 완료; 실환경 재검증 중`
+`DONE — Agent Hub Core V2 / 2.0.0 promotion approved after clean-state live validation`
 
-이 문서는 Agent Hub Core가 V1의 **Agent Hub-owned context reconstruction**에서 V2의 **Provider-native session first** 구조로 넘어간 과정을 기록한다.
-
-이번 작업은 기존 Phase 18과 별개인 V1↔V2 architecture bridge다. Phase 18 계획은 그대로 유지한다.
+이 문서는 Agent Hub Core가 V1의 **Agent Hub-owned context reconstruction**에서 V2의 **Provider-native session first** 구조로 전환한 최종 architecture/validation 기록이다.
 
 상태 흐름:
 
@@ -14,15 +12,15 @@
 PLANNED → IN_PROGRESS → LIVE_VALIDATION → DONE
 ```
 
-현재는 코드/CI 수준의 native-session 전환과 Global Memory의 Provider-native Rules 전환이 완료됐고, Telegram 실사용 검증을 진행하는 단계다.
+2026-09-03 기준 Bridge와 Provider-native Rules Memory는 구현·회귀 테스트·실환경 검증을 완료했고, 사용자의 최종 승인에 따라 V2 release blocker에서 해제했다.
 
 ---
 
-## 1. Architecture Principle
+## 1. Final Architecture Principle
 
 > **Agent Hub Core는 대화를 소유하지 않는다. Provider native conversation을 연결하고 중계한다.**
 
-단, 사용자가 선택하는 작업 단위의 authority는 **Agent Hub Logical Session**이다.
+사용자가 다루는 identity는 **Agent Hub Logical Session**, 실제 AI conversational continuity는 **Provider Native Session**이다.
 
 ```text
 Agent Hub Logical Session A
@@ -33,13 +31,13 @@ Agent Hub Logical Session A
 역할 분리:
 
 ```text
-Provider Native Session
-= 실제 AI conversation continuity
-= same-provider primary conversational memory
-
 Agent Hub Logical Session
 = Telegram에서 사용자가 선택하는 작업/대화 단위
 = Provider별 native identity를 묶는 bridge key
+
+Provider Native Session
+= 실제 AI conversation continuity
+= same-provider primary conversational memory
 
 Agent Hub messages
 = transcript / audit / provider handoff / recovery evidence
@@ -50,16 +48,12 @@ Agent Hub Global Memory
 = /data/memory/MEMORY.md
 
 Provider Native Rules
-= Agent Hub Global Memory의 실행 mirror
+= Global Memory의 실행 mirror
 = Codex: $CODEX_HOME/AGENTS.md
 = Antigravity: ~/.gemini/GEMINI.md
-
-rolling_summary + recent canonical messages
-= cross-provider handoff / legacy bootstrap / recovery 용도
-= same-provider normal turn마다 재주입하지 않음
 ```
 
-### 핵심 invariant
+핵심 invariant:
 
 ```text
 /sessions
@@ -69,19 +63,19 @@ rolling_summary + recent canonical messages
 → 현재 Logical Session 안에서 Provider를 바꾼다.
 
 same-provider turn
-→ 해당 Logical Session에 매핑된 native session을 resume한다.
+→ 현재 Logical Session에 매핑된 native session을 resume한다.
 
 /memory
 → Agent Hub canonical memory를 수정한다.
 → Codex/Antigravity native Rules에 동일한 managed block을 동기화한다.
-→ normal prompt에는 memory block을 매번 붙이지 않는다.
+→ normal prompt에는 Global Memory를 매 turn 붙이지 않는다.
 ```
 
 ---
 
-## 2. V1 문제
+## 2. Why V1 Had To Change
 
-V1 일반 대화는 매 요청마다 다음 형태로 Provider prompt를 재구성했다.
+V1 일반 대화는 매 요청마다 다음 형태로 prompt를 재구성했다.
 
 ```text
 Global Memory
@@ -90,15 +84,15 @@ Global Memory
 + 현재 prompt
 ```
 
-이 방식에서는 실제 Provider conversation에서 작업 1~10이 끝났어도 Agent Hub summary/recent tail에 4~10 완료 사실이 없으면 다음 요청에서 과거 단계로 회귀할 수 있다.
+이 구조에서는 Provider가 실제로 기억하고 있는 작업 진행 상태보다 Agent Hub가 재구성한 summary/recent tail이 우선되면서, 긴 실제 작업에서 완료한 단계가 누락되거나 과거 상태로 회귀할 수 있었다.
 
-또한 Global Memory를 매 turn prompt에 다시 붙이는 구조는 Provider가 자체적으로 제공하는 persistent Rules 기능과 역할이 중복됐다.
+또한 `/memory`를 매 turn prompt에 주입하는 방식은 Codex/Antigravity가 자체적으로 제공하는 persistent Rules 기능과 역할이 중복됐다.
 
-Bridge의 핵심 목적은 conversation continuity와 global instructions 모두에서 **Provider native capability를 우선 사용**하도록 authority를 재배치하는 것이다.
+V2는 conversation continuity와 global instructions 모두에서 **Provider native capability를 우선 사용**하도록 authority를 재배치했다.
 
 ---
 
-## 3. Target Mapping
+## 3. Provider Native Session Mapping
 
 ```text
 Logical Session A
@@ -112,7 +106,7 @@ Logical Session A
    └─ last_synced_message_id = <cursor>
 ```
 
-Lifecycle state:
+Lifecycle:
 
 ```text
 UNBOUND
@@ -139,51 +133,29 @@ UNIQUE(provider, native_session_ref) WHERE native_session_ref IS NOT NULL
 
 ---
 
-## 4. Codex Live Contract
+## 4. Confirmed Provider Contracts
 
-2026-09-02 Agent Hub 컨테이너에서 확인:
+### Codex
+
+실환경에서 확인한 CLI:
 
 ```text
 codex-cli 0.149.1
 ```
 
-새 session:
+Create:
 
 ```text
 codex exec --json <prompt>
 ```
 
-실제 첫 event:
+첫 JSONL event의 `thread.started.thread_id`를 canonical native identity로 저장한다.
 
-```json
-{"type":"thread.started","thread_id":"<UUID>"}
-```
-
-따라서 Codex canonical native identity:
+Resume:
 
 ```text
-nativeSessionRef = thread.started.thread_id
+codex exec resume <thread_id> <current prompt>
 ```
-
-resume:
-
-```text
-codex exec resume <SESSION_ID> <PROMPT>
-```
-
-Bridge 동작:
-
-```text
-UNBOUND
-→ codex exec --json
-→ thread.started.thread_id capture
-→ READY bind
-
-READY
-→ codex exec resume <thread_id> <current prompt>
-```
-
-`--ephemeral`은 사용하지 않는다.
 
 Global Rules mirror:
 
@@ -191,36 +163,18 @@ Global Rules mirror:
 $CODEX_HOME/AGENTS.md
 ```
 
-Agent Hub는 파일 전체를 소유하지 않고 `AGENT_HUB_MEMORY_START/END` marker 사이만 관리한다.
+### Antigravity
 
----
-
-## 5. Antigravity Live Contract
-
-2026-09-02 Agent Hub 컨테이너에서 확인:
-
-```text
-agy 1.1.24
-```
-
-resume:
+실환경에서 확인한 CLI contract:
 
 ```text
 agy --conversation <conversation-id>
 agy --continue
 ```
 
-headless JSON 결과에서 `conversation_id`를 native identity로 사용한다.
+headless structured result의 `conversation_id`를 native identity로 사용한다.
 
-확인된 제약:
-
-```text
-agy --print /resume --output-format json
-→ ERROR
-→ /resume picker is not available in print mode
-```
-
-즉 Antigravity는 현재 headless 환경에서 native conversation 전체 목록 picker/list API를 제공하지 않는다.
+`agy --print /resume --output-format json`의 picker는 print mode에서 사용할 수 없으므로 `/sessions` authority를 Provider-native picker에 의존하지 않는다.
 
 Global Rules mirror:
 
@@ -228,33 +182,31 @@ Global Rules mirror:
 ~/.gemini/GEMINI.md
 ```
 
-Agent Hub는 Codex와 동일한 canonical memory managed block을 이 파일에도 동기화한다.
-
 ---
 
-## 6. Prompt Routing
+## 5. Prompt Routing
 
 ### Native continuation
 
-Provider mapping이 READY면:
+Provider mapping이 READY면 normal same-provider turn은:
 
 ```text
 current prompt
 ```
 
-과거 chat transcript와 Global Memory를 매번 재주입하지 않는다.
+만 전달한다.
 
-Global Memory는 Provider가 자체 Rules 파일에서 읽는다.
+과거 canonical transcript와 Global Memory를 매번 재주입하지 않는다.
 
-Runtime log 예:
+Runtime:
 
 ```text
 Context:NATIVE_CONTINUATION
 ```
 
-### Provider switch / return
+### Cross-provider handoff
 
-Target Provider가 아직 모르는 다른 Provider 구간만 delta로 전달한다.
+Target Provider가 놓친 다른 Provider 구간만 전달한다.
 
 ```text
 [Provider Handoff Delta]
@@ -262,25 +214,71 @@ Target Provider가 아직 모르는 다른 Provider 구간만 delta로 전달한
 + current prompt
 ```
 
-Runtime log:
+Runtime:
 
 ```text
 Context:NATIVE_DELTA
 ```
 
-### UNBOUND / legacy bootstrap
+### First native bind / legacy bootstrap
 
-native ref가 아직 없는 경우에만 canonical context reconstruction을 1회 사용한다.
+native ref가 아직 없을 때만 canonical context reconstruction을 1회 사용한다.
 
 ```text
 Context:BOOTSTRAP
 ```
 
-이 bootstrap에도 Global Memory를 별도 prompt block으로 중복 주입하지 않는다. Provider-native Rules가 전역 규칙을 공급한다.
+Global Memory는 bootstrap에서도 별도 prompt block으로 중복 주입하지 않는다. Provider native Rules가 전역 지침을 공급한다.
 
-첫 native ref가 bind된 뒤에는 같은 Provider에서 native continuation으로 전환한다.
+---
 
-### Global Memory / Provider Rules
+## 6. `/new`, `/sessions`, `/model`
+
+### `/new`
+
+```text
+/new
+→ 새 Agent Hub Logical Session
+→ 현재/default Provider mapping UNBOUND
+→ 첫 user turn
+→ Provider native session 생성
+→ native ref READY bind
+```
+
+lazy binding 방식이다.
+
+### `/sessions`
+
+최종 authority:
+
+```text
+/sessions
+→ Agent Hub Logical Session A/B/C
+```
+
+초기 Bridge에서 Codex native thread list를 직접 노출했던 설계는 live validation에서 session identity ambiguity를 만들었으므로 폐기했다.
+
+현재는 사용자가 Logical Session만 선택하며 Provider native mappings는 해당 Logical Session의 내부 infrastructure다.
+
+### `/model`
+
+Provider switch는 Logical Session switch가 아니다.
+
+```text
+Session A / Codex
+→ /model Antigravity
+→ Session A 유지
+→ A.antigravity bind/resume
+
+→ /model Codex
+→ Session A 유지
+→ A.codex 기존 thread resume
+→ Codex가 놓친 Antigravity delta만 전달
+```
+
+---
+
+## 7. Provider-native Rules Memory
 
 Canonical source:
 
@@ -303,146 +301,30 @@ Managed block:
 <!-- AGENT_HUB_MEMORY_END -->
 ```
 
-원칙:
+최종 정책:
 
-- Provider rules 파일의 기존 사용자 작성 내용은 보존한다.
-- Agent Hub는 marker 사이만 교체한다.
-- `/memory`, `/memory add`, `/memory set`, `/memory clear` mutation마다 두 Provider에 동기화한다.
-- `/memory <내용>` shorthand는 add와 동일하게 동작한다.
-- Agent Hub 시작 시 canonical memory를 Provider Rules에 재동기화한다.
-- 한 Provider rules write가 실패하면 이미 변경한 다른 Provider target을 rollback하고 command를 실패로 노출한다.
-- `MemoryManager.getMemoryForPrompt()`는 V2 호환용으로 남아 있지만 `null`을 반환하며 normal prompt memory injection은 하지 않는다.
+- Provider Rules 파일의 기존 사용자 작성 내용은 보존한다.
+- Agent Hub는 marker 사이만 관리한다.
+- `/memory <내용>`은 add shorthand다.
+- `/memory add`, `/memory set`, `/memory clear`를 유지한다.
+- 모든 mutation 성공 시 두 Provider Rules를 동기화한다.
+- startup에서도 canonical memory로 두 Provider Rules를 재동기화한다.
+- Provider Rules write가 부분 실패하면 가능한 범위에서 rollback하고 command를 실패로 노출한다.
+- `MemoryManager.getMemoryForPrompt()`는 compatibility 용도로 남지만 `null`을 반환한다.
+- normal execution hot path에서 memoryBlock 주입은 제거됐다.
 
-Persistent volume:
+Persistent mounts:
 
 ```text
 /mnt/storage/agent-hub-core/providers/codex  → /root/.codex
 /mnt/storage/agent-hub-core/providers/gemini → /root/.gemini
 ```
 
-따라서 Rules mirror는 container redeploy 후에도 유지된다.
+따라서 native session/auth/rules는 container redeploy 후에도 유지된다.
 
 ---
 
-## 7. `/new`
-
-```text
-/new
-→ 새 Agent Hub Logical Session
-→ 현재/default Provider mapping UNBOUND
-→ 첫 user turn
-→ Provider native session 생성
-→ native ref READY bind
-```
-
-Native session을 미리 억지로 만들지 않는 lazy binding 방식이다.
-
----
-
-## 8. `/sessions` — Final Authority Decision
-
-### 초기 Bridge 설계
-
-처음에는 다음 UX를 구현했다.
-
-```text
-Codex selected
-/sessions → Codex native thread/list
-
-Antigravity selected
-/sessions → Agent Hub가 알고 있는 Antigravity READY mappings
-```
-
-Codex는 app-server `thread/list`를 사용할 수 있어 실제 provider-native 목록을 노출했고, mapping이 없는 thread는 Agent Hub Logical Session으로 adopt할 수 있게 했다.
-
-### Live validation에서 발견된 문제
-
-2026-09-02 실제 Telegram 테스트에서 이 설계가 사용자 관점의 session identity를 흔든다는 것이 확인됐다.
-
-문제:
-
-```text
-같은 /sessions 명령인데
-Codex에서는 Provider-native thread 목록
-Antigravity에서는 Agent Hub mapped subset
-```
-
-Provider를 오갈 때 사용자는 "Agent Hub Session A"가 아니라 서로 다른 Provider-native 목록을 직접 골라야 했다.
-
-특히 Codex의 unmapped native thread를 선택하면 새 Logical Session을 adopt하는 동작 때문에, 사용자가 의도한 기존 Logical Session A와 다른 Logical Session을 선택할 수 있다.
-
-Live symptom:
-
-```text
-재시작 후 "777" 기억 테스트에서 기대한 Codex continuity를 확인하지 못함
-```
-
-이 시점에서는 native persistence 실패와 잘못된 native thread 선택을 UI상 명확히 구분할 수 없었다.
-
-### 최종 결정
-
-`/sessions`의 authority를 **Agent Hub Logical Session**으로 되돌린다.
-
-```text
-/sessions
-→ Provider와 무관하게 Agent Hub Logical Sessions A/B/C
-
-Session A 선택
-→ active logical session = A
-
-/model Codex
-→ A.codex native mapping 사용
-
-/model Antigravity
-→ A.antigravity native mapping 사용
-```
-
-Provider native list/adopt는 메인 `/sessions` UX에서 제거한다.
-
-이 결정은 native conversation을 primary AI memory로 사용한다는 원칙과 충돌하지 않는다.
-
-```text
-사용자가 선택하는 identity = Logical Session
-AI가 기억하는 identity = Provider Native Session
-```
-
-이 두 역할을 분리하는 것이 최종 V2 구조다.
-
----
-
-## 9. `/model` Provider Handoff
-
-Logical Session A가 Codex에서 시작했다고 가정:
-
-```text
-A.codex = READY abc123
-A.antigravity = UNBOUND
-```
-
-Codex → Antigravity:
-
-```text
-/model Antigravity
-→ Logical Session A 유지
-→ A.antigravity가 UNBOUND면 첫 target execution에 bootstrap
-→ conversation_id 확보
-→ A.antigravity READY
-```
-
-Antigravity에서 작업 후 다시 Codex:
-
-```text
-/model Codex
-→ Logical Session A 유지
-→ A.codex abc123 resume
-→ Codex가 놓친 Antigravity delta만 1회 전달
-```
-
-Provider switch가 Logical Session switch를 의미하지 않는다.
-
----
-
-## 10. Failure Semantics
+## 8. Failure Semantics
 
 금지:
 
@@ -464,426 +346,220 @@ resume 실패
 
 Logical Session purge도 Provider native history를 자동 삭제하지 않는다.
 
-Memory sync 역시 silent partial success를 허용하지 않는다. 두 Provider 중 하나의 Rules write가 실패하면 command는 실패로 반환하며 가능한 범위에서 이미 변경된 target을 rollback한다.
+Memory sync도 silent partial success를 허용하지 않는다.
 
 ---
 
-## 11. Observability
-
-native ref는 전체를 로그에 노출하지 않고 short ref로 남긴다.
+## 9. Observability
 
 예:
 
 ```text
-[Sessions] logical switch: user=<id> session=<logical-id> active_provider=codex mappings=codex:READY:01a061db…e1be,antigravity:READY:abc…xyz
+[Sessions] logical switch: user=<id> session=<logical-id> active_provider=codex mappings=codex:READY:<short>,antigravity:READY:<short>
 
 [NativeSession] handoff logical=<logical-id> codex(READY:<short>) -> antigravity(READY:<short>) messages=N
 
 [MemorySync] provider rules 동기화 완료: codex=<path>, antigravity=<path>
 ```
 
-이 로그의 목적:
-
-- 현재 선택된 Logical Session 확인
-- Provider별 mapping state 확인
-- 예상 native ref가 실제로 유지되는지 확인
-- restart/handoff continuity 문제를 즉시 분류
-- Global Memory mirror 성공 여부 확인
+native ref는 전체를 노출하지 않고 short ref만 사용한다.
 
 ---
 
-## 12. Implemented Components
+## 10. Implementation / PR Record
 
-### Schema / repository
+### Original native bridge
 
-- `015_native_session_bridge.sql`
-- Provider lifecycle metadata
-- Logical Session/provider unique invariant
-- Provider/native-ref ownership invariant
-- `ProviderSessionRepository`
+```text
+PR #7  bridge: migrate V1 conversations to provider-native sessions
+```
 
-### Codex
-
-- JSONL parser
-- `thread.started.thread_id` capture
-- native create
-- `codex exec resume <thread_id>`
-- thread mismatch guard
-- missing ref guard
-- existing timeout telemetry 유지
-
-### Antigravity
-
-- `conversation_id` required for native creation
-- `--conversation <id>` resume
-- structured-response failure guard
-
-### Context routing
-
+- Provider lifecycle schema/repository
+- Codex JSONL native create/resume
+- Antigravity native create/resume
 - same-provider native continuation
 - cross-provider delta handoff
-- bootstrap fallback only when native ref 없음
-- same-provider normal-turn history reconstruction 제거
-- Global Memory per-turn injection 제거
+- lazy binding
 
-### Global Memory / Provider Rules
-
-- `/data/memory/MEMORY.md` canonical source 유지
-- Codex `AGENTS.md` mirror
-- Antigravity `GEMINI.md` mirror
-- managed marker 기반 기존 Rules 보존
-- startup sync
-- mutation sync
-- `/memory <내용>` shorthand
-- focused mirror/marker/prompt-omission tests
-
-### Session UX
-
-- `/new` Logical Session + lazy native binding
-- `/sessions` Logical Session-first (live validation correction)
-- Provider native mapping 상태 상세 표시
-- stale `native_*` callback compatibility
-- direct native adopt from `/sessions` disabled
-
----
-
-## 13. CI / PR Record
-
-### Original Bridge
-
-PR:
-
-```text
-#7 bridge: migrate V1 conversations to provider-native sessions
-```
-
-Final Bridge main SHA:
-
-```text
-f4452c95850f102a251fa2b1ad22526c3e6e13c7
-```
-
-GitHub Actions regression: SUCCESS.
+Regression: SUCCESS.
 
 ### Native callback routing hotfix
 
-Live bug:
-
 ```text
-native_page/native_map/native_pick buttons were emitted
-but top-level Telegram router only dispatched session_* callbacks
-```
-
-PR:
-
-```text
-#8 fix: route native session callbacks
-```
-
-Main SHA:
-
-```text
-f4dd25789aea5cfff9d2cfd081de1211cb66efd6
+PR #8  fix: route native session callbacks
 ```
 
 Regression: SUCCESS.
 
 ### Logical Session-first correction
 
-Trigger:
-
 ```text
-Live validation test #14 failed and exposed ambiguous session authority.
-```
-
-PR:
-
-```text
-#9 fix: make /sessions logical-session first
-```
-
-Main SHA:
-
-```text
-f66003370257b12cc02c83bdcf25ccf368c31893
+PR #9  fix: make /sessions logical-session first
+Main SHA: f66003370257b12cc02c83bdcf25ccf368c31893
 ```
 
 Regression: SUCCESS.
 
-### Provider-native Rules memory
-
-Decision:
+### Provider-native Rules Memory
 
 ```text
-Agent Hub Global Memory = canonical source
-Provider Rules = execution mirrors
-Per-turn memory prompt injection = removed
+PR #10 feat: mirror /memory into provider native rules
+Main SHA: 4ab3e4d0c11e8d67459fc01691b509bdd2547a55
 ```
 
-PR:
+최종 CI:
 
 ```text
-#10 feat: mirror /memory into provider native rules
+Phase 11 Regression run #141
+status = completed
+conclusion = success
 ```
-
-Code/test HEAD before documentation commit:
-
-```text
-a0ed0c684b52a05ea8b9777c297e1afc6db2f405
-```
-
-GitHub Actions Phase 11 Regression run #138:
-
-```text
-Run regression tests = SUCCESS
-```
-
-Live validation: pending redeploy.
 
 ---
 
-## 14. Live Validation Record
+## 11. Final Live Validation
 
-### Passed before UX correction
+최종 검증은 Agent Hub SQLite와 Codex/Antigravity native conversation stores를 모두 초기화한 **clean-state environment**에서 다시 시작했다.
 
-1. Deployment / command smoke
-2. `/new` Codex session creation
-3. same Codex session remembers `777`
-4. repeated Codex native continuation remembers completed steps 1~3
+### Lazy binding
 
-Runtime confirmed:
-
-```text
-first turn  → Context:BOOTSTRAP
-later turns → Context:NATIVE_CONTINUATION
-```
-
-This is strong evidence that same-provider Codex native create/resume works before restart.
-
-### Bug found during `/sessions`
-
-Buttons initially did nothing because `native_*` callbacks were not routed.
-
-Fixed in PR #8 and regression passed.
-
-### Test #14 failure
-
-After Provider switching/restart flow, selecting a Codex entry and asking for the original `777` did not return the expected value.
-
-At this point root cause is **not yet classified as native persistence failure** because the old `/sessions` UX could select/adopt a different Codex native thread than the Logical Session the user intended.
-
-Therefore:
-
-```text
-Test #14 = INVALIDATED BY SESSION UX AMBIGUITY
-```
-
-It must be repeated after Logical Session-first `/sessions` is deployed.
-
-### Clean-state revalidation start
-
-User cleared Agent Hub SQLite and Provider native conversation stores, then restarted validation from a clean environment.
-
-Observed after `/new` before first prompt:
+`/new` 직후:
 
 ```text
 CODEX: UNBOUND
 ```
 
-After first Codex message:
+첫 Codex message 실행 후:
 
 ```text
 CODEX: READY · <thread-id>
 ```
 
-This matches lazy native binding design.
+PASS.
 
-Provider Rules memory live validation is still pending deployment of PR #10.
+### Bridge validation
+
+사용자가 최종 1~19 validation checklist로 재검증했다.
+
+최종 release 판정:
+
+```text
+1~18 = PASS
+19 = post-release soak / real development workflow observation
+```
+
+검증된 범위에는 다음이 포함된다.
+
+- Codex same-provider native continuity
+- independent Logical Session A/B isolation
+- `/sessions` Logical Session switch 후 올바른 native ref 복귀
+- Codex → Antigravity first handoff
+- one Logical Session 안의 Codex/Antigravity independent native mappings
+- Antigravity same-provider continuation
+- Antigravity → Codex delta handoff
+- Provider 왕복 후 native identity 유지
+- restart/redeploy 후 Logical Session persistence
+- restart/redeploy 후 Codex native continuity
+- restart/redeploy 후 Antigravity native continuity
+
+### Test 19 disposition
+
+실제 5~10 turn 개발 작업 soak test는 특정 시점의 one-shot release gate보다 **지속적인 운영 관찰 항목**으로 분류했다.
+
+사용자는 1~18의 clean-state validation 결과와 현재 실사용 동작을 근거로 V2 승격을 승인했다. 이후 장기 workflow에서 발견되는 문제는 V2 regression bug로 추적한다.
+
+### Provider Rules Memory validation
+
+실환경에서 `/memory` 변경 후:
+
+```text
+/data/memory/MEMORY.md
+/root/.codex/AGENTS.md
+/root/.gemini/GEMINI.md
+```
+
+에 동일 canonical memory가 반영되고, Codex와 Antigravity가 별도 per-turn memory prompt 주입 없이 해당 규칙을 읽는 것을 확인했다.
+
+PASS / DONE.
 
 ---
 
-## 15. Revised Mandatory Live Scenarios
+## 12. Definition of DONE — Final
 
-### A. Same-provider continuity
-
-```text
-/new
-"777을 기억해"
-"아까 숫자가 뭐였지?"
-```
-
-Expected:
-
-```text
-first turn BOOTSTRAP
-second turn NATIVE_CONTINUATION
-answer = 777
-```
-
-### B. Logical Session switch
-
-```text
-Session A: remember 777
-/new → Session B
-/sessions → Session A 선택
-"기억하라고 한 숫자?"
-```
-
-Expected:
-
-```text
-/sessions shows Agent Hub Session A/B
-selecting A restores A
-A.codex native ref is resumed
-answer = 777
-```
-
-### C. Cross-provider round trip
-
-```text
-Session A / Codex → remember 777
-/model Antigravity
-Antigravity → remember 888
-/model Codex
-```
-
-Expected:
-
-```text
-Logical Session remains A throughout
-A.codex ref unchanged
-A.antigravity ref unchanged after first bind
-Codex receives Antigravity delta
-```
-
-### D. Restart persistence
-
-```text
-Session A has:
-A.codex READY
-A.antigravity READY
-
-Agent Hub restart/redeploy
-/sessions → Session A
-/model Codex
-ask remembered data
-/model Antigravity
-ask remembered data
-```
-
-Expected:
-
-```text
-same Logical Session A
-same provider native refs
-native continuation after restart
-```
-
-### E. Provider Rules memory
-
-```text
-/memory 테스트 메모리 999
-```
-
-Expected:
-
-```text
-/data/memory/MEMORY.md contains 999
-/root/.codex/AGENTS.md managed block contains same canonical memory
-/root/.gemini/GEMINI.md managed block contains same canonical memory
-```
-
-Then create a fresh Codex native session and a fresh Antigravity native session and ask what global memory/rules they received. The value must be available without Agent Hub prepending a Global Memory prompt block every turn.
-
-After redeploy, startup sync must retain/repair both mirrors from canonical memory.
-
-### F. Real development workflow
-
-5~10 turns of actual implementation work must continue without reverting to old completed steps due to Agent Hub summary truncation.
+- [x] Codex same-provider normal turns use the same native thread.
+- [x] Antigravity same-provider normal turns use the same native conversation.
+- [x] same-provider normal turns do not reconstruct summary + recent transcript.
+- [x] `/new` creates a Logical Session and lazily binds Provider native identity.
+- [x] `/sessions` always selects Agent Hub Logical Sessions.
+- [x] one Logical Session can hold independent Codex and Antigravity native mappings.
+- [x] `/model` switches Provider inside the same Logical Session.
+- [x] cross-provider return uses delta handoff.
+- [x] restart/redeploy preserves Logical Session → Provider native mapping continuity.
+- [x] missing native sessions do not silently become blank new sessions.
+- [x] `/memory` canonical content mirrors into Codex/Antigravity native Rules.
+- [x] Global Memory is not injected per turn.
+- [x] full regression CI succeeds.
+- [x] clean-state mandatory live Bridge scenarios 1~18 succeed.
+- [x] Provider Rules Memory live validation succeeds.
+- [x] architecture record is finalized.
+- [x] Status = `DONE`.
 
 ---
 
-## 16. Definition of DONE
+## 13. V2 Promotion
 
-Bridge is `DONE` only when all conditions are satisfied:
+V2 promotion is now authorized.
 
-1. Codex same-provider normal turns use the same native thread.
-2. Antigravity same-provider normal turns use the same native conversation.
-3. same-provider normal turns do not reconstruct summary + recent transcript.
-4. `/new` creates a Logical Session and lazily binds Provider native identity.
-5. `/sessions` always selects Agent Hub Logical Sessions.
-6. one Logical Session can hold independent Codex and Antigravity native mappings.
-7. `/model` switches Provider inside the same Logical Session.
-8. cross-provider return uses delta handoff rather than rebuilding every turn.
-9. restart/redeploy preserves Logical Session → Provider native mapping continuity.
-10. missing native sessions do not silently fall back to a new blank session.
-11. `/memory` canonical content is mirrored identically into Codex/Antigravity native Rules and is not injected per turn.
-12. full regression CI succeeds.
-13. mandatory Telegram live scenarios succeed.
-14. this architecture record is updated with final live results.
-15. Status is changed to `DONE`.
+Release target:
+
+```text
+Agent Hub Core V2
+version = 2.0.0
+```
+
+Promotion scope:
+
+- legacy runtime/UI `V1` branding → `V2`
+- startup banner → `Agent Hub Core V2 · 2.0.0`
+- Telegram help branding → `Agent Hub Core V2 · 2.0.0`
+- package version → `2.0.0`
+- README rewritten around final V2 architecture
+- this Bridge/Memory record closed as DONE
+
+Historical filenames such as `v1-lifecycle.test.js` or this migration document's `V1 → V2` title may remain because they describe historical test/migration scope rather than current product branding.
 
 ---
 
-## 17. Final V2 Promotion
+## 14. Final Decision Summary
 
-Bridge `DONE` 이후 별도 정식 승격 작업으로 진행한다.
-
-Planned promotion:
-
-- source/UI의 legacy `V1` branding 정리
-- Agent Hub Core version → `2.0.0`
-- README / help / startup banner / package metadata 정리
-- V2 architecture 기준 문서 최신화
-
-Bridge 검증 전에는 version branding만 먼저 바꾸지 않는다.
-
----
-
-## 18. Historical Decision Summary
-
-### Kept
-
-- Provider native conversation = primary AI continuity
-- Agent Hub canonical transcript = audit/handoff/recovery
-- provider-switch delta handoff
-- lazy native binding
-- native identity persistence in DB
-- Agent Hub Global Memory = canonical long-term rules source
-
-### Changed after live validation
-
-Initial session idea:
+### Session authority
 
 ```text
-/sessions = current Provider native session picker
+User-facing identity
+= Agent Hub Logical Session
+
+AI conversational continuity
+= Provider Native Session
 ```
 
-Final session decision:
+### Memory authority
 
 ```text
-/sessions = Agent Hub Logical Session picker
-Provider native sessions = internal mappings under that Logical Session
+Canonical long-term rules
+= Agent Hub /data/memory/MEMORY.md
+
+Execution rules
+= Codex AGENTS.md + Antigravity GEMINI.md mirrors
 ```
 
-Initial memory idea:
+### Prompt authority
 
 ```text
-Global Memory + current prompt
-→ every Provider turn
+same-provider normal turn
+= current request → existing native session
+
+provider return
+= missed cross-provider delta + current request → existing native session
 ```
 
-Final memory decision:
-
-```text
-Agent Hub MEMORY.md
-→ Codex AGENTS.md managed mirror
-→ Antigravity GEMINI.md managed mirror
-→ Provider loads Rules natively
-```
-
-Reason:
-
-> Provider-native memory and rules should be invisible infrastructure for continuity; Agent Hub owns the user's logical work unit and canonical synchronization data, not every reconstructed model prompt.
-
-이 변경은 Bridge의 원칙을 약화한 것이 아니라, **Logical Session / Provider Native Session / Global Rules의 책임을 더 정확히 분리한 것**이다.
+V2의 최종 구조는 Agent Hub가 Provider 기능을 재구현하는 것이 아니라, **Logical Session, native conversation, native Rules의 책임을 분리하고 안정적으로 연결하는 orchestration layer**가 되는 것이다.
