@@ -17,10 +17,14 @@ function abbreviateLongCodeBlocks(text) {
 
 function renderHistory(messages) {
   if (!messages.length) return null;
-  return `[\uC774\uC804 \uB300\uD654 \uAE30\uB85D / Context]\n${messages.map((message) => {
+  return `[이전 대화 기록 / Context]\n${messages.map((message) => {
     const text = message.role === 'assistant' ? abbreviateLongCodeBlocks(message.text) : message.text;
     return `${message.role === 'user' ? 'User' : 'Assistant'}: ${text}`;
   }).join('\n\n')}`;
+}
+
+function joinPromptParts(parts) {
+  return parts.filter((part) => part && String(part).trim()).join('\n\n');
 }
 
 export class ContextAssembler {
@@ -31,11 +35,11 @@ export class ContextAssembler {
     });
     const parts = [];
     if (memoryBlock) parts.push(memoryBlock);
-    if (context.rollingSummary) parts.push(`[\uB300\uD654 \uC694\uC57D]\n${context.rollingSummary}`);
+    if (context.rollingSummary) parts.push(`[대화 요약]\n${context.rollingSummary}`);
     const history = renderHistory(context.messages);
     if (history) parts.push(history);
     parts.push(currentPrompt);
-    return { prompt: parts.join('\n\n'), context };
+    return { prompt: joinPromptParts(parts), context };
   }
 
   static async prepare({ session, userMessageId = null, memoryBlock = null, currentPrompt }) {
@@ -46,24 +50,68 @@ export class ContextAssembler {
     const usedTokens = await adapter.countPromptTokens?.(initial.prompt, session.active_model);
 
     if (!Number.isFinite(contextWindow) || contextWindow <= 0 || !Number.isFinite(usedTokens) || usedTokens < 0) {
-      return { ...initial, autoCompact: { status: 'UNAVAILABLE', attempted: false } };
+      return { ...initial, mode: 'BOOTSTRAP', autoCompact: { status: 'UNAVAILABLE', attempted: false } };
     }
 
     const threshold = getSettingsManager().get('auto_compact_threshold');
     const usagePercent = usedTokens / contextWindow * 100;
     if (usagePercent < threshold) {
-      return { ...initial, autoCompact: { status: 'BELOW_THRESHOLD', attempted: false, usedTokens, contextWindow, usagePercent, threshold } };
+      return { ...initial, mode: 'BOOTSTRAP', autoCompact: { status: 'BELOW_THRESHOLD', attempted: false, usedTokens, contextWindow, usagePercent, threshold } };
     }
 
     try {
       const result = await Compactor.compactSession(session.id);
       if (result.status !== 'COMPACTED') {
-        return { ...initial, autoCompact: { ...result, attempted: true, usedTokens, contextWindow, usagePercent, threshold } };
+        return { ...initial, mode: 'BOOTSTRAP', autoCompact: { ...result, attempted: true, usedTokens, contextWindow, usagePercent, threshold } };
       }
-      return { ...build(), autoCompact: { ...result, attempted: true, usedTokens, contextWindow, usagePercent, threshold } };
+      return { ...build(), mode: 'BOOTSTRAP', autoCompact: { ...result, attempted: true, usedTokens, contextWindow, usagePercent, threshold } };
     } catch (error) {
       console.warn(`[AutoCompact] session=${session.id} 실패, 압축 전 context로 계속: ${error.message}`);
-      return { ...initial, autoCompact: { status: 'FAILED', success: false, attempted: true, error: error.message, usedTokens, contextWindow, usagePercent, threshold } };
+      return { ...initial, mode: 'BOOTSTRAP', autoCompact: { status: 'FAILED', success: false, attempted: true, error: error.message, usedTokens, contextWindow, usagePercent, threshold } };
     }
+  }
+
+  /**
+   * V2 provider-native execution router.
+   * - UNBOUND: one-time V1 canonical bootstrap to create/adopt a native session.
+   * - READY + no missed canonical messages: current prompt only (plus global memory), native session owns history.
+   * - READY + missed messages since this provider's cursor: one-time cross-provider delta, then current prompt.
+   */
+  static async prepareForProvider({ session, userMessageId = null, memoryBlock = null, currentPrompt }) {
+    const provider = String(session.active_provider || '').toLowerCase();
+    const providerSession = ContextManager.getProviderSession(session.id, provider);
+
+    if (!providerSession?.native_session_ref) {
+      return this.prepare({ session, userMessageId, memoryBlock, currentPrompt });
+    }
+
+    const parts = [];
+    if (memoryBlock) parts.push(memoryBlock);
+
+    let missedMessages = [];
+    if (providerSession.last_synced_message_id) {
+      const delta = ContextManager.buildContextPackage(session.id, providerSession.last_synced_message_id);
+      missedMessages = delta.messages.filter((message) => message.id !== userMessageId);
+    }
+
+    if (missedMessages.length > 0) {
+      const history = renderHistory(missedMessages);
+      parts.push(`[Provider Handoff Delta]\n다음 기록은 이 Provider native session이 마지막으로 동기화된 이후 다른 Provider 또는 Agent Hub에서 진행된 대화입니다. 이 내용을 현재 native conversation에 반영한 뒤 사용자의 새 요청을 이어서 처리하세요.\n\n${history}`);
+    }
+
+    parts.push(currentPrompt);
+
+    return {
+      prompt: joinPromptParts(parts),
+      context: {
+        sessionId: session.id,
+        provider,
+        nativeSessionRef: providerSession.native_session_ref,
+        lastSyncedMessageId: providerSession.last_synced_message_id || null,
+        missedMessageCount: missedMessages.length
+      },
+      mode: missedMessages.length > 0 ? 'NATIVE_DELTA' : 'NATIVE_CONTINUATION',
+      autoCompact: { status: 'NATIVE_SESSION_BYPASS', attempted: false }
+    };
   }
 }
