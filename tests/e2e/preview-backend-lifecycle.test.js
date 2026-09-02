@@ -31,6 +31,10 @@ function copyFixture(name, target) {
     recursive: true,
     filter: (source) => !['node_modules', 'dist'].includes(path.basename(source))
   });
+  // GitHub-hosted Docker can execute the Preview container under a UID that is
+  // different from the checkout owner. The fixture is intentionally disposable,
+  // so make only its project root writable for npm ci/node_modules creation.
+  fs.chmodSync(target, 0o777);
 }
 
 function createRegistry() {
