@@ -38,6 +38,19 @@ export class ProviderSessionRepository {
     return getDb().prepare(`SELECT * FROM provider_sessions WHERE session_id = ? ORDER BY provider ASC`).all(sessionId);
   }
 
+  static listReadyByUserProvider(userId, provider, limit = 100) {
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+    return getDb().prepare(`SELECT ps.*, s.user_id, s.title AS logical_title, s.status AS logical_status,
+        s.active_model AS logical_model, s.reasoning_effort AS logical_reasoning_effort, s.updated_at AS logical_updated_at
+      FROM provider_sessions ps
+      JOIN sessions s ON s.id = ps.session_id
+      WHERE s.user_id = ? AND s.is_system = 0 AND ps.provider = ?
+        AND ps.state = 'READY' AND ps.native_session_ref IS NOT NULL AND trim(ps.native_session_ref) <> ''
+      ORDER BY COALESCE(ps.last_verified_at, ps.updated_at, s.updated_at) DESC
+      LIMIT ?`)
+      .all(userId, normalizeProvider(provider), safeLimit);
+  }
+
   static ensure({ sessionId, provider }) {
     const db = getDb();
     const pName = normalizeProvider(provider);
