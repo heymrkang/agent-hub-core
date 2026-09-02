@@ -6,8 +6,19 @@ import crypto from 'crypto';
 import { ProviderAdapter } from '../provider-adapter.js';
 import { runtimeConfig } from '../../config/runtime-config.js';
 import { createCodexExecutionTelemetry } from './execution-telemetry.js';
+import { CodexExecJsonlParser } from './exec-jsonl.js';
 
 const execFileAsync = promisify(execFile);
+
+function finishCodexJsonl(parser, { nativeSessionRef = null } = {}) {
+  const parsed = parser.finish();
+  return {
+    response: parsed.response || 'Codex로부터 빈 응답을 받았습니다.',
+    nativeSessionRef: parsed.nativeSessionRef,
+    nativeSessionCreated: !nativeSessionRef,
+    usage: parsed.usage ?? null
+  };
+}
 
 export class CodexAdapter extends ProviderAdapter {
   constructor() {
@@ -47,50 +58,88 @@ export class CodexAdapter extends ProviderAdapter {
   }
   async getUsageQuota() { return parseCodexRateLimits(await this.queryAppServerRateLimits()); }
   async discoverModels(forceRefresh = false) { const now = Date.now(); if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels; try { const result = await this.queryAppServerModels(); const rows = Array.isArray(result?.data) ? result.data : []; const discovered = rows.filter(m => m && !m.hidden).map(m => { const efforts = (m.supportedReasoningEfforts || m.supported_reasoning_efforts || []).map(e => typeof e === 'string' ? e : e?.reasoningEffort || e?.reasoning_effort || e?.value).filter(Boolean); const defaultEffort = m.defaultReasoningEffort || m.default_reasoning_effort || null; return { id: m.model || m.id, name: m.displayName || m.display_name || m.model || m.id, default: Boolean(m.isDefault ?? m.is_default), description: m.description || null, metadata: { reasoningEfforts: [...new Set(efforts)], defaultReasoningEffort: defaultEffort } }; }).filter(m => m.id); if (!discovered.length) throw new Error('model/list가 표시 가능한 모델을 반환하지 않았습니다.'); this.cachedModels = discovered; this.lastModelCheck = now; return discovered; } catch (error) { this.cachedModels = null; throw new Error(`Codex 모델 동적 조회 실패 (app-server model/list): ${error.message}`); } }
-  getCapabilities() { return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'PARTIAL', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'SUPPORTED', reasoningEffort: 'SUPPORTED' }; }
-  buildCodexArgs({ prompt, model, reasoningEffort = 'default' }) { const args = ['exec']; if (model && model !== 'default') args.push('-m', model); if (reasoningEffort && reasoningEffort !== 'default') args.push('-c', `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`); args.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', prompt); return args; }
+  getCapabilities() { return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'SUPPORTED', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'SUPPORTED', reasoningEffort: 'SUPPORTED' }; }
+  buildCodexArgs({ prompt, model, reasoningEffort = 'default', nativeSessionRef = null }) {
+    const args = nativeSessionRef ? ['exec', 'resume'] : ['exec'];
+    if (model && model !== 'default') args.push('-m', model);
+    if (reasoningEffort && reasoningEffort !== 'default') args.push('-c', `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`);
+    args.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json');
+    if (nativeSessionRef) args.push(nativeSessionRef);
+    args.push(prompt);
+    return args;
+  }
   async getRestrictedRuntime() {
     if (this.restrictedRuntime) return this.restrictedRuntime; const self = process.env.HOSTNAME; if (!self) throw new Error('Restricted Codex 실행을 위한 현재 컨테이너 ID(HOSTNAME)를 확인할 수 없습니다.');
     try { const [{ stdout: imageOut }, { stdout: mountsOut }] = await Promise.all([execFileAsync('docker', ['inspect', self, '--format', '{{.Config.Image}}'], { timeout: 10000 }), execFileAsync('docker', ['inspect', self, '--format', '{{json .Mounts}}'], { timeout: 10000 })]); const image = imageOut.trim(); const mounts = JSON.parse(mountsOut.trim()); const findMount = destination => mounts.find(m => m.Destination === destination); const workspace = findMount(this.workspaceDir); const codexHome = findMount('/root/.codex'); const data = findMount('/data'); if (!image) throw new Error('현재 Agent Hub 이미지 이름을 찾지 못했습니다.'); if (!workspace?.Source) throw new Error(`${this.workspaceDir} host mount source를 찾지 못했습니다.`); if (!codexHome?.Source) throw new Error('/root/.codex host mount source를 찾지 못했습니다.'); this.restrictedRuntime = { image, workspaceSource: workspace.Source, codexHomeSource: codexHome.Source, uploadsSource: data?.Source ? path.join(data.Source, 'uploads') : null }; console.log(`[CodexAdapter] Restricted profile runtime 준비 완료: image=${image}, workspace=${this.workspaceDir}`); return this.restrictedRuntime; } catch (error) { throw new Error(`Restricted Codex 실행 환경 확인 실패: ${error.stderr || error.message}`); }
   }
   async removeHelperContainer(name) { try { await execFileAsync('docker', ['rm', '-f', name], { timeout: 10000 }); } catch {} }
-  async executeRestrictedPrompt({ prompt, model, reasoningEffort, profile, cwd, timeoutMs, signal }) {
+  async executeRestrictedPrompt({ prompt, model, reasoningEffort, nativeSessionRef, profile, cwd, timeoutMs, signal }) {
     const runtime = await this.getRestrictedRuntime(); const normalizedCwd = path.resolve(cwd || this.workspaceDir); const workspaceRoot = path.resolve(this.workspaceDir); if (normalizedCwd !== workspaceRoot && !normalizedCwd.startsWith(`${workspaceRoot}${path.sep}`)) throw new Error(`${profile} Profile은 ${workspaceRoot} 밖의 cwd에서 실행할 수 없습니다.`);
-    const helperName = `agent-hub-codex-${crypto.randomUUID().slice(0, 12)}`; const workspaceMode = profile === 'READ_ONLY' ? 'ro' : 'rw'; const codexArgs = this.buildCodexArgs({ prompt, model, reasoningEffort });
+    const helperName = `agent-hub-codex-${crypto.randomUUID().slice(0, 12)}`; const workspaceMode = profile === 'READ_ONLY' ? 'ro' : 'rw'; const codexArgs = this.buildCodexArgs({ prompt, model, reasoningEffort, nativeSessionRef });
     // Restricted profiles run with an immutable container root. Only the workspace mount
     // receives the requested ro/rw mode; transient runtime paths are tmpfs and disappear
-    // with the helper container. This prevents WORKSPACE from writing to /home, /etc, etc.
+    // with the helper container. /root/.codex stays rw so native thread files survive helper removal.
     const dockerArgs = ['run', '--rm', '--name', helperName, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=256m', '--tmpfs', '/root/.cache:rw,nosuid,nodev,size=64m', '-e', 'HOME=/root', '-e', 'TMPDIR=/tmp', '-e', 'CI=true', '-v', `${runtime.workspaceSource}:${workspaceRoot}:${workspaceMode}`, '-v', `${runtime.codexHomeSource}:/root/.codex:rw`]; if (runtime.uploadsSource && fs.existsSync('/data/uploads')) dockerArgs.push('-v', `${runtime.uploadsSource}:/data/uploads:ro`); dockerArgs.push('-w', normalizedCwd, '--entrypoint', 'codex', runtime.image, ...codexArgs);
     return new Promise((resolve, reject) => {
       const env = { ...process.env }; delete env.GH_TOKEN; delete env.GITHUB_TOKEN; delete env.TELEGRAM_BOT_TOKEN;
       const child = spawn('docker', dockerArgs, { env, stdio: ['ignore', 'pipe', 'pipe'] });
       const telemetry = createCodexExecutionTelemetry({ mode: `RESTRICTED:${profile}`, pid: child.pid, cwd: normalizedCwd, timeoutMs });
-      let stdout = '', stderr = '', isFinished = false;
+      const parser = new CodexExecJsonlParser({ expectedThreadId: nativeSessionRef || null, requireThreadId: !nativeSessionRef });
+      let stderr = '', parseError = null, isFinished = false;
       const finishError = async (error, reason = 'failed') => { if (isFinished) return; isFinished = true; clearTimeout(timer); telemetry.finish(reason); await this.removeHelperContainer(helperName); reject(error); };
       const timer = setTimeout(() => { if (!isFinished) { telemetry.timeout(); child.kill('SIGKILL'); finishError(new Error(`Codex ${profile} 실행 타임아웃 (${timeoutMs / 1000}초 초과)`), 'timeout'); } }, timeoutMs);
       if (signal) signal.addEventListener('abort', () => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error('Codex 작업이 사용자에 의해 중단되었습니다.'), 'aborted'); } }, { once: true });
-      child.stdout.on('data', c => { stdout += c.toString(); telemetry.recordStdout(c); });
+      child.stdout.on('data', c => { telemetry.recordStdout(c); if (!parseError) { try { parser.push(c); } catch (error) { parseError = error; } } });
       child.stderr.on('data', c => { stderr += c.toString(); telemetry.recordStderr(c); });
       child.on('error', e => finishError(new Error(`Codex restricted helper 시작 실패: ${e.message}`), 'spawn_error'));
-      child.on('close', code => { if (isFinished) return; isFinished = true; clearTimeout(timer); telemetry.finish(code === 0 ? 'completed' : 'failed', { exitCode: code }); const response = stdout.trim(), diagnostic = stderr.trim(); if (code !== 0) return reject(new Error(`Codex ${profile} 실행 실패 (Exit code: ${code}):\n${diagnostic || response || `Exit code: ${code}`}`)); resolve({ response: response || 'Codex로부터 빈 응답을 받았습니다.' }); });
+      child.on('close', code => {
+        if (isFinished) return;
+        isFinished = true;
+        clearTimeout(timer);
+        telemetry.finish(code === 0 ? 'completed' : 'failed', { exitCode: code });
+        const diagnostic = stderr.trim();
+        if (code !== 0) {
+          const error = new Error(`Codex ${profile} 실행 실패 (Exit code: ${code}):\n${diagnostic || `Exit code: ${code}`}`);
+          if (nativeSessionRef) error.code = 'CODEX_NATIVE_RESUME_FAILED';
+          return reject(error);
+        }
+        if (parseError) return reject(parseError);
+        try { resolve(finishCodexJsonl(parser, { nativeSessionRef })); }
+        catch (error) { reject(error); }
+      });
     });
   }
   async executePrompt(options = {}) {
-    const { prompt, model, reasoningEffort = 'default', profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
+    const { prompt, model, reasoningEffort = 'default', nativeSessionRef = null, profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
     const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
-    if (normalizedProfile !== 'FULL_ACCESS') return this.executeRestrictedPrompt({ prompt, model, reasoningEffort, profile: normalizedProfile, cwd, timeoutMs, signal });
+    if (normalizedProfile !== 'FULL_ACCESS') return this.executeRestrictedPrompt({ prompt, model, reasoningEffort, nativeSessionRef, profile: normalizedProfile, cwd, timeoutMs, signal });
     return new Promise((resolve, reject) => {
-      const args = this.buildCodexArgs({ prompt, model, reasoningEffort });
+      const args = this.buildCodexArgs({ prompt, model, reasoningEffort, nativeSessionRef });
       const child = spawn('codex', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
       const telemetry = createCodexExecutionTelemetry({ mode: 'FULL_ACCESS', pid: child.pid, cwd, timeoutMs });
-      let stdout = '', stderr = '', isFinished = false;
+      const parser = new CodexExecJsonlParser({ expectedThreadId: nativeSessionRef || null, requireThreadId: !nativeSessionRef });
+      let stderr = '', parseError = null, isFinished = false;
       const finishError = (error, reason = 'failed') => { if (isFinished) return; isFinished = true; clearTimeout(timer); telemetry.finish(reason); reject(error); };
       const timer = setTimeout(() => { if (!isFinished) { telemetry.timeout(); child.kill('SIGKILL'); finishError(new Error(`Codex 실행 타임아웃 (${timeoutMs / 1000}초 초과)`), 'timeout'); } }, timeoutMs);
       if (signal) signal.addEventListener('abort', () => { if (!isFinished) { child.kill('SIGKILL'); finishError(new Error('Codex 작업이 사용자에 의해 중단되었습니다.'), 'aborted'); } }, { once: true });
-      child.stdout.on('data', c => { stdout += c.toString(); telemetry.recordStdout(c); });
+      child.stdout.on('data', c => { telemetry.recordStdout(c); if (!parseError) { try { parser.push(c); } catch (error) { parseError = error; } } });
       child.stderr.on('data', c => { stderr += c.toString(); telemetry.recordStderr(c); });
       child.on('error', e => finishError(new Error(`Codex 프로세스 시작 실패: ${e.message}`), 'spawn_error'));
-      child.on('close', code => { if (isFinished) return; isFinished = true; clearTimeout(timer); telemetry.finish(code === 0 ? 'completed' : 'failed', { exitCode: code }); const response = stdout.trim(), diagnostic = stderr.trim(); if (code !== 0) return reject(new Error(`Codex 실행 실패 (Exit code: ${code}):\n${diagnostic || response || `Exit code: ${code}`}`)); resolve({ response: response || 'Codex로부터 빈 응답을 받았습니다.' }); });
+      child.on('close', code => {
+        if (isFinished) return;
+        isFinished = true;
+        clearTimeout(timer);
+        telemetry.finish(code === 0 ? 'completed' : 'failed', { exitCode: code });
+        const diagnostic = stderr.trim();
+        if (code !== 0) {
+          const error = new Error(`Codex 실행 실패 (Exit code: ${code}):\n${diagnostic || `Exit code: ${code}`}`);
+          if (nativeSessionRef) error.code = 'CODEX_NATIVE_RESUME_FAILED';
+          return reject(error);
+        }
+        if (parseError) return reject(parseError);
+        try { resolve(finishCodexJsonl(parser, { nativeSessionRef })); }
+        catch (error) { reject(error); }
+      });
     });
   }
 }
