@@ -18,7 +18,7 @@ function createSession(provider = 'codex') {
   return SessionManager.createSession(userId, { provider, model: null, reasoningEffort: 'default' });
 }
 
-test('same-provider native continuation은 canonical assistant/history를 다시 주입하지 않는다', async () => {
+test('same-provider native continuation은 canonical history와 global memory를 prompt에 다시 주입하지 않는다', async () => {
   const session = createSession('codex');
   const firstUser = SessionManager.saveMessage({ sessionId: session.id, role: 'user', text: '1단계 진행' });
   ProviderSessionRepository.bind({ sessionId: session.id, provider: 'codex', nativeSessionRef: 'codex-thread-a', lastSyncedMessageId: firstUser });
@@ -34,8 +34,8 @@ test('same-provider native continuation은 canonical assistant/history를 다시
 
   assert.equal(prepared.mode, 'NATIVE_CONTINUATION');
   assert.equal(prepared.context.missedMessageCount, 0);
-  assert.match(prepared.prompt, /공통 지침/);
   assert.match(prepared.prompt, /2단계 진행/);
+  assert.doesNotMatch(prepared.prompt, /공통 지침|Global Memory/);
   assert.doesNotMatch(prepared.prompt, /1단계 진행/);
   assert.doesNotMatch(prepared.prompt, /1단계 완료/);
   assert.doesNotMatch(prepared.prompt, /대화 요약|이전 대화 기록/);
@@ -55,7 +55,6 @@ test('provider 왕복 시 다른 Provider가 처리한 구간만 native delta로
   const prepared = await ContextAssembler.prepareForProvider({
     session,
     userMessageId: returnUser,
-    memoryBlock: null,
     currentPrompt: 'Codex로 돌아와서 계속'
   });
 
