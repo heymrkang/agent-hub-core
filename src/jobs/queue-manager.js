@@ -2,6 +2,7 @@ import { JobRuntime } from './job-runtime.js';
 import { JobStatus, ErrorCategory } from './types.js';
 import { providerManager } from '../providers/provider-manager.js';
 import { ContextManager } from '../context/context-manager.js';
+import { ProviderSessionRepository } from '../sessions/provider-session-repository.js';
 import { getSettingsManager } from '../settings/settings-manager.js';
 import { Compactor } from '../context/compactor.js';
 import { modelCatalog } from '../providers/model-catalog.js';
@@ -99,14 +100,26 @@ class QueueManager {
       const adapter = providerManager.getAdapter(job.provider);
       const providerSession = ContextManager.getProviderSession(job.session_id, providerName);
       const result = await adapter.executePrompt({ prompt, model: job.model, reasoningEffort: job.reasoningEffort, sessionId: job.session_id, nativeSessionRef: providerSession?.native_session_ref || null, profile, signal: abortController.signal });
-      const canonical = ContextManager.buildContextPackage(job.session_id);
-      ContextManager.upsertProviderSession({ sessionId: job.session_id, provider: providerName, nativeSessionRef: result.nativeSessionRef || null, lastSyncedMessageId: canonical.latestMessageId });
+
+      // Native identity is persisted as soon as the Provider turn succeeds. The sync cursor is intentionally
+      // NOT advanced here: the assistant canonical message is stored by the caller after this promise resolves.
+      // Advancing to the pre-response user message would make cross-provider delta handoff one message stale.
+      ContextManager.upsertProviderSession({
+        sessionId: job.session_id,
+        provider: providerName,
+        nativeSessionRef: result.nativeSessionRef || null,
+        lastSyncedMessageId: null
+      });
+
       const durationMs = Date.now() - startTime;
       JobRuntime.markCompleted(job.id, durationMs);
       onStatusUpdate?.(JobStatus.COMPLETED, Math.floor(durationMs / 1000));
       resolve(result.response);
     } catch (error) {
       const durationMs = Date.now() - startTime;
+      if (error?.code === 'CODEX_NATIVE_RESUME_FAILED' || error?.code === 'CODEX_NATIVE_THREAD_MISMATCH') {
+        try { ProviderSessionRepository.markFailure({ sessionId: job.session_id, provider: providerName, state: 'ERROR', error }); } catch {}
+      }
       if (abortController.signal.aborted) {
         const timedOut = timeoutMs && durationMs >= timeoutMs - 50;
         if (timedOut) { JobRuntime.markFailed(job.id, ErrorCategory.TIMEOUT, '작업 타임아웃', 1, durationMs); onStatusUpdate?.(JobStatus.FAILED, Math.floor(durationMs / 1000)); reject(new Error('작업 타임아웃')); }
