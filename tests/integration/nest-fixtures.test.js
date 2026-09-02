@@ -53,10 +53,10 @@ test('Swagger 미설치와 설치 fixture가 dependency 및 bootstrap 단계에�
   assert.doesNotMatch(withoutOpenApi.main, /SwaggerModule|docs-json/);
 
   assert.equal(withOpenApi.packageJson.dependencies['@nestjs/swagger'], '11.4.7');
-  assert.equal(withOpenApi.packageJson.dependencies.mysql2, '3.14.4');
+  assert.equal(withOpenApi.packageJson.dependencies.mysql2, undefined);
   assert.match(withOpenApi.main, /SwaggerModule\.setup\('docs'/);
   assert.match(withOpenApi.main, /jsonDocumentUrl: 'docs-json'/);
   const itemsService = fs.readFileSync(path.join(withOpenApi.directory, 'src/items.service.ts'), 'utf8');
-  assert.match(itemsService, /process\.env\.DATABASE_URL/);
-  assert.match(itemsService, /phase17_preview_items/);
+  assert.doesNotMatch(itemsService, /process\.env\.DATABASE_URL/);
+  assert.doesNotMatch(itemsService, /phase17_preview_items/);
 });
