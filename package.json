@@ -1,7 +1,7 @@
 {
   "name": "docker-agent-telegram",
-  "version": "0.1.0",
-  "description": "Dockerized Telegram Agent powered by Codex & LLM CLIs",
+  "version": "2.0.0",
+  "description": "Agent Hub Core V2 — Telegram orchestration for provider-native Codex and Antigravity sessions",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
