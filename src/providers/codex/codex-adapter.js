@@ -7,6 +7,7 @@ import { ProviderAdapter } from '../provider-adapter.js';
 import { runtimeConfig } from '../../config/runtime-config.js';
 import { createCodexExecutionTelemetry } from './execution-telemetry.js';
 import { CodexExecJsonlParser } from './exec-jsonl.js';
+import { CODEX_NATIVE_SESSION_SOURCE_KINDS, normalizeCodexThreadList } from './native-session-list.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -56,9 +57,39 @@ export class CodexAdapter extends ProviderAdapter {
       send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'agent_hub', title: 'Agent Hub', version: '1.0.0' } } });
     });
   }
+  async queryAppServerThreads({ cursor = null, limit = 50 } = {}) {
+    return new Promise((resolve, reject) => {
+      const child = spawn('codex', ['app-server', '--stdio'], { cwd: this.workspaceDir, env: { ...process.env, CI: 'true' }, stdio: ['pipe', 'pipe', 'pipe'] });
+      let buffer = '', stderr = '', settled = false;
+      const timer = setTimeout(() => finish(new Error(`Codex app-server thread/list 타임아웃: ${stderr.trim() || '응답 없음'}`)), 10000);
+      const finish = (error, value) => { if (settled) return; settled = true; clearTimeout(timer); if (!child.killed) child.kill('SIGTERM'); error ? reject(error) : resolve(value); };
+      const send = payload => child.stdin.write(`${JSON.stringify(payload)}\n`);
+      child.stderr.on('data', c => { stderr += c.toString(); });
+      child.on('error', e => finish(new Error(`Codex app-server 시작 실패: ${e.message}`)));
+      child.on('close', code => { if (!settled) finish(new Error(`Codex app-server 조기 종료 (code=${code}): ${stderr.trim() || '상세 오류 없음'}`)); });
+      child.stdout.on('data', chunk => {
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines.map(l => l.trim()).filter(Boolean)) {
+          let m; try { m = JSON.parse(line); } catch { continue; }
+          if (m.id === 1) {
+            if (m.error) return finish(new Error(`Codex app-server initialize 실패: ${m.error.message || JSON.stringify(m.error)}`));
+            send({ method: 'initialized', params: {} });
+            send({ id: 2, method: 'thread/list', params: { cursor, limit, sortKey: 'updated_at', sortDirection: 'desc', sourceKinds: CODEX_NATIVE_SESSION_SOURCE_KINDS, archived: false } });
+          } else if (m.id === 2) {
+            if (m.error) return finish(new Error(`Codex thread/list 실패: ${m.error.message || JSON.stringify(m.error)}`));
+            return finish(null, m.result);
+          }
+        }
+      });
+      send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'agent_hub', title: 'Agent Hub', version: '1.0.0' } } });
+    });
+  }
+  async listNativeSessions(options = {}) { return normalizeCodexThreadList(await this.queryAppServerThreads(options)); }
   async getUsageQuota() { return parseCodexRateLimits(await this.queryAppServerRateLimits()); }
   async discoverModels(forceRefresh = false) { const now = Date.now(); if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels; try { const result = await this.queryAppServerModels(); const rows = Array.isArray(result?.data) ? result.data : []; const discovered = rows.filter(m => m && !m.hidden).map(m => { const efforts = (m.supportedReasoningEfforts || m.supported_reasoning_efforts || []).map(e => typeof e === 'string' ? e : e?.reasoningEffort || e?.reasoning_effort || e?.value).filter(Boolean); const defaultEffort = m.defaultReasoningEffort || m.default_reasoning_effort || null; return { id: m.model || m.id, name: m.displayName || m.display_name || m.model || m.id, default: Boolean(m.isDefault ?? m.is_default), description: m.description || null, metadata: { reasoningEfforts: [...new Set(efforts)], defaultReasoningEffort: defaultEffort } }; }).filter(m => m.id); if (!discovered.length) throw new Error('model/list가 표시 가능한 모델을 반환하지 않았습니다.'); this.cachedModels = discovered; this.lastModelCheck = now; return discovered; } catch (error) { this.cachedModels = null; throw new Error(`Codex 모델 동적 조회 실패 (app-server model/list): ${error.message}`); } }
-  getCapabilities() { return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'SUPPORTED', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'SUPPORTED', reasoningEffort: 'SUPPORTED' }; }
+  getCapabilities() { return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'SUPPORTED', nativeSessionList: 'SUPPORTED', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'SUPPORTED', reasoningEffort: 'SUPPORTED' }; }
   buildCodexArgs({ prompt, model, reasoningEffort = 'default', nativeSessionRef = null }) {
     const args = nativeSessionRef ? ['exec', 'resume'] : ['exec'];
     if (model && model !== 'default') args.push('-m', model);
