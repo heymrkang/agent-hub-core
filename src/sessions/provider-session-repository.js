@@ -26,6 +26,14 @@ export class ProviderSessionRepository {
       .get(sessionId, normalizeProvider(provider)) || null;
   }
 
+  static findByNativeRef(provider, nativeSessionRef) {
+    return getDb().prepare(`SELECT ps.*, s.user_id, s.title AS logical_title, s.status AS logical_status, s.is_system
+      FROM provider_sessions ps
+      JOIN sessions s ON s.id = ps.session_id
+      WHERE ps.provider = ? AND ps.native_session_ref = ?`)
+      .get(normalizeProvider(provider), normalizeNativeRef(nativeSessionRef)) || null;
+  }
+
   static list(sessionId) {
     return getDb().prepare(`SELECT * FROM provider_sessions WHERE session_id = ? ORDER BY provider ASC`).all(sessionId);
   }
