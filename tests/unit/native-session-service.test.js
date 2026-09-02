@@ -20,6 +20,10 @@ class ListAdapter {
   async listNativeSessions() { return { sessions: this.rows, nextCursor: null }; }
 }
 
+class ResumeOnlyAdapter {
+  constructor(name) { this.name = name; }
+}
+
 test('migration 015 enforces unique provider/native ref ownership', () => {
   const indexes = db.prepare("PRAGMA index_list('provider_sessions')").all();
   const unique = indexes.find((row) => row.name === 'uq_provider_sessions_provider_native_ref');
@@ -36,9 +40,38 @@ test('native list annotates existing logical mapping', async () => {
     { nativeSessionRef: 'thread-free', title: 'Free thread' }
   ]));
 
-  const result = await NativeSessionService.listForProvider({ provider: 'codex' });
+  const result = await NativeSessionService.listForProvider({ userId, provider: 'codex' });
+  assert.equal(result.listCapability, 'FULL');
+  assert.equal(result.source, 'provider-native');
   assert.equal(result.sessions[0].mappedLogicalSessionId, logical.id);
   assert.equal(result.sessions[1].mappedLogicalSessionId, null);
+});
+
+test('provider without list API falls back to this user READY mappings only', async () => {
+  const userId = 19007;
+  const ready = SessionManager.createSession(userId, { title: 'Agy Ready', provider: 'antigravity', model: 'gemini-test', reasoningEffort: 'high' });
+  const unbound = SessionManager.createSession(userId, { title: 'Agy Unbound', provider: 'antigravity' });
+  const otherUser = SessionManager.createSession(19008, { title: 'Other User', provider: 'antigravity' });
+  ProviderSessionRepository.bind({ sessionId: ready.id, provider: 'antigravity', nativeSessionRef: 'agy-conversation-ready', verified: true });
+  ProviderSessionRepository.ensure({ sessionId: unbound.id, provider: 'antigravity' });
+  ProviderSessionRepository.bind({ sessionId: otherUser.id, provider: 'antigravity', nativeSessionRef: 'agy-conversation-other' });
+  providerManager.registerAdapter(new ResumeOnlyAdapter('antigravity'));
+
+  const result = await NativeSessionService.listForProvider({ userId, provider: 'antigravity' });
+  assert.equal(result.listCapability, 'MAPPED_ONLY');
+  assert.equal(result.source, 'mapping-fallback');
+  assert.deepEqual(result.sessions.map((row) => row.nativeSessionRef), ['agy-conversation-ready']);
+  assert.equal(result.sessions[0].mappedLogicalSessionId, ready.id);
+  assert.equal(result.sessions[0].model, 'gemini-test');
+  assert.equal(result.sessions[0].reasoningEffort, 'high');
+});
+
+test('provider without list API still fails when caller has no user scope', async () => {
+  providerManager.registerAdapter(new ResumeOnlyAdapter('resume-only'));
+  await assert.rejects(
+    NativeSessionService.listForProvider({ provider: 'resume-only' }),
+    (error) => error?.code === 'NATIVE_SESSION_LIST_UNSUPPORTED'
+  );
 });
 
 test('unmapped native session adopt creates logical session and READY binding', () => {
