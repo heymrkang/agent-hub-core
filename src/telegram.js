@@ -19,7 +19,7 @@ import { handleStopCommand, handleJobCancelCallback } from './telegram/commands/
 import { handleQueueCommand } from './telegram/commands/queue.js';
 import { handleCompactCommand } from './telegram/commands/compact.js';
 import { handleFilesCommand, handleDownloadCommand } from './telegram/commands/files.js';
-import { handleMemoryCommand } from './telegram/commands/memory.js';
+import { handleMemoryCommand } from './memory/memory-manager.js';
 import { handleScheduleCommand, handleScheduleCallback } from './telegram/commands/schedule.js';
 import { handleServersCommand, handleServersCallback } from './telegram/commands/servers.js';
 import { handleProfileCommand, handleProfileCallback } from './telegram/commands/profile.js';
@@ -32,6 +32,7 @@ import { handleBackupCommand } from './telegram/commands/backup.js';
 import { handlePreviewCommand, handlePreviewCallback } from './telegram/commands/preview.js';
 import { isStealthMode } from './telegram/renderer/ui-theme.js';
 import { installTelegramTransport, safeErrorMessage } from './telegram/transport.js';
+import { isSessionsCallbackData } from './telegram/callback-routing.js';
 
 export async function deliverTelegramText(bot, chatId, text, options = {}, deferKey = null) {
   const chunks = splitMessage(String(text ?? '')).filter((chunk) => chunk && chunk.trim());
@@ -185,7 +186,7 @@ export function initTelegramBot() {
   bot.on('callback_query', safeHandler('callback_query', async (q) => {
     if (!isAuthorizedUser(q.from)) return;
     const data = q.data || '';
-    if(data.startsWith('usage_'))return handleUsageCallback(bot,q);if(data.startsWith('system_'))return handleSystemCallback(bot,q);if(data.startsWith('preview_'))return handlePreviewCallback(bot,q);if(data.startsWith('session_'))return handleSessionsCallback(bot,q);if(data.startsWith('model_'))return handleModelCallback(bot,q);if(data.startsWith('providers_'))return handleProvidersCallback(bot,q);if(data.startsWith('profile_'))return handleProfileCallback(bot,q);if(data.startsWith('settings_'))return handleSettingsCallback(bot,q);if(data.startsWith('server_'))return handleServersCallback(bot,q);if(data.startsWith('job_cancel'))return handleJobCancelCallback(bot,q);if(data.startsWith('schedule_'))return handleScheduleCallback(bot,q);
+    if(data.startsWith('usage_'))return handleUsageCallback(bot,q);if(data.startsWith('system_'))return handleSystemCallback(bot,q);if(data.startsWith('preview_'))return handlePreviewCallback(bot,q);if(isSessionsCallbackData(data))return handleSessionsCallback(bot,q);if(data.startsWith('model_'))return handleModelCallback(bot,q);if(data.startsWith('providers_'))return handleProvidersCallback(bot,q);if(data.startsWith('profile_'))return handleProfileCallback(bot,q);if(data.startsWith('settings_'))return handleSettingsCallback(bot,q);if(data.startsWith('server_'))return handleServersCallback(bot,q);if(data.startsWith('job_cancel'))return handleJobCancelCallback(bot,q);if(data.startsWith('schedule_'))return handleScheduleCallback(bot,q);
   }));
 
   bot.on('polling_error', (error) => console.error(`[Telegram Polling Error] ${safeErrorMessage(error)}`));
