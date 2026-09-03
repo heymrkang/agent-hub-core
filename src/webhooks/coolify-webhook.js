@@ -38,9 +38,12 @@ export function parseCoolifyPayload(body = {}) {
         .join('\n')
     : '';
 
+  const isTest = Boolean(body.test || /test/i.test(message) || event.includes('test'));
+
   return {
     isSuccess: isSuccess || (!isFailure && rawStatus !== ''),
     isFailure,
+    isTest,
     appName,
     commit,
     message,
@@ -50,7 +53,15 @@ export function parseCoolifyPayload(body = {}) {
 }
 
 export function formatDeployNotification(parsed) {
-  const { isSuccess, isFailure, appName, commit, message, duration, error } = parsed;
+  const { isSuccess, isFailure, isTest, appName, commit, message, duration, error } = parsed;
+
+  if (isTest) {
+    let text = `🔔 **Coolify 웹훅 연결 테스트 성공!**\n\n`;
+    text += `• 수신 상태: \`정상 (HTTP 200)\`\n`;
+    if (message) text += `• 내용: \`${message}\`\n`;
+    text += `• 향후 배포 성공/실패 결과가 이 채팅방으로 자동 전달됩니다.`;
+    return text;
+  }
 
   if (isFailure) {
     let text = `${uiStatusIcon('error')} **[${appName}] Coolify 배포 실패!**\n\n`;
@@ -70,9 +81,10 @@ export function formatDeployNotification(parsed) {
 }
 
 export function createCoolifyWebhookHandler({ bot = null, adminUserId = null, secretToken = null } = {}) {
-  const expectedToken = secretToken || process.env.WEBHOOK_SECRET || process.env.PREVIEW_INTERNAL_TOKEN || '';
+  const expectedToken = secretToken || process.env.WEBHOOK_SECRET || '';
 
   return async (req, res) => {
+    console.log(`[Coolify Webhook] 요청 수신: ${req.method} ${req.url}`);
     // 1. Health check
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });

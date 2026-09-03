@@ -67,6 +67,13 @@ test('formatDeployNotification renders markdown correctly', () => {
   assert.match(failText, /Coolify 배포 실패/);
   assert.match(failText, /api/);
   assert.match(failText, /missing dependency/);
+
+  const testText = formatDeployNotification({
+    isTest: true,
+    message: 'Test notification from Coolify.'
+  });
+  assert.match(testText, /Coolify 웹훅 연결 테스트 성공/);
+  assert.match(testText, /Test notification from Coolify/);
 });
 
 test('createCoolifyWebhookHandler handles HTTP requests and pushes telegram alert', async (t) => {
