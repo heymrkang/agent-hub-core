@@ -32,6 +32,7 @@ import { handlePreviewCommand, handlePreviewCallback } from './telegram/commands
 import { handleMcpCommand, handleMcpCallback } from './telegram/commands/mcp.js';
 import { handleSkillsCommand, handleSkillsCallback } from './telegram/commands/skills.js';
 import { handleDeployCommand, handleDeployCallback } from './telegram/commands/deploy.js';
+import { handleVoiceMessage } from './telegram/handlers/voice.js';
 import { isStealthMode } from './telegram/renderer/ui-theme.js';
 import { installTelegramTransport, safeErrorMessage } from './telegram/transport.js';
 import { isSessionsCallbackData } from './telegram/callback-routing.js';
@@ -182,6 +183,16 @@ export function initTelegramBot() {
       console.error(`[Document Upload Error] ${safeErrorMessage(error)}`);
       await deliver(chatId, `${isStealthMode() ? '×' : '❌'} 문서 다운로드/처리 실패: ${safeErrorMessage(error)}`);
     }
+  }));
+
+  bot.on('voice', safeHandler('voice', async (msg) => {
+    if (!isAuthorizedUser(msg.from)) return;
+    await handleVoiceMessage({ bot, msg, processPromptJob });
+  }));
+
+  bot.on('audio', safeHandler('audio', async (msg) => {
+    if (!isAuthorizedUser(msg.from)) return;
+    await handleVoiceMessage({ bot, msg, processPromptJob });
   }));
 
   bot.on('callback_query', safeHandler('callback_query', async (q) => {

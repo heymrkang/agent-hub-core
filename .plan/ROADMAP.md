@@ -59,7 +59,8 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 16 | Feature Stabilization & Optimization | `DONE` | Canonical Compact, Model Thinking, Provider Usage/Quota 완료 |
 | Phase 17 | Backend API Preview & Inspector | `DONE` | NestJS/OpenAPI 백엔드 프리뷰, Swagger 탐지, 개발 MariaDB 연동 및 실서버 검증 완료 |
 | Phase 18 | V2 Native Session Compact & Rollover | `DONE` | /compact 시 모든 Provider Native Session 초기화 및 요약 부트스트랩 롤오버 완료 |
-| Phase 20 | Coolify Deploy Integration & Voice Prompting (STT) | `PLANNED` | Coolify 배포 연동(`/deploy`), 배포 완료 수신 웹훅 알림, Whisper STT 음성 코딩 |
+| Phase 19 | Agent Extensibility — MCP & Skills | `DONE` | DB/파일 마스터 기반 Codex & Antigravity 전역 Dual-Sync 및 텔레그램 프리셋/관리 UI 완료 |
+| Phase 20 | Coolify Deploy Integration & Voice Prompting (STT) | `DONE` | Coolify 배포 연동(`/deploy`), 배포 완료 수신 웹훅 알림, Whisper STT 음성 코딩 완료 |
 | Phase 21 | V2 LTS Final Hardening & Optimization | `PLANNED` | 토큰 다이어트, 퍼블릭 레포 보안 감사 및 환경변수화, 레거시 정리, V2 LTS 완결 |
 
 ### Phase 12를 스킵하는 이유
@@ -132,7 +133,7 @@ Phase 16: DONE — Canonical Compact / Model Thinking / Provider Usage·Quota �
 Phase 17: DONE — NestJS/OpenAPI Backend API Preview & Inspector 완료
 Phase 18: DONE — V2 Native Session Compact & Rollover 완료
 Phase 19: DONE — MCP & Skills 완료
-Phase 20: PLANNED — Coolify Deploy Integration & Voice Prompting (STT)
+Phase 20: DONE — Coolify Deploy Integration & Voice Prompting (STT) 완료
 Phase 21: PLANNED — V2 LTS Final Hardening & Optimization (Feature Freeze)
 Development root: /home/dev
 Git repositories: /home/dev/workspace

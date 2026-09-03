@@ -42,7 +42,7 @@ services:
       traefik.docker.network: coolify
       traefik.http.routers.agent-hub-webhook.priority: "2"
       traefik.http.routers.agent-hub-webhook.entrypoints: http
-      traefik.http.routers.agent-hub-webhook.rule: "HostRegexp(`(webhook|agent-hub|deploy)\\.12190529\\.xyz`)"
+      traefik.http.routers.agent-hub-webhook.rule: "Host(`agent-hub.12190529.xyz`)"
       traefik.http.routers.agent-hub-webhook.service: agent-hub-webhook
       traefik.http.services.agent-hub-webhook.loadbalancer.server.port: "8788"
     networks:

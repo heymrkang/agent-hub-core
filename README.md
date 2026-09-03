@@ -11,7 +11,7 @@ Agent Hub Core는 모바일 환경에서의 완벽한 1인 바이브코딩 인�
 ```text
 Phase 13~19: DONE (Next.js/NestJS 모바일 프리뷰, V2 Compact 롤오버, MCP & Skills 전역 듀얼 싱크)
       ↓
-Phase 20: PLANNED (Coolify Deploy Webhook & Whisper Voice Prompting)
+Phase 20: DONE (Coolify Deploy Webhook & Whisper Voice Prompting)
       ↓
 Phase 21: PLANNED (V2 LTS Final Hardening & Optimization)
   • 토큰 다이어트: 턴당 시스템 프롬프트 및 가드레일 토큰 낭비 전면 차단

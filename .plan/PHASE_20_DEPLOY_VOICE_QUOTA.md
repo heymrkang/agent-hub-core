@@ -2,7 +2,7 @@
 
 ## Status
 
-`PLANNED`
+`DONE`
 
 ## 1. 개요 및 핵심 설계 원칙
 
@@ -91,20 +91,20 @@ CREATE INDEX IF NOT EXISTS idx_deploy_targets_name ON deploy_targets(name);
 
 ## 4. 단계별 실행 계획
 
-- [ ] **Stage 1: DB 마이그레이션 & Deploy Target Repository/CLI**
+- [x] **Stage 1: DB 마이그레이션 & Deploy Target Repository/CLI**
   - `migrations/017_deploy_targets.sql` 작성 및 마이그레이터 반영.
   - `src/deploy/deploy-repository.js`: CRUD 구현.
   - `src/telegram/commands/deploy.js`: `/deploy` 명령어 및 인라인 키보드 UI 구현.
-- [ ] **Stage 2: HTTP Webhook 수신 라우트 & 텔레그램 푸시 연동**
-  - `src/webhooks/coolify-webhook-handler.js`: Webhook 요청 검증 및 파싱.
-  - Agent Hub HTTP 서버에 `POST /api/webhooks/coolify` 라우트 연동.
+- [x] **Stage 2: HTTP Webhook 수신 라우트 & 텔레그램 푸시 연동**
+  - `src/webhooks/coolify-webhook.js`: Webhook 요청 검증 및 파싱.
+  - Agent Hub HTTP 서버에 `POST /api/webhooks/coolify` 라우트 연동 (8788 포트 및 Traefik `agent-hub.12190529.xyz` 연동).
   - 배포 성공/실패 시 Telegram 관리자 푸시 전송.
-- [ ] **Stage 3: Whisper STT 연동 & 음성 메시지 파이프라인**
+- [x] **Stage 3: Whisper STT 연동 & 음성 메시지 파이프라인**
   - `src/utils/stt.js`: OpenAI Whisper API 호출 및 힌트 프롬프트 적용 (Key 부재 시 graceful fallback).
-  - `src/telegram/handlers/voice.js`: Telegram voice 수신, STT 변환 및 `JobQueue` 인입 연동.
-- [ ] **Stage 4: 단위 테스트 & 시스템 통합 검증**
-  - Deploy repository, Telegram deploy 커맨드, Coolify webhook 수신, STT 핸들러 유닛 테스트 작성.
-  - 전체 회귀 테스트 통과 확인 (All Green).
+  - `src/telegram/handlers/voice.js`: Telegram voice/audio 수신, STT 변환 및 `JobQueue` 인입 연동.
+- [x] **Stage 4: 단위 테스트 & 시스템 통합 검증**
+  - Deploy repository, Telegram deploy 커맨드, Coolify webhook 수신, STT 핸들러 유닛 테스트 작성 (총 10건 추가).
+  - 전체 회귀 테스트 통과 확인 (258 pass, 0 fail, All Green).
 
 ---
 
