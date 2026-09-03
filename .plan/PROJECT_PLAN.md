@@ -115,6 +115,6 @@ Agent Hub Core
 - Phase 17: Backend API Preview & Inspector — 완료
 - Phase 18: V2 Native Session Compact & Rollover — 완료
 - Phase 19: Agent Extensibility — MCP & Skills — 완료
-- Phase 20: Deploy Webhooks, Voice Prompting & Smart Quota — 계획 완료
+- Phase 20: Coolify Deploy Integration & Voice Prompting (STT) — 계획 완료
 
 상세 범위와 실행 순서는 `ROADMAP.md` 및 해당 Phase 설계 문서를 따른다.

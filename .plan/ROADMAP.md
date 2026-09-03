@@ -60,7 +60,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 17 | Backend API Preview & Inspector | `DONE` | NestJS/OpenAPI 백엔드 프리뷰, Swagger 탐지, 개발 MariaDB 연동 및 실서버 검증 완료 |
 | Phase 18 | V2 Native Session Compact & Rollover | `DONE` | /compact 시 모든 Provider Native Session 초기화 및 요약 부트스트랩 롤오버 완료 |
 | Phase 19 | Agent Extensibility — MCP & Skills | `DONE` | DB/파일 마스터 기반 Codex & Antigravity 전역 Dual-Sync 및 텔레그램 프리셋/관리 UI 완료 |
-| Phase 20 | Deploy Webhooks, Voice Prompting & Smart Quota | `PLANNED` | Coolify 배포 연동(`/deploy`), Whisper STT 음성 코딩, 부하 0% 스마트 Quota 알림 |
+| Phase 20 | Coolify Deploy Integration & Voice Prompting (STT) | `PLANNED` | Coolify 배포 연동(`/deploy`), 배포 완료 수신 웹훅 알림, Whisper STT 음성 코딩 |
 
 ### Phase 12를 스킵하는 이유
 
@@ -98,7 +98,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ### Phase 20
 
-`PHASE_20_DEPLOY_VOICE_QUOTA.md`를 기준으로 모바일 텔레그램 상에서의 개발 생산성과 운영 편의성을 극대화한다. Coolify Deploy Webhook을 통한 `/deploy` 명령어 및 빌드 결과 알림 연동, OpenAI Whisper STT 기반 텔레그램 음성 코딩 지시, Job 응답 메타데이터를 활용한 부하 0% 스마트 Quota 80%/95% 임계치 알림을 구현한다.
+`PHASE_20_DEPLOY_VOICE_QUOTA.md`를 기준으로 모바일 텔레그램 상에서의 개발 생산성과 운영 편의성을 극대화한다. Coolify Deploy Webhook을 통한 `/deploy` 명령어 및 배포 결과 수신 웹훅 알림 연동, OpenAI Whisper STT 기반 텔레그램 음성 코딩 지시를 구현한다. (오작동 우려 및 불필요한 복잡도를 방지하기 위해 Smart Quota는 제외하고 기존 `/usage`를 유지한다.)
 
 ## 5. Known Operational Notes
 
@@ -128,7 +128,7 @@ Phase 16: DONE — Canonical Compact / Model Thinking / Provider Usage·Quota �
 Phase 17: DONE — NestJS/OpenAPI Backend API Preview & Inspector 완료
 Phase 18: DONE — V2 Native Session Compact & Rollover 완료
 Phase 19: DONE — MCP & Skills 완료
-Phase 20: PLANNED — Deploy Webhooks, Voice Prompting & Smart Quota
+Phase 20: PLANNED — Coolify Deploy Integration & Voice Prompting (STT)
 Development root: /home/dev
 Git repositories: /home/dev/workspace
 ```
