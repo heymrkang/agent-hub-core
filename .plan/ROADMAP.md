@@ -59,8 +59,8 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 16 | Feature Stabilization & Optimization | `DONE` | Canonical Compact, Model Thinking, Provider Usage/Quota 완료 |
 | Phase 17 | Backend API Preview & Inspector | `DONE` | NestJS/OpenAPI 백엔드 프리뷰, Swagger 탐지, 개발 MariaDB 연동 및 실서버 검증 완료 |
 | Phase 18 | V2 Native Session Compact & Rollover | `DONE` | /compact 시 모든 Provider Native Session 초기화 및 요약 부트스트랩 롤오버 완료 |
-| Phase 19 | Agent Extensibility — MCP & Skills | `DONE` | DB/파일 마스터 기반 Codex & Antigravity 전역 Dual-Sync 및 텔레그램 프리셋/관리 UI 완료 |
 | Phase 20 | Coolify Deploy Integration & Voice Prompting (STT) | `PLANNED` | Coolify 배포 연동(`/deploy`), 배포 완료 수신 웹훅 알림, Whisper STT 음성 코딩 |
+| Phase 21 | V2 LTS Final Hardening & Optimization | `PLANNED` | 토큰 다이어트, 퍼블릭 레포 보안 감사 및 환경변수화, 레거시 정리, V2 LTS 완결 |
 
 ### Phase 12를 스킵하는 이유
 
@@ -100,6 +100,10 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 `PHASE_20_DEPLOY_VOICE_QUOTA.md`를 기준으로 모바일 텔레그램 상에서의 개발 생산성과 운영 편의성을 극대화한다. Coolify Deploy Webhook을 통한 `/deploy` 명령어 및 배포 결과 수신 웹훅 알림 연동, OpenAI Whisper STT 기반 텔레그램 음성 코딩 지시를 구현한다. (오작동 우려 및 불필요한 복잡도를 방지하기 위해 Smart Quota는 제외하고 기존 `/usage`를 유지한다.)
 
+### Phase 21
+
+`PHASE_21_V2_LTS_HARDENING.md`를 기준으로 Agent Hub Core의 기능 개발을 공식 영구 동결(Feature Freeze)하고 최종 V2 LTS 버전으로 안착시킨다. 신규 기능 추가를 중단하고, 토큰 다이어트(시스템 프롬프트/컨텍스트 최적화), 레거시/오작동 명령어 정리, 퍼블릭 레포 보안 감사 및 하드코딩 환경변수화(`.env.example`), 전체 회귀 테스트 통과 및 V2 LTS 공식 릴리즈를 진행한다.
+
 ## 5. Known Operational Notes
 
 - Telegram `409 Conflict: terminated by other getUpdates request`가 지속되면 Coolify에서 동일 Bot Token을 polling하는 instance/process가 둘 이상인지 확인한다.
@@ -129,6 +133,7 @@ Phase 17: DONE — NestJS/OpenAPI Backend API Preview & Inspector 완료
 Phase 18: DONE — V2 Native Session Compact & Rollover 완료
 Phase 19: DONE — MCP & Skills 완료
 Phase 20: PLANNED — Coolify Deploy Integration & Voice Prompting (STT)
+Phase 21: PLANNED — V2 LTS Final Hardening & Optimization (Feature Freeze)
 Development root: /home/dev
 Git repositories: /home/dev/workspace
 ```

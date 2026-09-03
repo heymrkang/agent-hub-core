@@ -2,7 +2,25 @@
 
 Telegram을 중심으로 Codex CLI와 Antigravity CLI를 실행하고, Logical Session·Provider native conversation·장기 메모리·스케줄러·Git/SSH/Docker 작업을 하나의 persistent runtime에서 관리하는 개인용 Agent Hub입니다.
 
-> **Current release: 2.0.0.** V1 → V2 Native Session Bridge와 Provider-native Rules Memory 전환을 완료했고, clean-state live validation을 거쳐 V2 baseline으로 승격했습니다.
+> **Current release: 2.0.0 (Path to V2 LTS).** V1 → V2 Native Session Bridge, Next.js/NestJS 모바일 프리뷰, V2 세션 롤오버, MCP & Skills 전역 듀얼 싱크를 완료했습니다. 현재 모바일 배포/음성 연동(Phase 20) 및 최종 최적화·보안 감사(Phase 21)를 거쳐 **V2 LTS 공식 릴리즈 및 기능 개발 영구 동결(Feature Freeze)**을 향해 진행 중입니다.
+
+## V2 LTS Release & Feature Freeze Roadmap
+
+Agent Hub Core는 모바일 환경에서의 완벽한 1인 바이브코딩 인프라 구축을 목표로 하며, Phase 21을 기점으로 신규 기능 개발을 공식 영구 동결(Feature Freeze)하고 최종 장기 지원 버전(V2 LTS)으로 완성됩니다. 이후에는 Core 기능 개발을 종료하고 실전 사이드 프로젝트 개발에 전념합니다.
+
+```text
+Phase 13~19: DONE (Next.js/NestJS 모바일 프리뷰, V2 Compact 롤오버, MCP & Skills 전역 듀얼 싱크)
+      ↓
+Phase 20: PLANNED (Coolify Deploy Webhook & Whisper Voice Prompting)
+      ↓
+Phase 21: PLANNED (V2 LTS Final Hardening & Optimization)
+  • 토큰 다이어트: 턴당 시스템 프롬프트 및 가드레일 토큰 낭비 전면 차단
+  • 레거시 정리: V2 Native 구조와 불일치하거나 미사용 명령어 전수 점검 및 최적화
+  • Public Repo 보안 감사: 하드코딩 식별자(GIT_NAME, GIT_EMAIL 등) 전면 환경변수화 (.env.example)
+  • 전체 회귀 테스트 100% 올그린 & v2.0.0-lts 공식 태깅
+      ↓
+🚀 Agent Hub Core Feature Freeze & 실전 사이드 프로젝트 바이브코딩 전념
+```
 
 ## V2 Architecture
 

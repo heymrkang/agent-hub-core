@@ -18,7 +18,8 @@
 - `PHASE_17_BACKEND_API_PREVIEW.md`: `DONE` — NestJS/OpenAPI Backend API Preview & Inspector
 - `PHASE_18_NATIVE_SESSION_COMPACT.md`: `DONE` — V2 Native Session Compact & Rollover
 - `PHASE_19_MCP_SKILLS.md`: `DONE` — Codex/Antigravity MCP & Skills 조회·관리·권한
-- `PHASE_20_DEPLOY_VOICE_QUOTA.md`: `PLANNED` — Deploy Webhooks, Voice Prompting & Smart Quota
+- `PHASE_20_DEPLOY_VOICE_QUOTA.md`: `PLANNED` — Coolify Deploy Integration & Voice Prompting (STT)
+- `PHASE_21_V2_LTS_HARDENING.md`: `PLANNED` — V2 LTS Final Hardening & Optimization (Feature Freeze)
 
 ## 보관 문서
 
