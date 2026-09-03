@@ -129,4 +129,12 @@ export class ProviderSessionRepository {
       .run(sessionId, pName);
     return this.get(sessionId, pName);
   }
+
+  static resetAllToUnbound(sessionId) {
+    return getDb().prepare(`UPDATE provider_sessions
+      SET native_session_ref = NULL, state = 'UNBOUND', bound_at = NULL, last_verified_at = NULL,
+          last_error = NULL, last_synced_message_id = NULL, updated_at = datetime('now')
+      WHERE session_id = ?`)
+      .run(sessionId);
+  }
 }

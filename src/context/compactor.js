@@ -1,5 +1,6 @@
 import { providerManager } from '../providers/provider-manager.js';
 import { SessionManager } from '../sessions/session-manager.js';
+import { ProviderSessionRepository } from '../sessions/provider-session-repository.js';
 import { ContextManager } from './context-manager.js';
 import { JobRuntime } from '../jobs/job-runtime.js';
 import { redactSecrets } from '../utils/redact.js';
@@ -87,8 +88,10 @@ export class Compactor {
         afterChars
       });
 
+      ProviderSessionRepository.resetAllToUnbound(sessionId);
+
       return {
-        ...this.result('COMPACTED', true, `✅ **컨텍스트 압축 완료**\n\n• 압축 메시지: \`${range.candidates.length}개\`\n• 최근 원문 유지: \`${range.tail.length}개\`\n• 압축 전 추정 문자: \`${beforeChars}\`\n• 압축 후 추정 문자: \`${afterChars}\`\n\n_SQLite Canonical 원문은 삭제하거나 수정하지 않았습니다._`),
+        ...this.result('COMPACTED', true, `✅ **컨텍스트 압축 완료**\n\n• 압축 메시지: \`${range.candidates.length}개\`\n• 최근 원문 유지: \`${range.tail.length}개\`\n• 압축 전 추정 문자: \`${beforeChars}\`\n• 압축 후 추정 문자: \`${afterChars}\`\n• **Native Session**: \`초기화 완료 (다음 턴에서 압축본으로 새 세션 롤오버)\`\n\n_SQLite Canonical 원문은 삭제하거나 수정하지 않았습니다._`),
         compactedMessages: range.candidates.length,
         retainedMessages: range.tail.length,
         beforeChars,

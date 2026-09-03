@@ -1,4 +1,4 @@
-# Phase 18: Agent Extensibility — MCP & Skills
+# Phase 19: Agent Extensibility — MCP & Skills
 
 ## Status
 

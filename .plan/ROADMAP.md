@@ -58,8 +58,9 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 15 | Unassigned | `SKIPPED / UNASSIGNED` | 별도 구현 범위 없이 건너뛰고 Phase 16으로 진행 |
 | Phase 16 | Feature Stabilization & Optimization | `DONE` | Canonical Compact, Model Thinking, Provider Usage/Quota 완료 |
 | Phase 17 | Backend API Preview & Inspector | `DONE` | NestJS/OpenAPI 백엔드 프리뷰, Swagger 탐지, 개발 MariaDB 연동 및 실서버 검증 완료 |
-| Phase 18 | Agent Extensibility — MCP & Skills | `PLANNED` | Provider native MCP/Skills 조회·관리·인증·권한 정책 |
-| Phase 19 | Deploy Webhooks, Voice Prompting & Smart Quota | `PLANNED` | Coolify 배포 연동(`/deploy`), Whisper STT 음성 코딩, 부하 0% 스마트 Quota 알림 |
+| Phase 18 | V2 Native Session Compact & Rollover | `DONE` | /compact 시 모든 Provider Native Session 초기화 및 요약 부트스트랩 롤오버 완료 |
+| Phase 19 | Agent Extensibility — MCP & Skills | `PLANNED` | Provider native MCP/Skills 조회·관리·인증·권한 정책 |
+| Phase 20 | Deploy Webhooks, Voice Prompting & Smart Quota | `PLANNED` | Coolify 배포 연동(`/deploy`), Whisper STT 음성 코딩, 부하 0% 스마트 Quota 알림 |
 
 ### Phase 12를 스킵하는 이유
 
@@ -89,11 +90,15 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ### Phase 18
 
-`PHASE_18_MCP_SKILLS.md`를 기준으로 Codex/Antigravity native MCP와 Skills를 조회·사용하고, 이후 설치·인증·외부 side effect 권한 관리까지 단계적으로 확장한다.
+`PHASE_18_NATIVE_SESSION_COMPACT.md`를 기준으로 V2 Provider-Native Session First 구조에 맞게 `/compact`와 Auto Compact를 고도화한다. `/compact` 실행 시 DB 요약뿐만 아니라 해당 세션의 모든 Provider(Codex, Antigravity) Native Session을 `UNBOUND`로 리셋하여, 다음 턴에서 압축 요약본을 시드로 새 깨끗한 Native Session을 생성(Rollover)하도록 구현한다.
 
 ### Phase 19
 
-`PHASE_19_DEPLOY_VOICE_QUOTA.md`를 기준으로 모바일 텔레그램 상에서의 개발 생산성과 운영 편의성을 극대화한다. Coolify Deploy Webhook을 통한 `/deploy` 명령어 및 빌드 결과 알림 연동, OpenAI Whisper STT 기반 텔레그램 음성 코딩 지시, Job 응답 메타데이터를 활용한 부하 0% 스마트 Quota 80%/95% 임계치 알림을 구현한다.
+`PHASE_19_MCP_SKILLS.md`를 기준으로 Codex/Antigravity native MCP와 Skills를 조회·사용하고, 이후 설치·인증·외부 side effect 권한 관리까지 단계적으로 확장한다.
+
+### Phase 20
+
+`PHASE_20_DEPLOY_VOICE_QUOTA.md`를 기준으로 모바일 텔레그램 상에서의 개발 생산성과 운영 편의성을 극대화한다. Coolify Deploy Webhook을 통한 `/deploy` 명령어 및 빌드 결과 알림 연동, OpenAI Whisper STT 기반 텔레그램 음성 코딩 지시, Job 응답 메타데이터를 활용한 부하 0% 스마트 Quota 80%/95% 임계치 알림을 구현한다.
 
 ## 5. Known Operational Notes
 
@@ -115,8 +120,9 @@ Phase 14: DONE — /system System & Resource Observability
 Phase 15: SKIPPED / UNASSIGNED
 Phase 16: DONE — Canonical Compact / Model Thinking / Provider Usage·Quota 완료
 Phase 17: DONE — NestJS/OpenAPI Backend API Preview & Inspector 완료
-Phase 18: PLANNED — MCP & Skills
-Phase 19: PLANNED — Deploy Webhooks, Voice Prompting & Smart Quota
+Phase 18: DONE — V2 Native Session Compact & Rollover 완료
+Phase 19: PLANNED — MCP & Skills
+Phase 20: PLANNED — Deploy Webhooks, Voice Prompting & Smart Quota
 Development root: /home/dev
 Git repositories: /home/dev/workspace
 ```

@@ -15,6 +15,7 @@ const { JobRuntime } = await import('../../src/jobs/job-runtime.js');
 const { providerManager } = await import('../../src/providers/provider-manager.js');
 const { queueManager } = await import('../../src/jobs/queue-manager.js');
 const { initSettingsManager } = await import('../../src/settings/settings-manager.js');
+const { ProviderSessionRepository } = await import('../../src/sessions/provider-session-repository.js');
 
 initDatabase();
 const db = getDb();
@@ -242,4 +243,48 @@ test('execution history abbreviates only assistant code blocks with at least fiv
   assert.match(assembled.prompt, /before blocks/);
   assert.match(assembled.prompt, /between blocks/);
   assert.match(assembled.prompt, /after blocks/);
+});
+
+test('/compact resets all provider native sessions to UNBOUND so next turn bootstraps fresh native sessions', async () => {
+  const session = createSession();
+  registerAdapter(async () => ({ response: 'summary-for-rollover' }));
+
+  // Pre-bind native sessions for both providers
+  ProviderSessionRepository.bind({
+    sessionId: session.id,
+    provider: 'codex',
+    nativeSessionRef: 'thread-old-123'
+  });
+  ProviderSessionRepository.bind({
+    sessionId: session.id,
+    provider: 'antigravity',
+    nativeSessionRef: 'conv-old-456'
+  });
+
+  assert.equal(ProviderSessionRepository.get(session.id, 'codex').state, 'READY');
+  assert.equal(ProviderSessionRepository.get(session.id, 'antigravity').state, 'READY');
+
+  // Run compact
+  const result = await Compactor.compactSession(session.id);
+  assert.equal(result.status, 'COMPACTED');
+
+  // Verify all provider sessions are UNBOUND with cleared native refs
+  const codexMapping = ProviderSessionRepository.get(session.id, 'codex');
+  assert.equal(codexMapping.state, 'UNBOUND');
+  assert.equal(codexMapping.native_session_ref, null);
+
+  const agMapping = ProviderSessionRepository.get(session.id, 'antigravity');
+  assert.equal(agMapping.state, 'UNBOUND');
+  assert.equal(agMapping.native_session_ref, null);
+
+  // Verify prepareForProvider enters BOOTSTRAP mode and seeds summary
+  const prepared = await ContextAssembler.prepareForProvider({
+    session: { ...session, active_provider: 'codex', active_model: 'dummy' },
+    currentPrompt: 'first turn after compact'
+  });
+
+  assert.equal(prepared.mode, 'BOOTSTRAP');
+  assert.match(prepared.prompt, /\[대화 요약\]/);
+  assert.match(prepared.prompt, /summary-for-rollover/);
+  assert.match(prepared.prompt, /first turn after compact/);
 });
