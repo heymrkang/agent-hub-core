@@ -160,4 +160,16 @@ test('Telegram /deploy command and callback work end-to-end', async (t) => {
   await handleDeployCommand(bot, msg, 'remove blog');
   assert.equal(bot.sent.length, 6);
   assert.match(bot.sent[5].text, /삭제되었습니다/);
+
+  // 7. deploy_refresh 콜백 (message is not modified 에러 무시 확인)
+  bot.editMessageText = async () => {
+    throw new Error('Bad Request: message is not modified: specified new message content and reply markup are exactly the same');
+  };
+  await handleDeployCallback(bot, {
+    id: 'cb_refresh',
+    message: { chat: { id: 12345 }, message_id: 100 },
+    data: 'deploy_refresh'
+  });
+  assert.equal(bot.answered.length, 2);
+  assert.match(bot.answered[1].options.text, /목록이 갱신되었습니다/);
 });

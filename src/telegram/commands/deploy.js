@@ -143,13 +143,17 @@ export async function handleDeployCallback(bot, query) {
   try {
     if (data === 'deploy_refresh') {
       const view = buildDeployListView();
-      await bot.editMessageText(view.text, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown',
-        reply_markup: view.reply_markup
-      });
-      await bot.answerCallbackQuery(query.id, { text: '🔄 목록이 새로고침되었습니다.' });
+      await bot
+        .editMessageText(view.text, {
+          chat_id: chatId,
+          message_id: messageId,
+          parse_mode: 'Markdown',
+          reply_markup: view.reply_markup
+        })
+        .catch((e) => {
+          if (!/message is not modified/i.test(String(e?.message || ''))) throw e;
+        });
+      await bot.answerCallbackQuery(query.id, { text: '🔄 목록이 갱신되었습니다.' });
       return;
     }
 
