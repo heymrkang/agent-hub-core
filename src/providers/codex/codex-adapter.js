@@ -90,13 +90,23 @@ export class CodexAdapter extends ProviderAdapter {
   async getUsageQuota() { return parseCodexRateLimits(await this.queryAppServerRateLimits()); }
   async discoverModels(forceRefresh = false) { const now = Date.now(); if (!forceRefresh && this.cachedModels && now - this.lastModelCheck < 300000) return this.cachedModels; try { const result = await this.queryAppServerModels(); const rows = Array.isArray(result?.data) ? result.data : []; const discovered = rows.filter(m => m && !m.hidden).map(m => { const efforts = (m.supportedReasoningEfforts || m.supported_reasoning_efforts || []).map(e => typeof e === 'string' ? e : e?.reasoningEffort || e?.reasoning_effort || e?.value).filter(Boolean); const defaultEffort = m.defaultReasoningEffort || m.default_reasoning_effort || null; return { id: m.model || m.id, name: m.displayName || m.display_name || m.model || m.id, default: Boolean(m.isDefault ?? m.is_default), description: m.description || null, metadata: { reasoningEfforts: [...new Set(efforts)], defaultReasoningEffort: defaultEffort } }; }).filter(m => m.id); if (!discovered.length) throw new Error('model/list가 표시 가능한 모델을 반환하지 않았습니다.'); this.cachedModels = discovered; this.lastModelCheck = now; return discovered; } catch (error) { this.cachedModels = null; throw new Error(`Codex 모델 동적 조회 실패 (app-server model/list): ${error.message}`); } }
   getCapabilities() { return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'SUPPORTED', nativeSessionList: 'SUPPORTED', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'SUPPORTED', reasoningEffort: 'SUPPORTED' }; }
-  buildCodexArgs({ prompt, model, reasoningEffort = 'default', nativeSessionRef = null }) {
+  buildCodexArgs({ prompt, model, reasoningEffort = 'default', nativeSessionRef = null, profile = null }) {
+    let finalPrompt = prompt;
+    if (profile) {
+      const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
+      const profileGuard = normalizedProfile === 'READ_ONLY'
+        ? `[Execution Profile: READ_ONLY] ${this.workspaceDir}를 포함해 파일/설정/외부 시스템을 변경하지 말고 읽기와 분석만 수행하세요. 파일 생성, 수정, 삭제 및 Git 변경은 차단됩니다.`
+        : normalizedProfile === 'WORKSPACE'
+          ? `[Execution Profile: WORKSPACE] 작업 및 파일 변경은 ${this.workspaceDir} 내부로 엄격히 제한됩니다. 해당 경로 내 Git 작업(status, diff, commit, push, branch 등)은 허용되나, ${this.workspaceDir} 외부 파일(예: /data, 시스템 파일 등) 변경과 SSH, Docker 등 인프라 조작은 금지됩니다.`
+          : '[Execution Profile: FULL_ACCESS] 사용자가 요청한 범위에서 SSH, Docker 등 인프라 도구 사용 및 시스템 전역 작업이 허용됩니다.';
+      finalPrompt = `${profileGuard}\n\n${prompt}`;
+    }
     const args = nativeSessionRef ? ['exec', 'resume'] : ['exec'];
     if (model && model !== 'default') args.push('-m', model);
     if (reasoningEffort && reasoningEffort !== 'default') args.push('-c', `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`);
     args.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json');
     if (nativeSessionRef) args.push(nativeSessionRef);
-    args.push(prompt);
+    args.push(finalPrompt);
     return args;
   }
   async getRestrictedRuntime() {
@@ -106,7 +116,7 @@ export class CodexAdapter extends ProviderAdapter {
   async removeHelperContainer(name) { try { await execFileAsync('docker', ['rm', '-f', name], { timeout: 10000 }); } catch {} }
   async executeRestrictedPrompt({ prompt, model, reasoningEffort, nativeSessionRef, profile, cwd, timeoutMs, signal }) {
     const runtime = await this.getRestrictedRuntime(); const normalizedCwd = path.resolve(cwd || this.workspaceDir); const workspaceRoot = path.resolve(this.workspaceDir); if (normalizedCwd !== workspaceRoot && !normalizedCwd.startsWith(`${workspaceRoot}${path.sep}`)) throw new Error(`${profile} Profile은 ${workspaceRoot} 밖의 cwd에서 실행할 수 없습니다.`);
-    const helperName = `agent-hub-codex-${crypto.randomUUID().slice(0, 12)}`; const workspaceMode = profile === 'READ_ONLY' ? 'ro' : 'rw'; const codexArgs = this.buildCodexArgs({ prompt, model, reasoningEffort, nativeSessionRef });
+    const helperName = `agent-hub-codex-${crypto.randomUUID().slice(0, 12)}`; const workspaceMode = profile === 'READ_ONLY' ? 'ro' : 'rw'; const codexArgs = this.buildCodexArgs({ prompt, model, reasoningEffort, nativeSessionRef, profile });
     // Restricted profiles run with an immutable container root. Only the workspace mount
     // receives the requested ro/rw mode; transient runtime paths are tmpfs and disappear
     // with the helper container. /root/.codex stays rw so native thread files survive helper removal.
@@ -145,7 +155,7 @@ export class CodexAdapter extends ProviderAdapter {
     const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
     if (normalizedProfile !== 'FULL_ACCESS') return this.executeRestrictedPrompt({ prompt, model, reasoningEffort, nativeSessionRef, profile: normalizedProfile, cwd, timeoutMs, signal });
     return new Promise((resolve, reject) => {
-      const args = this.buildCodexArgs({ prompt, model, reasoningEffort, nativeSessionRef });
+      const args = this.buildCodexArgs({ prompt, model, reasoningEffort, nativeSessionRef, profile: normalizedProfile });
       const child = spawn('codex', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
       const telemetry = createCodexExecutionTelemetry({ mode: 'FULL_ACCESS', pid: child.pid, cwd, timeoutMs });
       const parser = new CodexExecJsonlParser({ expectedThreadId: nativeSessionRef || null, requireThreadId: !nativeSessionRef });

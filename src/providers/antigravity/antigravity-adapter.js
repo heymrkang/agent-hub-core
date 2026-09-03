@@ -28,7 +28,20 @@ export class AntigravityAdapter extends ProviderAdapter {
     if (payload?.status && payload.status !== 'SUCCESS') throw new Error(`Antigravity /usage 조회 실패: status=${payload.status}`);
     return parseAntigravityUsage(payload);
   }
-  buildArgs({ prompt, model, reasoningEffort = 'default', nativeSessionRef, profile = 'WORKSPACE' }) { const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE'; const profileGuard = normalizedProfile === 'READ_ONLY' ? `[Execution Profile: READ_ONLY] ${this.workspaceDir}를 포함해 파일/설정/외부 시스템을 변경하지 말고 읽기와 분석만 수행하세요.` : normalizedProfile === 'WORKSPACE' ? `[Execution Profile: WORKSPACE] 파일 변경은 ${this.workspaceDir} 아래로 제한하세요. SSH/Docker 등 외부 인프라 변경은 수행하지 마세요.` : '[Execution Profile: FULL_ACCESS] 사용자가 요청한 범위에서 인프라 도구 사용이 허용됩니다.'; const args = ['--print', `${profileGuard}\n\n${prompt}`, '--output-format', 'json']; if (reasoningEffort && reasoningEffort !== 'default') args.push('--effort', reasoningEffort); if (normalizedProfile !== 'READ_ONLY') args.push('--dangerously-skip-permissions'); if (model && model !== 'default') args.push('--model', model); if (nativeSessionRef) args.push('--conversation', nativeSessionRef); return args; }
+  buildArgs({ prompt, model, reasoningEffort = 'default', nativeSessionRef, profile = 'WORKSPACE' }) {
+    const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
+    const profileGuard = normalizedProfile === 'READ_ONLY'
+      ? `[Execution Profile: READ_ONLY] ${this.workspaceDir}를 포함해 파일/설정/외부 시스템을 변경하지 말고 읽기와 분석만 수행하세요. 파일 생성, 수정, 삭제 및 Git 변경은 차단됩니다.`
+      : normalizedProfile === 'WORKSPACE'
+        ? `[Execution Profile: WORKSPACE] 작업 및 파일 변경은 ${this.workspaceDir} 내부로 엄격히 제한됩니다. 해당 경로 내 Git 작업(status, diff, commit, push, branch 등)은 허용되나, ${this.workspaceDir} 외부 파일(예: /data, 시스템 파일 등) 변경과 SSH, Docker 등 인프라 조작은 금지됩니다.`
+        : '[Execution Profile: FULL_ACCESS] 사용자가 요청한 범위에서 SSH, Docker 등 인프라 도구 사용 및 시스템 전역 작업이 허용됩니다.';
+    const args = ['--print', `${profileGuard}\n\n${prompt}`, '--output-format', 'json'];
+    if (reasoningEffort && reasoningEffort !== 'default') args.push('--effort', reasoningEffort);
+    if (normalizedProfile !== 'READ_ONLY') args.push('--dangerously-skip-permissions');
+    if (model && model !== 'default') args.push('--model', model);
+    if (nativeSessionRef) args.push('--conversation', nativeSessionRef);
+    return args;
+  }
   async executePrompt(options = {}) {
     const { prompt, model, reasoningEffort = 'default', nativeSessionRef = null, profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
     return new Promise((resolve, reject) => {

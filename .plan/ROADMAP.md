@@ -105,7 +105,13 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 - Telegram `409 Conflict: terminated by other getUpdates request`가 지속되면 Coolify에서 동일 Bot Token을 polling하는 instance/process가 둘 이상인지 확인한다.
 - 단발성 Antigravity `status=CANCELED`는 원인을 추정하지 않는다. 반복 재현될 때 provider output/context를 수집해 별도 결함으로 추적한다.
 - Provider CLI 버전 변경 시 Dockerfile pin/checksum과 regression baseline을 함께 갱신한다.
-- `WORKSPACE`라는 Profile 이름은 권한 단계의 명칭이며 경로 `/workspace`를 뜻하지 않는다. 현재 development root는 `/home/dev`이다.
+### 2026-09-03: Execution Profile 보안 격리 하드닝 및 Git 권한 현실화 (버그 수정)
+
+- **배경**: `WORKSPACE` 프로필에서 Codex는 Docker 샌드박스로 물리 격리되었으나, Antigravity는 텍스트 프롬프트 가드레일에만 의존하여 외부 디렉토리(`/data`) 쓰기 및 인프라 조작 위험이 존재하던 설계 누락 발견.
+- **조치**:
+  1. 권한 정책 재정의: `WORKSPACE`에 프로젝트 개발 필수 권한인 **Git(status, diff, commit, push, branch)**을 공식 허용하고, `FULL_ACCESS`는 SSH/Docker 소켓 등 위험 인프라 전용으로 명확히 격리.
+  2. 텔레그램 UI (`/profile`, `/help`) 및 양대 어댑터(`antigravity-adapter.js`, `codex-adapter.js`) 프롬프트 가드레일 동기화.
+  3. Antigravity에 Codex와 동일한 Docker 샌드박스 물리 격리(`executeRestrictedPrompt`) 적용 진행.
 
 ## 6. 다음 작업 시작점
 
