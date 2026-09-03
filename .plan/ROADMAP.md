@@ -59,7 +59,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 16 | Feature Stabilization & Optimization | `DONE` | Canonical Compact, Model Thinking, Provider Usage/Quota 완료 |
 | Phase 17 | Backend API Preview & Inspector | `DONE` | NestJS/OpenAPI 백엔드 프리뷰, Swagger 탐지, 개발 MariaDB 연동 및 실서버 검증 완료 |
 | Phase 18 | V2 Native Session Compact & Rollover | `DONE` | /compact 시 모든 Provider Native Session 초기화 및 요약 부트스트랩 롤오버 완료 |
-| Phase 19 | Agent Extensibility — MCP & Skills | `PLANNED` | Provider native MCP/Skills 조회·관리·인증·권한 정책 |
+| Phase 19 | Agent Extensibility — MCP & Skills | `DONE` | DB/파일 마스터 기반 Codex & Antigravity 전역 Dual-Sync 및 텔레그램 프리셋/관리 UI 완료 |
 | Phase 20 | Deploy Webhooks, Voice Prompting & Smart Quota | `PLANNED` | Coolify 배포 연동(`/deploy`), Whisper STT 음성 코딩, 부하 0% 스마트 Quota 알림 |
 
 ### Phase 12를 스킵하는 이유
@@ -121,7 +121,7 @@ Phase 15: SKIPPED / UNASSIGNED
 Phase 16: DONE — Canonical Compact / Model Thinking / Provider Usage·Quota 완료
 Phase 17: DONE — NestJS/OpenAPI Backend API Preview & Inspector 완료
 Phase 18: DONE — V2 Native Session Compact & Rollover 완료
-Phase 19: PLANNED — MCP & Skills
+Phase 19: DONE — MCP & Skills 완료
 Phase 20: PLANNED — Deploy Webhooks, Voice Prompting & Smart Quota
 Development root: /home/dev
 Git repositories: /home/dev/workspace

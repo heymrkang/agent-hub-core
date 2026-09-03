@@ -2,7 +2,7 @@
 
 ## Status
 
-`PLANNED`
+`DONE`
 
 ## 1. 개요 및 설계 원칙
 
@@ -108,8 +108,8 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
 
 ## 5. 단계별 실행 계획
 
-- [ ] **19-1 데이터 계층 & 마이그레이션**: `016_mcp_servers.sql` 마이그레이션 및 Repository 구현.
-- [ ] **19-2 Dual-Sync 엔진 구현**: Codex config/skills 및 Antigravity mcp_config/skills 양방향 동기화 모듈 구현.
-- [ ] **19-3 Telegram UI & Handler**: `/mcp`, `/skills` 명령어 및 프리셋/상세/토글 인라인 키보드 구현.
-- [ ] **19-4 서버 기동 시 자동 동기화**: `src/index.js` 부팅 시퀀스에 MCP/Skills 동기화 연동.
-- [ ] **19-5 테스트 & 검증**: 단위 테스트 작성 및 실제 Provider CLI 인식 회귀 검증.
+- [x] **19-1 데이터 계층 & 마이그레이션**: `016_mcp_servers.sql` 마이그레이션 및 Repository 구현 완료.
+- [x] **19-2 Dual-Sync 엔진 구현**: Codex config/skills 및 Antigravity mcp_config/skills 양방향 동기화 모듈 구현 완료.
+- [x] **19-3 Telegram UI & Handler**: `/mcp`, `/skills` 명령어 및 프리셋/상세/토글 인라인 키보드 구현 완료.
+- [x] **19-4 서버 기동 시 자동 동기화**: `src/index.js` 부팅 시퀀스에 MCP/Skills 동기화 연동 완료.
+- [x] **19-5 테스트 & 검증**: 단위 테스트 11건 추가 및 전체 248개 테스트 스위트 100% 통과 완료.
