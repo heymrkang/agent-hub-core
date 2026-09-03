@@ -120,7 +120,31 @@ export class CodexAdapter extends ProviderAdapter {
     // Restricted profiles run with an immutable container root. Only the workspace mount
     // receives the requested ro/rw mode; transient runtime paths are tmpfs and disappear
     // with the helper container. /root/.codex stays rw so native thread files survive helper removal.
-    const dockerArgs = ['run', '--rm', '--name', helperName, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=256m', '--tmpfs', '/root/.cache:rw,nosuid,nodev,size=64m', '-e', 'HOME=/root', '-e', 'TMPDIR=/tmp', '-e', 'CI=true', '-v', `${runtime.workspaceSource}:${workspaceRoot}:${workspaceMode}`, '-v', `${runtime.codexHomeSource}:/root/.codex:rw`]; if (runtime.uploadsSource && fs.existsSync('/data/uploads')) dockerArgs.push('-v', `${runtime.uploadsSource}:/data/uploads:ro`); dockerArgs.push('-w', normalizedCwd, '--entrypoint', 'codex', runtime.image, ...codexArgs);
+    const dockerArgs = ['run', '--rm', '--name', helperName, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=256m', '--tmpfs', '/root/.cache:rw,nosuid,nodev,size=64m', '-e', 'HOME=/root', '-e', 'TMPDIR=/tmp', '-e', 'CI=true', '-v', `${runtime.workspaceSource}:${workspaceRoot}:${workspaceMode}`, '-v', `${runtime.codexHomeSource}:/root/.codex:rw`];
+    const ghToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+    if (profile === 'WORKSPACE' && ghToken) {
+      dockerArgs.push(
+        '-e', `GH_TOKEN=${ghToken}`,
+        '-e', `GITHUB_TOKEN=${ghToken}`,
+        '-e', 'GIT_CONFIG_COUNT=3',
+        '-e', 'GIT_CONFIG_KEY_0=safe.directory',
+        '-e', 'GIT_CONFIG_VALUE_0=*',
+        '-e', 'GIT_CONFIG_KEY_1=core.filemode',
+        '-e', 'GIT_CONFIG_VALUE_1=false',
+        '-e', 'GIT_CONFIG_KEY_2=credential.helper',
+        '-e', 'GIT_CONFIG_VALUE_2=!f() { echo username=x-access-token; echo password=$GH_TOKEN; }; f'
+      );
+    } else {
+      dockerArgs.push(
+        '-e', 'GIT_CONFIG_COUNT=2',
+        '-e', 'GIT_CONFIG_KEY_0=safe.directory',
+        '-e', 'GIT_CONFIG_VALUE_0=*',
+        '-e', 'GIT_CONFIG_KEY_1=core.filemode',
+        '-e', 'GIT_CONFIG_VALUE_1=false'
+      );
+    }
+    if (runtime.uploadsSource && fs.existsSync('/data/uploads')) dockerArgs.push('-v', `${runtime.uploadsSource}:/data/uploads:ro`);
+    dockerArgs.push('-w', normalizedCwd, '--entrypoint', 'codex', runtime.image, ...codexArgs);
     return new Promise((resolve, reject) => {
       const env = { ...process.env }; delete env.GH_TOKEN; delete env.GITHUB_TOKEN; delete env.TELEGRAM_BOT_TOKEN;
       const child = spawn('docker', dockerArgs, { env, stdio: ['ignore', 'pipe', 'pipe'] });

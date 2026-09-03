@@ -108,6 +108,30 @@ export class AntigravityAdapter extends ProviderAdapter {
       '-v', `${runtime.workspaceSource}:${workspaceRoot}:${workspaceMode}`,
       '-v', `${runtime.geminiHomeSource}:/root/.gemini:rw`
     ];
+
+    const ghToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+    if (profile === 'WORKSPACE' && ghToken) {
+      dockerArgs.push(
+        '-e', `GH_TOKEN=${ghToken}`,
+        '-e', `GITHUB_TOKEN=${ghToken}`,
+        '-e', 'GIT_CONFIG_COUNT=3',
+        '-e', 'GIT_CONFIG_KEY_0=safe.directory',
+        '-e', 'GIT_CONFIG_VALUE_0=*',
+        '-e', 'GIT_CONFIG_KEY_1=core.filemode',
+        '-e', 'GIT_CONFIG_VALUE_1=false',
+        '-e', 'GIT_CONFIG_KEY_2=credential.helper',
+        '-e', 'GIT_CONFIG_VALUE_2=!f() { echo username=x-access-token; echo password=$GH_TOKEN; }; f'
+      );
+    } else {
+      dockerArgs.push(
+        '-e', 'GIT_CONFIG_COUNT=2',
+        '-e', 'GIT_CONFIG_KEY_0=safe.directory',
+        '-e', 'GIT_CONFIG_VALUE_0=*',
+        '-e', 'GIT_CONFIG_KEY_1=core.filemode',
+        '-e', 'GIT_CONFIG_VALUE_1=false'
+      );
+    }
+
     if (runtime.uploadsSource && fs.existsSync('/data/uploads')) {
       dockerArgs.push('-v', `${runtime.uploadsSource}:/data/uploads:ro`);
     }
