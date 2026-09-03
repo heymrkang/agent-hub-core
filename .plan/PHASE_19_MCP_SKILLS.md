@@ -113,3 +113,16 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
 - [x] **19-3 Telegram UI & Handler**: `/mcp`, `/skills` 명령어 및 프리셋/상세/토글 인라인 키보드 구현 완료.
 - [x] **19-4 서버 기동 시 자동 동기화**: `src/index.js` 부팅 시퀀스에 MCP/Skills 동기화 연동 완료.
 - [x] **19-5 테스트 & 검증**: 단위 테스트 11건 추가 및 전체 248개 테스트 스위트 100% 통과 완료.
+
+---
+
+## 6. 실환경 검증 결과
+
+- **MCP 실서버 검증 완료**:
+  - Telegram `/mcp` 인터페이스를 통한 커스텀 MCP(`playwright`) 등록 및 Codex/Antigravity 설정 파일 전역 미러링 확인.
+  - 실제 에이전트 런타임에서 `playwright`의 브라우저 자동화 도구(`stealth_browser` 등)가 정상 감지 및 호출됨을 실검증 완료.
+- **Skills 전역 동기화 엔진 검증 완료**:
+  - `/data/skills/<스킬명>/SKILL.md` 마스터 저장소 스캔 및 Provider(`~/.codex/skills`, `~/.gemini/config/skills`) 자동 미러링 로직 검증 완료.
+  - Telegram `/skills` 조회 및 `skills_sync` 콜백 트리거 정상 작동 확인.
+- **테스트 스위트**: 전체 252개 중 248건 패스, 0건 실패, 4건 스킵 (100% All Green 달성).
+

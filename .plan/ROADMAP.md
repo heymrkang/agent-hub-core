@@ -94,7 +94,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ### Phase 19
 
-`PHASE_19_MCP_SKILLS.md`를 기준으로 Codex/Antigravity native MCP와 Skills를 조회·사용하고, 이후 설치·인증·외부 side effect 권한 관리까지 단계적으로 확장한다.
+`PHASE_19_MCP_SKILLS.md`를 기준으로 Agent Hub 단일 마스터(DB `mcp_servers` 및 `/data/skills`) 기반 Codex/Antigravity 전역 Dual-Sync 엔진과 Telegram UI(`/mcp`, `/skills`)를 구축했다. 실제 모바일 Telegram에서 `playwright` MCP 등록 및 `stealth_browser` 런타임 호출, Skills 마스터 동기화 검증을 마치고 공식 종료했다.
 
 ### Phase 20
 
@@ -111,7 +111,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 - **조치**:
   1. 권한 정책 재정의: `WORKSPACE`에 프로젝트 개발 필수 권한인 **Git(status, diff, commit, push, branch)**을 공식 허용하고, `FULL_ACCESS`는 SSH/Docker 소켓 등 위험 인프라 전용으로 명확히 격리.
   2. 텔레그램 UI (`/profile`, `/help`) 및 양대 어댑터(`antigravity-adapter.js`, `codex-adapter.js`) 프롬프트 가드레일 동기화.
-  3. Antigravity에 Codex와 동일한 Docker 샌드박스 물리 격리(`executeRestrictedPrompt`) 적용 진행.
+  3. Antigravity에 Codex와 동일한 Docker 샌드박스 물리 격리(`executeRestrictedPrompt`) 적용 및 단위 테스트 추가 완료.
 
 ## 6. 다음 작업 시작점
 
