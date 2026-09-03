@@ -165,6 +165,16 @@ Backend API Preview는 Access 설정값만으로 공개 승인하지 않습니�
 
 Phase 17 실제 서버 검증은 Telegram, Access, OpenAPI, 개발 MariaDB CRUD, 재시작, cleanup, 기존 Web Preview를 확인한 뒤 해당 `PHASE17_*_OK=1` evidence만 일회성 shell에 주입해 `npm run test:phase17:live`로 닫습니다. 이 값들은 기능을 우회하는 설정이 아니라 수동 확인 결과를 누락 없이 모으는 release gate입니다.
 
+### Coolify 배포 및 음성 프롬프트 (Phase 20)
+
+| 키 | 코드 기본값 | 현재 Compose 값 | 설명 |
+| --- | --- | --- | --- |
+| `COOLIFY_API_TOKEN` | 없음 | `${COOLIFY_API_TOKEN:-}` | Coolify REST API 호출(`POST /api/v1/deploy`) 시 헤더(`Authorization: Bearer <token>`)로 전달할 API Token입니다. 없으면 인증이 필요한 배포 트리거 시 401 오류가 발생합니다. |
+| `OPENAI_API_KEY` | 없음 | `${OPENAI_API_KEY:-}` | Telegram 음성 메시지를 텍스트로 변환하기 위한 OpenAI Whisper API Key입니다. 없으면 음성 수신 시 안내 메시지만 전송되고 시스템은 무중단 유지됩니다. |
+| `WEBHOOK_PORT` | `8788` | `8788` | Coolify 배포 완료 웹훅 수신 HTTP 서버 포트입니다. |
+| `WEBHOOK_HOST` | `0.0.0.0` | `0.0.0.0` | Coolify 배포 완료 웹훅 수신 HTTP 서버 bind 주소입니다. |
+| `WEBHOOK_SECRET` | 없음 | 미지정 | Webhook 수신 시 인증할 Secret Token (쿼리 `?token=` 또는 `X-Coolify-Token` 헤더 검증용). 미지정 시 `PREVIEW_INTERNAL_TOKEN`을 fallback으로 사용합니다. |
+
 ### 런타임이 관리하는 값
 
 `HOME`, `HOSTNAME`, `NODE_OPTIONS`는 container/runtime 동작에 필요한 값이라 일반 운영 튜닝 대상으로 보지 않습니다. `PHASE11_LIVE_E2E`는 외부 인증이 필요한 live E2E를 명시적으로 실행할 때만 쓰는 테스트 플래그입니다.
