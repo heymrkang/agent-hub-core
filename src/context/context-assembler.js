@@ -17,7 +17,7 @@ function abbreviateLongCodeBlocks(text) {
 
 function renderHistory(messages) {
   if (!messages.length) return null;
-  return `[이전 대화 기록 / Context]\n${messages.map((message) => {
+  return `[Context History]\n${messages.map((message) => {
     const text = message.role === 'assistant' ? abbreviateLongCodeBlocks(message.text) : message.text;
     return `${message.role === 'user' ? 'User' : 'Assistant'}: ${text}`;
   }).join('\n\n')}`;
@@ -109,7 +109,7 @@ export class ContextAssembler {
 
     if (missedMessages.length > 0) {
       const history = renderHistory(missedMessages);
-      parts.push(`[Provider Handoff Delta]\n다음 기록은 이 Provider native session이 마지막으로 처리한 turn 이후 다른 Provider에서 진행된 대화입니다. 이 내용을 현재 native conversation에 반영한 뒤 사용자의 새 요청을 이어서 처리하세요.\n\n${history}`);
+      parts.push(`[Provider Handoff Delta]\n다른 Provider에서 진행된 직전 대화 기록입니다. 반영 후 새 요청을 처리하세요.\n\n${history}`);
     }
 
     parts.push(currentPrompt);
