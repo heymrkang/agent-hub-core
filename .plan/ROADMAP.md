@@ -57,7 +57,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 14 | System & Resource Observability (`/system`) | `DONE` | 2026-09-01 Coolify runtime audit PASS |
 | Phase 15 | Unassigned | `SKIPPED / UNASSIGNED` | 별도 구현 범위 없이 건너뛰고 Phase 16으로 진행 |
 | Phase 16 | Feature Stabilization & Optimization | `DONE` | Canonical Compact, Model Thinking, Provider Usage/Quota 완료 |
-| Phase 17 | Backend API Preview & Inspector | `IN_PROGRESS` | 17-9 격리 MariaDB 자동 E2E 완료, 실제 Coolify/Telegram 공동 검증 대기 |
+| Phase 17 | Backend API Preview & Inspector | `DONE` | NestJS/OpenAPI 백엔드 프리뷰, Swagger 탐지, 개발 MariaDB 연동 및 실서버 검증 완료 |
 | Phase 18 | Agent Extensibility — MCP & Skills | `PLANNED` | Provider native MCP/Skills 조회·관리·인증·권한 정책 |
 | Phase 19 | Deploy Webhooks, Voice Prompting & Smart Quota | `PLANNED` | Coolify 배포 연동(`/deploy`), Whisper STT 음성 코딩, 부하 0% 스마트 Quota 알림 |
 
@@ -85,7 +85,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 ### Phase 17
 
-`PHASE_17_BACKEND_API_PREVIEW.md`를 기준으로 기존 Preview Manager를 NestJS/OpenAPI 백엔드까지 확장한다. 17-0~17-8과 17-9 격리 MariaDB 자동 E2E를 완료했다. 실제 Coolify/Telegram에서 Access, Swagger, 개발 MariaDB CRUD, 재시작, cleanup, Web Preview 회귀를 공동 확인한 뒤 Phase를 종료한다.
+`PHASE_17_BACKEND_API_PREVIEW.md`를 기준으로 기존 Preview Manager를 NestJS/OpenAPI 백엔드까지 확장했다. 17-0~17-8과 17-9 격리 MariaDB 자동 E2E를 완료하고, 실제 Coolify/Telegram에서 Swagger 탐지, 개발 MariaDB 연동 CRUD, 재시작, cleanup, Web Preview 호환성을 검증해 Phase를 종료했다.
 
 ### Phase 18
 
@@ -114,7 +114,7 @@ Phase 13: DONE — Mobile Preview Runtime & Preview Manager
 Phase 14: DONE — /system System & Resource Observability
 Phase 15: SKIPPED / UNASSIGNED
 Phase 16: DONE — Canonical Compact / Model Thinking / Provider Usage·Quota 완료
-Phase 17: IN_PROGRESS — 17-9 자동 E2E 완료, 실제 Coolify/Telegram 공동 검증 대기
+Phase 17: DONE — NestJS/OpenAPI Backend API Preview & Inspector 완료
 Phase 18: PLANNED — MCP & Skills
 Phase 19: PLANNED — Deploy Webhooks, Voice Prompting & Smart Quota
 Development root: /home/dev

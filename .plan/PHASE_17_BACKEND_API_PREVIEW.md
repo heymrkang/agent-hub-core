@@ -2,7 +2,7 @@
 
 ## Status
 
-`IN_PROGRESS`
+`DONE`
 
 진행 현황:
 
@@ -16,7 +16,7 @@
 - [x] 17-6-2 개발 데이터 격리: env allowlist/.env masking, 개발 DB·R2 target guard, container 권한 축소, OpenAPI/log secret 제거
 - [x] 17-7 Telegram API Preview UI: API/Web 구분, runtime·OpenAPI·health·dev 경고 표시, Access 검증 기반 endpoint action
 - [x] 17-8 자동 E2E와 재시작 복구: 실제 Docker fixture lifecycle, restart/Core 재기동 HTTP 재검증, stop·expiry·route/container cleanup
-- [ ] 17-9 MariaDB 및 실제 서버 공동 검증: 격리 MariaDB 자동 E2E 완료, 실제 Coolify/Telegram 공동 검증 대기
+- [x] 17-9 MariaDB 및 실제 서버 공동 검증: 개발 MariaDB 연동 CRUD, Swagger/OpenAPI 탐지, Coolify/Telegram 실서버 검증 완료
 
 Phase 17은 기존 Preview Manager를 HTTP 백엔드 개발 서버까지 확장한다. 첫 지원 대상은 NestJS이며, Agent Hub가 API 문서 엔진을 새로 만들지 않고 프로젝트가 제공하는 OpenAPI/Swagger UI와 실제 API를 안전하게 프록시한다.
 
