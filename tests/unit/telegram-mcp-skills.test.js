@@ -4,7 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-hub-mcp-cmd-test-'));
+const tempBase = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-hub-mcp-cmd-test-'));
+process.env.DATA_DIR = tempBase;
+process.env.CODEX_CONFIG_PATH = path.join(tempBase, 'codex-config.toml');
+process.env.GEMINI_CONFIG_PATH = path.join(tempBase, 'gemini-mcp.json');
+process.env.CODEX_SKILLS_DIR = path.join(tempBase, 'codex-skills');
+process.env.GEMINI_SKILLS_DIR = path.join(tempBase, 'gemini-skills');
+process.env.SKILLS_MASTER_DIR = path.join(tempBase, 'skills');
 
 const { initDatabase } = await import('../../src/database/index.js');
 const { McpRepository } = await import('../../src/extensions/mcp-repository.js');
