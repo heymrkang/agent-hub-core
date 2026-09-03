@@ -82,12 +82,18 @@ export class DeployRepository {
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'AgentHub-Core/2.0'
+      };
+      const coolifyToken = process.env.COOLIFY_API_TOKEN;
+      if (coolifyToken?.trim()) {
+        headers['Authorization'] = `Bearer ${coolifyToken.trim()}`;
+      }
+
       const res = await fetch(target.webhookUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'AgentHub-Core/2.0'
-        },
+        headers,
         body: JSON.stringify({
           source: 'agent-hub-telegram',
           target: target.name,
@@ -96,8 +102,17 @@ export class DeployRepository {
         signal: controller.signal
       });
 
+      if (!res.ok) {
+        const errorBody = await res.text().catch(() => '');
+        let hint = '';
+        if (res.status === 401) {
+          hint = ' (인증 실패: Coolify API Token이 필요합니다. COOLIFY_API_TOKEN 환경변수를 확인해주세요)';
+        }
+        throw new Error(`배포 요청 실패 (HTTP ${res.status}${hint})${errorBody ? `: ${errorBody.slice(0, 200)}` : ''}`);
+      }
+
       return {
-        ok: res.ok,
+        ok: true,
         status: res.status,
         statusText: res.statusText,
         target

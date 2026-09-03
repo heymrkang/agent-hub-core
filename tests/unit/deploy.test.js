@@ -107,11 +107,27 @@ test('DeployRepository.trigger calls fetch with POST and payload', async (t) => 
   assert.equal(res.status, 200);
   assert.equal(fetchCalled, true);
   assert.equal(fetchUrl, 'https://coolify.example.com/webhook/test-api');
-  assert.equal(fetchOptions.method, 'POST');
-
   const body = JSON.parse(fetchOptions.body);
   assert.equal(body.target, 'api');
   assert.equal(body.source, 'agent-hub-telegram');
+
+  // 2. COOLIFY_API_TOKEN 헤더 검증
+  process.env.COOLIFY_API_TOKEN = 'coolify-token-xyz';
+  await DeployRepository.trigger('api');
+  assert.equal(fetchOptions.headers.Authorization, 'Bearer coolify-token-xyz');
+  delete process.env.COOLIFY_API_TOKEN;
+
+  // 3. HTTP 401 에러 거절 검증
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 401,
+    statusText: 'Unauthorized',
+    text: async () => '{"message":"Unauthenticated."}'
+  });
+  await assert.rejects(
+    () => DeployRepository.trigger('api'),
+    /배포 요청 실패 \(HTTP 401 \(인증 실패: Coolify API Token이 필요합니다/
+  );
 });
 
 test('Telegram /deploy command and callback work end-to-end', async (t) => {

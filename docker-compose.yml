@@ -37,6 +37,7 @@ services:
       PREVIEW_CLOUDFLARE_ACCESS_AUD: "${PREVIEW_CLOUDFLARE_ACCESS_AUD:-}"
       WEBHOOK_PORT: "8788"
       WEBHOOK_HOST: "0.0.0.0"
+      COOLIFY_API_TOKEN: "${COOLIFY_API_TOKEN:-}"
     labels:
       traefik.enable: "true"
       traefik.docker.network: coolify
