@@ -15,6 +15,7 @@ import { startPreviewRouteServer } from './preview/preview-route-server.js';
 import { getPreviewService } from './preview/preview-service.js';
 import { safeErrorMessage } from './telegram/transport.js';
 import { MemoryManager } from './memory/memory-manager.js';
+import { mcpSyncService } from './extensions/mcp-sync-service.js';
 
 console.log('==========================================');
 console.log('          Agent Hub Core V2 · 2.0.0');
@@ -39,6 +40,11 @@ try {
     MemoryManager.syncProviderRules();
   } catch (error) {
     console.warn(`[MemorySync] 시작 시 Provider Rules 동기화 실패: ${safeErrorMessage(error)}`);
+  }
+  try {
+    mcpSyncService.syncAll();
+  } catch (error) {
+    console.warn(`[McpSync] 시작 시 MCP 동기화 실패: ${safeErrorMessage(error)}`);
   }
   JobRuntime.recoverInterruptedJobs();
 
