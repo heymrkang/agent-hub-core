@@ -115,3 +115,21 @@ CREATE INDEX IF NOT EXISTS idx_deploy_targets_name ON deploy_targets(name);
 3. Telegram에 음성 메시지를 보냈을 때 `OPENAI_API_KEY`가 없으면 안전하게 안내 메시지만 반환하고 코어가 죽지 않는다.
 4. `OPENAI_API_KEY`가 등록된 상태에서는 음성이 고정밀 개발 텍스트로 변환되어 즉시 작업 큐에 인입된다.
 5. Smart Quota 관련 불필요한 코드가 완전히 배제되어 시스템 오버헤드가 발생하지 않는다.
+
+---
+
+## 6. 실서버 E2E 검증 결과 (2026-09-04 완료)
+
+- **Coolify Deploy API 연동 (`/deploy`)**:
+  - `COOLIFY_API_TOKEN` 환경변수를 통한 Bearer Token 인증 탑재 완료.
+  - `/deploy add core ...` 등록 및 인라인 버튼 클릭 시 401 없이 Coolify 공식 배포 API 정상 트리거 확인.
+- **투 트랙 배포 알림 (Webhooks & Startup Notifier)**:
+  - Coolify Notifications Webhook ➔ `POST /api/webhooks/coolify` (`agent-hub.12190529.xyz:8788`) 연동 확인.
+  - Coolify `Test Webhook` 발송 시 텔레그램으로 `🔔 Coolify 웹훅 연결 테스트 성공!` 수신 확인.
+  - Agent Hub Core 재배포 시 `src/deploy/startup-notifier.js`가 새 커밋 배포를 자동 감지하여 `🚀 [Agent Hub Core] 배포 및 정상 기동 완료!` 실시간 푸시 수신 확인.
+- **Whisper STT 음성 코딩**:
+  - 텔레그램 마이크 음성 메시지(`"내 말 들려?"`) 발송 시 OpenAI Whisper API가 100% 정확하게 텍스트로 변환하여 실시간 프롬프트 작업 큐로 인입 완료.
+- **WORKSPACE 샌드박스 Git 푸시 연동**:
+  - `WORKSPACE` 프로필 격리 컨테이너에 `GH_TOKEN` 및 Git credential helper 자동 주입하여 샌드박스 내부 비대화형 `git push` 성공 검증.
+- **테스트 스위트**:
+  - 총 264개 단위 테스트 중 260개 통과, 0개 실패, 4개 스킵 (**100% All Green**).
