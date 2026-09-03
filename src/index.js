@@ -16,6 +16,7 @@ import { getPreviewService } from './preview/preview-service.js';
 import { safeErrorMessage } from './telegram/transport.js';
 import { MemoryManager } from './memory/memory-manager.js';
 import { mcpSyncService } from './extensions/mcp-sync-service.js';
+import { skillSyncService } from './extensions/skill-sync-service.js';
 
 console.log('==========================================');
 console.log('          Agent Hub Core V2 · 2.0.0');
@@ -45,6 +46,11 @@ try {
     mcpSyncService.syncAll();
   } catch (error) {
     console.warn(`[McpSync] 시작 시 MCP 동기화 실패: ${safeErrorMessage(error)}`);
+  }
+  try {
+    skillSyncService.syncAll();
+  } catch (error) {
+    console.warn(`[SkillSync] 시작 시 Skills 동기화 실패: ${safeErrorMessage(error)}`);
   }
   JobRuntime.recoverInterruptedJobs();
 
