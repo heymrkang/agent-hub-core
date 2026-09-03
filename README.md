@@ -104,10 +104,10 @@ SSH private key는 repository나 환경변수에 넣지 않고 `/data/ssh/keys` 
 | `PREVIEW_INTERNAL_TOKEN` | 예 (Compose) | 없음 | Core의 Preview route API와 Preview Gateway 사이의 내부 Bearer token. `openssl rand -hex 32` 등으로 생성하고 두 service에 같은 값을 전달합니다. Coolify Compose에서 누락 시 배포에 실패합니다. |
 | `GH_TOKEN` | 현재 Compose에서 필수 | 없음 | GitHub CLI 인증 token. 로그에서 redaction하며 Coolify secret으로 관리합니다. |
 | `GITHUB_TOKEN` | 아니요 | 없음 | `GH_TOKEN`이 없을 때만 사용하는 호환용 GitHub token 별칭입니다. |
-| `GIT_USER_NAME` | Git commit 시 필요 | 없음 | Agent가 만드는 Git commit의 전역 `user.name`입니다. |
-| `GIT_USER_EMAIL` | Git commit 시 필요 | 없음 | Agent가 만드는 Git commit의 전역 `user.email`입니다. |
+| `GIT_USER_NAME` | 아니요 | `Agent Hub` | Agent가 만드는 Git commit의 전역 `user.name`입니다. Coolify 환경변수로 지정할 수 있습니다. |
+| `GIT_USER_EMAIL` | 아니요 | `agent-hub@local` | Agent가 만드는 Git commit의 전역 `user.email`입니다. Coolify 환경변수로 지정할 수 있습니다. |
 
-현재 Compose는 `GIT_USER_NAME`과 `GIT_USER_EMAIL`을 literal 값으로 전달합니다. Coolify 환경변수로 바꾸려면 Compose의 두 항목도 `${GIT_USER_NAME:?...}` / `${GIT_USER_EMAIL:?...}` 형태로 바꿔야 합니다.
+`GIT_USER_NAME`과 `GIT_USER_EMAIL`은 미지정 시 기본값(`Agent Hub` / `agent-hub@local`)을 사용하며, 실제 개인 Git 계정 정보를 적용하려면 Coolify 환경변수에 등록합니다.
 
 ### 실행 및 스케줄러 조절값
 
@@ -130,6 +130,7 @@ Telegram `/settings`에 provider concurrency가 저장돼 있으면 DB 설정값
 
 | 키 | 코드 기본값 | 현재 Compose 값 | 설명 |
 | --- | --- | --- | --- |
+| `STORAGE_ROOT` | 호스트 마운트 기준 | `/mnt/storage/agent-hub-core` | 호스트 머신에서 Docker 컨테이너로 볼륨 마운트할 루트 경로입니다. 미지정 시 `/mnt/storage/agent-hub-core`를 사용합니다. |
 | `DATA_DIR` | 실행 위치의 `data` 또는 `/data` | `/data` | SQLite, backup, log, attachment, canonical memory 등 영속 데이터의 root입니다. 운영에서는 persistent volume이 필요합니다. |
 | `WORKSPACE_DIR` | 대부분 `/home/dev`, 일부 보조 기능 `/workspace` | `/home/dev` | Provider 실행과 full backup이 사용하는 개발 root입니다. 운영에서는 항상 명시합니다. |
 | `DEVELOPMENT_ROOT` | `/home/dev/workspace` | 미지정 | Preview가 프로젝트 경로를 탐색할 때 사용하는 Git repository root입니다. 일반적으로 `REPOS_ROOT`와 같은 경로를 사용합니다. |
@@ -173,7 +174,8 @@ Phase 17 실제 서버 검증은 Telegram, Access, OpenAPI, 개발 MariaDB CRUD,
 | `OPENAI_API_KEY` | 없음 | `${OPENAI_API_KEY:-}` | Telegram 음성 메시지를 텍스트로 변환하기 위한 OpenAI Whisper API Key입니다. 없으면 음성 수신 시 안내 메시지만 전송되고 시스템은 무중단 유지됩니다. |
 | `WEBHOOK_PORT` | `8788` | `8788` | Coolify 배포 완료 웹훅 수신 HTTP 서버 포트입니다. |
 | `WEBHOOK_HOST` | `0.0.0.0` | `0.0.0.0` | Coolify 배포 완료 웹훅 수신 HTTP 서버 bind 주소입니다. |
-| `WEBHOOK_SECRET` | 없음 | 미지정 | Webhook 수신 시 인증할 Secret Token (쿼리 `?token=` 또는 `X-Coolify-Token` 헤더 검증용). 미지정 시 `PREVIEW_INTERNAL_TOKEN`을 fallback으로 사용합니다. |
+| `WEBHOOK_DOMAIN` | `agent-hub.12190529.xyz` | `${WEBHOOK_DOMAIN:-agent-hub.12190529.xyz}` | Coolify 배포 완료 웹훅 수신 Traefik 라우팅 도메인입니다. |
+| `WEBHOOK_SECRET` | 없음 | 미지정 | Webhook 수신 시 인증할 Secret Token (쿼리 `?token=` 또는 `X-Coolify-Token` 헤더 검증용). 미지정 시 누구나 웹훅을 전송할 수 있습니다. |
 
 ### 런타임이 관리하는 값
 

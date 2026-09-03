@@ -6,10 +6,10 @@ services:
     container_name: docker-agent-telegram
     restart: unless-stopped
     volumes:
-      - /mnt/storage/agent-hub-core/data:/data
-      - /mnt/storage/agent-hub-core/providers/codex:/root/.codex
-      - /mnt/storage/agent-hub-core/providers/gemini:/root/.gemini
-      - /mnt/storage/agent-hub-core/dev:/home/dev
+      - ${STORAGE_ROOT:-/mnt/storage/agent-hub-core}/data:/data
+      - ${STORAGE_ROOT:-/mnt/storage/agent-hub-core}/providers/codex:/root/.codex
+      - ${STORAGE_ROOT:-/mnt/storage/agent-hub-core}/providers/gemini:/root/.gemini
+      - ${STORAGE_ROOT:-/mnt/storage/agent-hub-core}/dev:/home/dev
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in Coolify Environment}"
@@ -27,10 +27,11 @@ services:
       TZ: Asia/Seoul
       NODE_OPTIONS: "--dns-result-order=ipv4first --no-network-family-autoselection"
       GH_TOKEN: "${GH_TOKEN:?Set GH_TOKEN in Coolify Environment}"
-      GIT_USER_NAME: mrkang
-      GIT_USER_EMAIL: heymrkangx@google.com
+      GIT_USER_NAME: "${GIT_USER_NAME:-Agent Hub}"
+      GIT_USER_EMAIL: "${GIT_USER_EMAIL:-agent-hub@local}"
       REPOS_ROOT: /home/dev/workspace
       SSH_DATA_DIR: /data/ssh
+      PREVIEW_DOMAIN: "${PREVIEW_DOMAIN:-12190529.xyz}"
       PREVIEW_INTERNAL_TOKEN: "${PREVIEW_INTERNAL_TOKEN:?Set PREVIEW_INTERNAL_TOKEN in Coolify Environment}"
       PREVIEW_TUNNEL_ONLY: "${PREVIEW_TUNNEL_ONLY:-false}"
       PREVIEW_CLOUDFLARE_TEAM_DOMAIN: "${PREVIEW_CLOUDFLARE_TEAM_DOMAIN:-}"
@@ -44,7 +45,7 @@ services:
       traefik.docker.network: coolify
       traefik.http.routers.agent-hub-webhook.priority: "2"
       traefik.http.routers.agent-hub-webhook.entrypoints: http
-      traefik.http.routers.agent-hub-webhook.rule: "Host(`agent-hub.12190529.xyz`)"
+      traefik.http.routers.agent-hub-webhook.rule: "Host(`${WEBHOOK_DOMAIN:-agent-hub.12190529.xyz}`)"
       traefik.http.routers.agent-hub-webhook.service: agent-hub-webhook
       traefik.http.services.agent-hub-webhook.loadbalancer.server.port: "8788"
     networks:
@@ -85,7 +86,7 @@ services:
       traefik.docker.network: coolify
       traefik.http.routers.agent-hub-preview.priority: "1"
       traefik.http.routers.agent-hub-preview.entrypoints: http
-      traefik.http.routers.agent-hub-preview.rule: "HostRegexp(`preview-[a-z0-9-]+\\.12190529\\.xyz`)"
+      traefik.http.routers.agent-hub-preview.rule: "HostRegexp(`preview-[a-z0-9-]+\\.${PREVIEW_DOMAIN:-12190529.xyz}`)"
       traefik.http.routers.agent-hub-preview.service: agent-hub-preview
       traefik.http.services.agent-hub-preview.loadbalancer.server.port: "8080"
     networks:
