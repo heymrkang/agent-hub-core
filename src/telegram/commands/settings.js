@@ -5,7 +5,6 @@ import { isStealthMode } from '../renderer/ui-theme.js';
 
 const TIMEZONES = ['Asia/Seoul', 'UTC', 'Asia/Tokyo', 'America/New_York'];
 const CONCURRENCY = [1, 2, 4, 8];
-const COMPACT_THRESHOLDS = [60, 70, 80, 90];
 const PREVIEW_LIMITS = [1, 2, 3];
 const PREVIEW_TIMEOUTS = [6, 12, 24, 48, 0];
 
@@ -147,10 +146,9 @@ async function render(bot, source, view = 'root') {
       [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
     ];
   } else if (view === 'execution') {
-    text = `${heading('Settings · 실행 설정')}\n\nConcurrency: \`${values.concurrency_limit}\`\nAuto Compact: \`${values.auto_compact_threshold}%\`\nAuto Session Title: \`${values.auto_session_title ? 'ON' : 'OFF'}\``;
+    text = `${heading('Settings · 실행 설정')}\n\nConcurrency: \`${values.concurrency_limit}\`\nAuto Session Title: \`${values.auto_session_title ? 'ON' : 'OFF'}\``;
     keyboard = [
       CONCURRENCY.map((value) => ({ text: mark(values.concurrency_limit === value, `동시 ${value}`), callback_data: `settings_set:concurrency_limit:${value}` })),
-      COMPACT_THRESHOLDS.map((value) => ({ text: mark(values.auto_compact_threshold === value, `${value}%`), callback_data: `settings_set:auto_compact_threshold:${value}` })),
       [{ text: `자동 제목 ${values.auto_session_title ? 'ON' : 'OFF'}`, callback_data: `settings_set:auto_session_title:${!values.auto_session_title}` }],
       [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
     ];
@@ -183,7 +181,7 @@ async function render(bot, source, view = 'root') {
     ];
   } else if (view === 'system') {
     const provider = values.default_provider;
-    text = `${heading('Settings · 시스템 설정')}\n\nProvider: \`${provider}\`\nModel: \`${escapeMd(values[`default_model_${provider}`] || 'CLI Default')}\`\nThinking: \`${escapeMd(values[`default_reasoning_effort_${provider}`] || 'default')}\`\nProfile: \`${values.default_execution_profile}\`\nConcurrency: \`${values.concurrency_limit}\`\nPreview: \`${values.preview_max_concurrent}개 / ${values.preview_idle_timeout_hours === 0 ? '수동 종료' : `${values.preview_idle_timeout_hours}h`}\`\nCompact: \`${values.auto_compact_threshold}%\`\nNotifications: \`${values.notifications_enabled ? 'ON' : 'OFF'}\`\nUI: \`${values.stealth_mode}\`\nTimezone: \`${values.timezone}\`\n\n전체 기본값 복원은 확인 후 실행됩니다.`;
+    text = `${heading('Settings · 시스템 설정')}\n\nProvider: \`${provider}\`\nModel: \`${escapeMd(values[`default_model_${provider}`] || 'CLI Default')}\`\nThinking: \`${escapeMd(values[`default_reasoning_effort_${provider}`] || 'default')}\`\nProfile: \`${values.default_execution_profile}\`\nConcurrency: \`${values.concurrency_limit}\`\nPreview: \`${values.preview_max_concurrent}개 / ${values.preview_idle_timeout_hours === 0 ? '수동 종료' : `${values.preview_idle_timeout_hours}h`}\`\nNotifications: \`${values.notifications_enabled ? 'ON' : 'OFF'}\`\nUI: \`${values.stealth_mode}\`\nTimezone: \`${values.timezone}\`\n\n전체 기본값 복원은 확인 후 실행됩니다.`;
     keyboard = [
       [{ text: '기본값 복원', callback_data: 'settings_reset_confirm' }],
       [{ text: '‹ 뒤로', callback_data: 'settings_view:root' }]
@@ -267,7 +265,7 @@ export async function handleSettingsCallback(bot, q) {
       getSettingsManager().set(key, value);
       await bot.answerCallbackQuery(q.id, { text: '설정이 저장되었습니다.' }).catch(() => {});
       const view = key.startsWith('default_') ? 'agent'
-        : ['concurrency_limit', 'auto_compact_threshold', 'auto_session_title'].includes(key) ? 'execution'
+        : ['concurrency_limit', 'auto_session_title'].includes(key) ? 'execution'
           : ['notifications_enabled', 'stealth_mode'].includes(key) ? 'telegram'
             : key === 'timezone' ? 'scheduler'
               : key.startsWith('preview_') ? 'preview' : 'root';

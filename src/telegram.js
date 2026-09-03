@@ -77,7 +77,24 @@ export function initTelegramBot() {
   };
 
   bot.setMyCommands([
-    { command:'start', description:'Agent Hub 도움말 및 현재 상태' },{ command:'help', description:'사용 가능한 명령어 도움말' },{ command:'new', description:'새 세션 생성' },{ command:'sessions', description:'세션 목록 / 전환 / 보관 / 복구' },{ command:'rename', description:'현재 세션 제목 변경' },{ command:'model', description:'Provider / Model 선택' },{ command:'providers', description:'Provider 상태 확인' },{ command:'profile', description:'Execution Profile 선택' },{ command:'preview', description:'개발 Preview 실행 / 관리' },{ command:'mcp', description:'MCP 서버 관리 및 프리셋 연동' },{ command:'skills', description:'Custom Agent Skills 관리' },{ command:'settings', description:'Agent Hub 기본값 및 운영 설정' },{ command:'status', description:'Agent Hub 기능 Health 상태' },{ command:'system', description:'등록 서버 전체 시스템 리소스' },{ command:'usage', description:'Agent Hub 작업 사용량 통계' },{ command:'backup', description:'Core / Full backup 관리' },{ command:'clear', description:'Telegram 화면 메시지만 정리' },{ command:'server', description:'SSH 서버 등록 방법 / 연결 테스트 / 관리' },{ command:'schedule', description:'예약 작업 목록 / 자연어 등록' },{ command:'queue', description:'작업 큐 상태 확인' },{ command:'stop', description:'현재 실행 중인 작업 중단' },{ command:'compact', description:'현재 세션 컨텍스트 압축' },{ command:'files', description:'현재 세션 첨부 파일 목록' },{ command:'download', description:'첨부 파일 다운로드' },{ command:'memory', description:'장기 메모리 확인 / 관리' }
+    { command:'new', description:'새 세션 생성' },
+    { command:'sessions', description:'세션 목록 / 전환 / 보관' },
+    { command:'model', description:'AI Provider / 모델 선택' },
+    { command:'profile', description:'실행 권한 (WORKSPACE / FULL_ACCESS)' },
+    { command:'deploy', description:'Coolify 앱 배포 관리 및 트리거' },
+    { command:'preview', description:'개발 Web / API 프리뷰 관리' },
+    { command:'mcp', description:'MCP 서버 관리 및 연동' },
+    { command:'skills', description:'Custom Agent Skills 관리' },
+    { command:'stop', description:'현재 실행 중인 작업 중단' },
+    { command:'clear', description:'Telegram 채팅 화면 메시지 정리' },
+    { command:'usage', description:'AI 모델 사용량 및 Quota 확인' },
+    { command:'system', description:'등록 서버 전체 시스템 리소스' },
+    { command:'status', description:'Agent Hub 내부 서비스 Health' },
+    { command:'settings', description:'Agent Hub 기본값 및 운영 설정' },
+    { command:'server', description:'SSH 서버 관리 및 연결 테스트' },
+    { command:'schedule', description:'예약 작업 목록 및 관리' },
+    { command:'backup', description:'데이터베이스 및 스토리지 백업' },
+    { command:'help', description:'전체 명령어 및 도움말' }
   ]).then(()=>console.log('[Telegram] Slash command menu 등록 완료.')).catch((error)=>console.warn(`[Telegram] Slash command menu 등록 실패: ${safeErrorMessage(error)}`));
 
   async function processPromptJob(chatId, userId, userText, attachedFiles = []) {
@@ -149,7 +166,8 @@ export function initTelegramBot() {
     if (text === '/start' || text === '/help') {
       const s = SessionManager.getActiveSession(userId), model = s.active_model || '기본 모델';
       const stealth = isStealthMode();
-      const help = stealth ? `■ **Agent Hub Core V2 · 2.0.0**\n\n현재 활성 세션: **${s.title}**\nProvider: \`${s.active_provider}\` (Model: \`${model}\`)\nProfile: \`${s.execution_profile}\`\n\n**세션 관리**\n• \`/new\` : 새 세션 생성\n• \`/sessions\` : 세션 목록/전환/보관/복구\n• \`/rename <새 제목>\` : 세션 이름 변경\n\n**모델 및 운영**\n• \`/model\` : Provider/Model 변경\n• \`/providers\` : Provider 상태\n• \`/profile\` : Execution Profile 선택\n• \`/settings\` : Agent Hub 기본값 및 운영 설정\n• \`/status\` : 전체 Health 상태\n• \`/usage\` : 작업 사용량 통계\n• \`/backup\` : Core / Full backup 관리\n• \`/clear\` : Telegram 화면 메시지만 정리\n• \`/server\` : SSH 서버 관리\n• \`/schedule\` : 예약 작업\n• \`/files\`, \`/download\`, \`/memory\`, \`/compact\`, \`/queue\`, \`/stop\`` : `🤖 **Agent Hub Core V2 · 2.0.0**\n\n⭐ **현재 활성 세션**: **${s.title}**\n🤖 **Provider**: \`${s.active_provider}\` (Model: \`${model}\`)\n⚙️ **Profile**: \`${s.execution_profile}\`\n\n📌 **세션 관리**:\n• \`/new\` : 새 세션 생성\n• \`/sessions\` : 세션 목록/전환/보관/복구\n• \`/rename <새 제목>\` : 세션 이름 변경\n\n📌 **모델 및 인프라**:\n• \`/model\` : Provider/Model 변경 (캐시 기반)\n• \`/providers\` : Provider 상태\n• \`/profile\` : READ_ONLY / WORKSPACE / FULL_ACCESS 선택\n• \`/settings\` : Agent Hub 기본값 및 운영 설정\n• \`/status\` : 전체 Health 상태\n• \`/usage\` : 작업 사용량 통계\n• \`/backup\` : Core / Full backup 관리\n• \`/clear\` : Telegram 화면 메시지만 정리\n• \`/server\` : SSH 서버 Registry / 연결 테스트\n• \`/schedule\` : 예약 작업 목록 / 자연어 등록\n• \`/files\`, \`/download\`, \`/memory\`, \`/compact\`, \`/queue\`, \`/stop\``;
+      const help = stealth ? `■ **Agent Hub Core V2 · 2.0.0**\n\n활성 세션: **${s.title}**\nProvider: \`${s.active_provider}\` (Model: \`${model}\`)\nProfile: \`${s.execution_profile}\`\n\n**세션 & 제어**\n• \`/new\` 새 세션 생성\n• \`/sessions\` 세션 목록/전환/보관\n• \`/model\` Provider/Model 선택\n• \`/profile\` 권한 (READ_ONLY/WORKSPACE/FULL_ACCESS)\n• \`/stop\` 작업 중단 / \`/clear\` 화면 정리\n\n**개발 & 배포**\n• \`/deploy\` Coolify 앱 배포 관리\n• \`/preview\` Web/API 개발 프리뷰\n• \`/mcp\` MCP 서버 / \`/skills\` Agent Skills\n• \`/files\` 첨부 파일 / \`/download\` 다운로드\n\n**모니터링 & 인프라**\n• \`/usage\` 모델 사용량/Quota 통계\n• \`/system\` 등록 서버 리소스\n• \`/status\` 코어 Health / \`/server\` SSH 서버\n• \`/schedule\` 예약 작업 / \`/settings\` 환경 설정\n• \`/backup\` 백업 / \`/memory\` 장기 메모리`
+      : `🤖 **Agent Hub Core V2 · 2.0.0**\n\n⭐ **현재 활성 세션**: **${s.title}**\n🤖 **Provider**: \`${s.active_provider}\` (\`${model}\`)\n⚙️ **Profile**: \`${s.execution_profile}\`\n\n📌 **세션 & 제어**\n• \`/new\` : 새 대화 세션 생성\n• \`/sessions\` : 세션 목록 / 전환 / 보관\n• \`/model\` : AI Provider 및 모델 선택\n• \`/profile\` : 실행 권한 (WORKSPACE / FULL_ACCESS)\n• \`/stop\` : 현재 작업 중단\n• \`/clear\` : 채팅창 메시지 청소\n\n🚀 **개발 & 배포**\n• \`/deploy\` : Coolify 앱 배포 관리 및 트리거\n• \`/preview\` : Web / Backend API 프리뷰 실행\n• \`/mcp\` : MCP 서버 도구 연동 및 관리\n• \`/skills\` : 커스텀 에이전트 스킬 관리\n• \`/files\` : 첨부 파일 목록 / \`/download\` : 다운로드\n\n📊 **모니터링 & 인프라**\n• \`/usage\` : AI 모델별 사용량 및 잔여 Quota\n• \`/system\` : 개발 서버 시스템 리소스 현황\n• \`/status\` : 내부 서비스 상태 점검\n• \`/server\` : 등록 SSH 서버 연결 및 관리\n• \`/schedule\` : 정기 예약 작업 관리\n• \`/settings\` : 에이전트 기본값 및 운영 설정\n• \`/backup\` : Core DB 및 데이터 백업`;
       await bot.sendMessage(chatId, help, { parse_mode: 'Markdown' });
       return;
     }
