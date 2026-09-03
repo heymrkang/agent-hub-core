@@ -35,8 +35,19 @@ services:
       PREVIEW_TUNNEL_ONLY: "${PREVIEW_TUNNEL_ONLY:-false}"
       PREVIEW_CLOUDFLARE_TEAM_DOMAIN: "${PREVIEW_CLOUDFLARE_TEAM_DOMAIN:-}"
       PREVIEW_CLOUDFLARE_ACCESS_AUD: "${PREVIEW_CLOUDFLARE_ACCESS_AUD:-}"
+      WEBHOOK_PORT: "8788"
+      WEBHOOK_HOST: "0.0.0.0"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      traefik.http.routers.agent-hub-webhook.priority: "2"
+      traefik.http.routers.agent-hub-webhook.entrypoints: http
+      traefik.http.routers.agent-hub-webhook.rule: "HostRegexp(`(webhook|agent-hub|deploy)\\.12190529\\.xyz`)"
+      traefik.http.routers.agent-hub-webhook.service: agent-hub-webhook
+      traefik.http.services.agent-hub-webhook.loadbalancer.server.port: "8788"
     networks:
       - default
+      - coolify
 
   preview-gateway:
     build:

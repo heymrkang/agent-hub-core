@@ -17,6 +17,7 @@ import { safeErrorMessage } from './telegram/transport.js';
 import { MemoryManager } from './memory/memory-manager.js';
 import { mcpSyncService } from './extensions/mcp-sync-service.js';
 import { skillSyncService } from './extensions/skill-sync-service.js';
+import { startWebhookServer } from './webhooks/coolify-webhook.js';
 
 console.log('==========================================');
 console.log('          Agent Hub Core V2 · 2.0.0');
@@ -68,6 +69,7 @@ try {
   schedulerEngine.start(bot);
   startHealthServer();
   startPreviewRouteServer();
+  startWebhookServer({ bot });
   try {
     const previewSummary = await getPreviewService().cleanup.startupReconcile();
     Logger.info('system', 'preview_startup_reconcile', previewSummary);
