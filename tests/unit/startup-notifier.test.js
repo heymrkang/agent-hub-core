@@ -45,15 +45,17 @@ test('checkAndNotifyStartup handles first run, unchanged reboot, and new deploym
   const savedState = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
   assert.equal(savedState.commit, firstRes.currentCommit);
 
-  // 2. 커밋 변경 없는 단순 재부팅 (Unchanged Reboot) -> 알림 스킵
+  // 2. 커밋 변경 없는 단순 재부팅 (Unchanged Reboot) -> 환영 알림 발송 및 isNewDeployment=false
   const secondRes = await checkAndNotifyStartup({
     bot: mockBot,
     ownerId,
     dataDir: tempDir
   });
 
-  assert.equal(secondRes.notified, false);
-  assert.equal(sentMessages.length, 1); // 추가 전송 없음
+  assert.equal(secondRes.notified, true);
+  assert.equal(secondRes.isNewDeployment, false);
+  assert.equal(sentMessages.length, 2);
+  assert.match(sentMessages[1].text, /정상 기동 완료/);
 
   // 3. 새 커밋 배포 감지 (New Deployment)
   // 이전 커밋을 fake로 조작
@@ -71,9 +73,9 @@ test('checkAndNotifyStartup handles first run, unchanged reboot, and new deploym
   assert.equal(thirdRes.notified, true);
   assert.equal(thirdRes.isNewDeployment, true);
   assert.equal(thirdRes.lastCommit, 'old1234');
-  assert.equal(sentMessages.length, 2);
-  assert.match(sentMessages[1].text, /배포 및 정상 기동 완료/);
-  assert.match(sentMessages[1].text, /old1234/);
+  assert.equal(sentMessages.length, 3);
+  assert.match(sentMessages[2].text, /정상 기동 완료/);
+  assert.match(sentMessages[2].text, /old1234/);
 });
 
 test('checkAndNotifyStartup falls back to plain text if markdown parse fails', async () => {
@@ -98,5 +100,5 @@ test('checkAndNotifyStartup falls back to plain text if markdown parse fails', a
   assert.equal(res.notified, true);
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].options, undefined);
-  assert.match(sentMessages[0].text, /배포 및 정상 기동 완료/);
+  assert.match(sentMessages[0].text, /정상 기동 완료/);
 });
