@@ -1,10 +1,10 @@
 # Agent Hub Core Roadmap
 
-> **Status:** V1 Released\
+> **Status:** V2 LTS Released (Feature Freeze)\
 > **Architecture:** `.plan/PROJECT_PLAN.md`\
-> **Execution Rule:** Phase 단위로 구현 → 검증 → 커밋 → 상태 갱신
+> **Execution Rule:** Core 기능 개발 영구 동결 (Feature Freeze) — 사이드 프로젝트 전념
 
-Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
+Agent Hub V1 및 V2 (Phase 0 ~ 21) 전체 구현 및 LTS verification이 완료되었다.
 
 ## 1. V1 단계별 상태
 
@@ -61,7 +61,7 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 | Phase 18 | V2 Native Session Compact & Rollover | `DONE` | /compact 시 모든 Provider Native Session 초기화 및 요약 부트스트랩 롤오버 완료 |
 | Phase 19 | Agent Extensibility — MCP & Skills | `DONE` | DB/파일 마스터 기반 Codex & Antigravity 전역 Dual-Sync 및 텔레그램 프리셋/관리 UI 완료 |
 | Phase 20 | Coolify Deploy Integration & Voice Prompting (STT) | `DONE` | Coolify 배포 연동(`/deploy`), 배포 완료 수신 웹훅 알림, Whisper STT 음성 코딩 완료 |
-| Phase 21 | V2 LTS Final Hardening & Optimization | `PLANNED` | 토큰 다이어트, 퍼블릭 레포 보안 감사 및 환경변수화, 레거시 정리, V2 LTS 완결 |
+| Phase 21 | V2 LTS Final Hardening & Optimization | `DONE` | 2026-09-04 V2 LTS 공식 완결 및 Feature Freeze 선언 |
 
 ### Phase 12를 스킵하는 이유
 
@@ -101,9 +101,13 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
 
 `PHASE_20_DEPLOY_VOICE_QUOTA.md`를 기준으로 모바일 텔레그램 상에서의 개발 생산성과 운영 편의성을 극대화한다. Coolify Deploy Webhook을 통한 `/deploy` 명령어 및 배포 결과 수신 웹훅 알림 연동, OpenAI Whisper STT 기반 텔레그램 음성 코딩 지시를 구현한다. (오작동 우려 및 불필요한 복잡도를 방지하기 위해 Smart Quota는 제외하고 기존 `/usage`를 유지한다.)
 
-### Phase 21
+### Phase 21 (V2 LTS Released — 2026-09-04)
 
-`PHASE_21_V2_LTS_HARDENING.md`를 기준으로 Agent Hub Core의 기능 개발을 공식 영구 동결(Feature Freeze)하고 최종 V2 LTS 버전으로 안착시킨다. 신규 기능 추가를 중단하고, 토큰 다이어트(시스템 프롬프트/컨텍스트 최적화), 레거시/오작동 명령어 정리, 퍼블릭 레포 보안 감사 및 하드코딩 환경변수화(`.env.example`), 전체 회귀 테스트 통과 및 V2 LTS 공식 릴리즈를 진행한다.
+`PHASE_21_V2_LTS_HARDENING.md`를 기준으로 Agent Hub Core의 기능 개발을 공식 영구 동결(Feature Freeze)하고 최종 V2 LTS 버전으로 안착시켰다.
+- 토큰 다이어트: 실행 프로필 가드레일, Context History, Handoff Delta, 접두사 군더더기를 약 40% 압축.
+- 레거시 정리: V2에서 사문화된 `/settings`의 Auto Compact 유령 설정 완전 제거, `/help` 및 슬래시 메뉴 모바일 실전 최적화.
+- 퍼블릭 보안 감사: `docker-compose.yml`, `.env.example`, `README.md`에서 개인정보 하드코딩 제거 및 환경변수화.
+- 전체 회귀 검증: 총 264개 단위 테스트 100% All Green 통과 후 코어 기능 개발 공식 영구 동결(Feature Freeze) 선언.
 
 ## 5. Known Operational Notes
 
@@ -118,13 +122,13 @@ Agent Hub V1의 Phase 0 ~ 11 구현 및 release verification이 완료되었다.
   2. 텔레그램 UI (`/profile`, `/help`) 및 양대 어댑터(`antigravity-adapter.js`, `codex-adapter.js`) 프롬프트 가드레일 동기화.
   3. Antigravity에 Codex와 동일한 Docker 샌드박스 물리 격리(`executeRestrictedPrompt`) 적용 및 단위 테스트 추가 완료.
 
-## 6. 다음 작업 시작점
+## 6. 최종 릴리즈 및 개발 완료 기준점
 
-새 채팅에서 후속 개발을 시작할 때의 기준점은 다음과 같다.
+Agent Hub Core의 모든 Phase(0 ~ 21)가 공식 완결되었으며, Core 기능 개발은 공식적으로 **영구 동결(Feature Freeze)**되었다.
 
 ```text
-V1 Released
-Phase 0 ~ 11: DONE
+V2 LTS (2.0.0-lts) Released — Core Feature Freeze
+Phase 0 ~ 11: DONE (V1 Baseline)
 Phase 12: SKIPPED / SUPERSEDED
 Phase 13: DONE — Mobile Preview Runtime & Preview Manager
 Phase 14: DONE — /system System & Resource Observability
@@ -134,9 +138,11 @@ Phase 17: DONE — NestJS/OpenAPI Backend API Preview & Inspector 완료
 Phase 18: DONE — V2 Native Session Compact & Rollover 완료
 Phase 19: DONE — MCP & Skills 완료
 Phase 20: DONE — Coolify Deploy Integration & Voice Prompting (STT) 완료
-Phase 21: PLANNED — V2 LTS Final Hardening & Optimization (Feature Freeze)
+Phase 21: DONE — V2 LTS Final Hardening & Optimization (Feature Freeze)
 Development root: /home/dev
 Git repositories: /home/dev/workspace
 ```
+
+🚀 **Agent Hub Core 공식 졸업 완료! 이후 작업은 Core를 개발 도구로 활용하여 실제 사이드 프로젝트(웹/백엔드/모바일) 구축에 전념한다.**
 
 V1 회귀가 발견되면 신규 Phase 진행보다 해당 결함 수정과 regression 추가를 우선한다.
