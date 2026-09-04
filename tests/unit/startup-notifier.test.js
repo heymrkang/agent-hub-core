@@ -75,3 +75,28 @@ test('checkAndNotifyStartup handles first run, unchanged reboot, and new deploym
   assert.match(sentMessages[1].text, /배포 및 정상 기동 완료/);
   assert.match(sentMessages[1].text, /old1234/);
 });
+
+test('checkAndNotifyStartup falls back to plain text if markdown parse fails', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'startup-notify-fallback-'));
+  const sentMessages = [];
+  const mockBot = {
+    async sendMessage(chatId, text, options) {
+      if (options?.parse_mode === 'Markdown') {
+        throw new Error("400 Bad Request: can't parse entities");
+      }
+      sentMessages.push({ chatId, text, options });
+      return { message_id: 1 };
+    }
+  };
+
+  const res = await checkAndNotifyStartup({
+    bot: mockBot,
+    ownerId: '12345678',
+    dataDir: tempDir
+  });
+
+  assert.equal(res.notified, true);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].options, undefined);
+  assert.match(sentMessages[0].text, /배포 및 정상 기동 완료/);
+});
