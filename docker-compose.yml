@@ -6,10 +6,10 @@ services:
     container_name: docker-agent-telegram
     restart: unless-stopped
     volumes:
-      - ${STORAGE_ROOT:-/mnt/storage/agent-hub-core}/data:/data
-      - ${STORAGE_ROOT:-/mnt/storage/agent-hub-core}/providers/codex:/root/.codex
-      - ${STORAGE_ROOT:-/mnt/storage/agent-hub-core}/providers/gemini:/root/.gemini
-      - ${STORAGE_ROOT:-/mnt/storage/agent-hub-core}/dev:/home/dev
+      - ${STORAGE_ROOT}/data:/data
+      - ${STORAGE_ROOT}/providers/codex:/root/.codex
+      - ${STORAGE_ROOT}/providers/gemini:/root/.gemini
+      - ${STORAGE_ROOT}/dev:/home/dev
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in Coolify Environment}"
