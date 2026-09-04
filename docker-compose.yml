@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: docker-agent-telegram
     restart: unless-stopped
+    shm_size: '1gb'
     volumes:
       - /mnt/storage/agent-hub-core/data:/data
       - /mnt/storage/agent-hub-core/providers/codex:/root/.codex

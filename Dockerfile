@@ -19,6 +19,10 @@ RUN curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cl
     && chmod +x /usr/local/bin/antigravity /usr/local/bin/agy && rm -rf /tmp/agy.tar.gz && agy --version
 RUN git --version && gh --version | head -n 1 && docker --version && ssh -V
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx -y playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev
