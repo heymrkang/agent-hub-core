@@ -44,6 +44,34 @@ test('HTTP readiness 확인 전에는 RUNNING으로 전환하지 않는다', asy
   assert.equal(preview.port, 3001);
 });
 
+test('WEB 런타임도 securityPolicy.prepareRuntime을 거쳐 격리 및 환경변수를 주입받는다', async () => {
+  const registry = registryFake();
+  let runtimePassedToCreate = null;
+  const manager = new PreviewManager({
+    registry,
+    runtime: {
+      create: async ({ runtime }) => {
+        runtimePassedToCreate = runtime;
+        return { id: 'container-1', command: [] };
+      },
+      start: async () => ({ running: true })
+    },
+    portDetector: { detect: async () => 3000 },
+    readiness: { wait: async () => ({ path: '/', statusCode: 200 }) },
+    securityPolicy: {
+      prepareRuntime: (rt) => ({ ...rt, previewEnvironment: { NEXT_PUBLIC_TEST: 'true' }, maskEnvironmentFiles: true }),
+      verifyExternalAccess: async () => false
+    }
+  });
+  const preview = await manager.start({
+    sessionId: 'session-1',
+    detectedRuntime: { ...detectedRuntime, runtimeType: 'WEB', framework: 'NEXTJS' }
+  });
+  assert.equal(preview.status, 'RUNNING');
+  assert.equal(runtimePassedToCreate?.previewEnvironment?.NEXT_PUBLIC_TEST, 'true');
+  assert.equal(runtimePassedToCreate?.maskEnvironmentFiles, true);
+});
+
 test('BACKEND_API는 readiness 뒤 endpoint를 탐지하고 나서 RUNNING이 된다', async () => {
   const registry = registryFake();
   const states = [];

@@ -59,7 +59,7 @@ test('격리된 managed Preview container 생성 인자를 구성한다', async 
   assert.ok(create.includes('agent-hub.preview-id=preview-1'));
   assert.ok(create.some((value, index) => value === 'CI=true' && create[index - 1] === '--env'));
   assert.ok(create.some((value, index) => value === '__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=preview-app-a31f.12190529.xyz' && create[index - 1] === '--env'));
-  assert.ok(create.some((value, index) => value === '/tmp:rw,exec,nosuid,nodev,size=256m' && create[index - 1] === '--tmpfs'));
+  assert.ok(create.some((value, index) => value === '/tmp:rw,exec,nosuid,nodev,size=2g' && create[index - 1] === '--tmpfs'));
   assert.ok(create.includes('--read-only'));
   assert.ok(create.some((value, index) => value === 'ALL' && create[index - 1] === '--cap-drop'));
   assert.ok(create.some((value, index) => value === 'no-new-privileges:true' && create[index - 1] === '--security-opt'));
@@ -189,3 +189,14 @@ test('monorepo root에서 설치하고 선택 package를 workdir로 실행한다
   assert.equal(create[create.indexOf('--workdir') + 1], '/workspace/apps/api');
   assert.ok(create.includes('type=bind,source=/home/dev/workspace/repo,target=/workspace'));
 });
+
+test('hasPrisma가 true이면 dev 실행 전 prisma generate를 실행한다', async () => {
+  const fake = dockerFake();
+  const docker = new PreviewRuntime({ run: fake.run });
+  const pnpmCreated = await docker.create({ preview, runtime: { ...runtime, hasPrisma: true } });
+  assert.equal(pnpmCreated.command[2], 'corepack pnpm install --frozen-lockfile --prod=false && corepack pnpm exec prisma generate && exec "$@"');
+
+  const npmCreated = await docker.create({ preview, runtime: { ...runtime, packageManager: 'npm', hasPrisma: true } });
+  assert.equal(npmCreated.command[2], 'npm ci --include=dev && npx --no-install prisma generate && exec "$@"');
+});
+

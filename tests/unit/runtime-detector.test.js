@@ -144,3 +144,32 @@ test('dev script가 없어도 유효한 override는 허용한다', () => {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }
 });
+
+test('Prisma 의존성 또는 schema 파일이 있으면 hasPrisma를 감지한다', () => {
+  const withDep = makeProject({
+    'package.json': JSON.stringify({ dependencies: { '@prisma/client': '^6.0.0', next: '15.0.0' }, scripts: { dev: 'next dev' } }),
+    'package-lock.json': '{}'
+  });
+  const withSchema = makeProject({
+    'package.json': JSON.stringify({ dependencies: { next: '15.0.0' }, scripts: { dev: 'next dev' } }),
+    'package-lock.json': '{}'
+  });
+  fs.mkdirSync(path.join(withSchema.project, 'prisma'));
+  fs.writeFileSync(path.join(withSchema.project, 'prisma', 'schema.prisma'), 'datasource db { provider = "mysql" }');
+
+  const withoutPrisma = makeProject({
+    'package.json': JSON.stringify({ dependencies: { next: '15.0.0' }, scripts: { dev: 'next dev' } }),
+    'package-lock.json': '{}'
+  });
+
+  try {
+    assert.equal(new PreviewRuntimeDetector({ developmentRoot: withDep.root }).detect({ workspacePath: withDep.project }).hasPrisma, true);
+    assert.equal(new PreviewRuntimeDetector({ developmentRoot: withSchema.root }).detect({ workspacePath: withSchema.project }).hasPrisma, true);
+    assert.equal(new PreviewRuntimeDetector({ developmentRoot: withoutPrisma.root }).detect({ workspacePath: withoutPrisma.project }).hasPrisma, false);
+  } finally {
+    fs.rmSync(withDep.root, { recursive: true, force: true });
+    fs.rmSync(withSchema.root, { recursive: true, force: true });
+    fs.rmSync(withoutPrisma.root, { recursive: true, force: true });
+  }
+});
+

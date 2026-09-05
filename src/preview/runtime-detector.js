@@ -163,6 +163,10 @@ export class PreviewRuntimeDetector {
     };
 
     const relativeWorkingDirectory = path.relative(packageManager.installPath, projectPath);
+    const dependencies = dependencyNames(manifest);
+    const hasPrisma = dependencies.has('prisma')
+      || dependencies.has('@prisma/client')
+      || fs.existsSync(path.join(projectPath, 'prisma', 'schema.prisma'));
 
     return Object.freeze({
       projectPath,
@@ -175,7 +179,8 @@ export class PreviewRuntimeDetector {
       devScript: nonEmptyScript(manifest, 'dev'),
       runtimeType: detected.runtimeType,
       framework: detected.framework,
-      detectionSignals: detected.signals
+      detectionSignals: detected.signals,
+      hasPrisma
     });
   }
 }

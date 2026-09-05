@@ -41,11 +41,11 @@ export class PreviewManager {
       framework: detectedRuntime?.framework
     });
     try {
+      if (typeof this.securityPolicy.prepareRuntime === 'function') {
+        securedRuntime = this.securityPolicy.prepareRuntime(detectedRuntime);
+      }
       if (detectedRuntime?.runtimeType === PreviewRuntimeType.BACKEND_API) {
         stage = 'data_isolation';
-        if (typeof this.securityPolicy.prepareRuntime === 'function') {
-          securedRuntime = this.securityPolicy.prepareRuntime(detectedRuntime);
-        }
         preview = this.registry.updateContract(preview.id, {
           accessVerified: await this.securityPolicy.verifyExternalAccess(preview.public_url)
         });

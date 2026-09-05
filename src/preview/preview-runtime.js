@@ -45,7 +45,7 @@ function packageManagerCommand(executable, args) {
   return [executable, ...args];
 }
 
-function runtimeCommand(command, packageManager, { installAtWorkspaceRoot = false } = {}) {
+function runtimeCommand(command, packageManager, { installAtWorkspaceRoot = false, hasPrisma = false } = {}) {
   const executable = requireText(command?.executable, '실행 명령');
   const args = command?.args ?? [];
   if (!Array.isArray(args) || args.some((arg) => typeof arg !== 'string')) {
@@ -67,8 +67,19 @@ function runtimeCommand(command, packageManager, { installAtWorkspaceRoot = fals
     throw new PreviewRuntimeError('INVALID_INPUT', `지원하지 않는 package manager입니다: ${packageManager}`);
   }
 
+  const prismaCommands = {
+    npm: 'npx --no-install prisma generate',
+    pnpm: 'corepack pnpm exec prisma generate',
+    yarn: 'corepack yarn prisma generate'
+  };
+
+  const commands = [install.join(' ')];
+  if (hasPrisma) {
+    commands.push(prismaCommands[packageManager] || 'npx prisma generate');
+  }
+
   const development = packageManagerCommand(executable, args);
-  const script = `${install.join(' ')} && exec "$@"`;
+  const script = `${commands.join(' && ')} && exec "$@"`;
   return ['sh', '-c', script, 'preview-runtime', ...development];
 }
 
@@ -155,7 +166,10 @@ export class PreviewRuntime {
     if (relativeProjectPath === '..' || relativeProjectPath.startsWith(`..${path.sep}`) || path.isAbsolute(relativeProjectPath)) {
       throw new PreviewRuntimeError('INVALID_INPUT', '프로젝트 경로는 package manager 설치 경로 내부여야 합니다.');
     }
-    const command = runtimeCommand(runtime.command, runtime.packageManager, { installAtWorkspaceRoot: Boolean(relativeProjectPath) });
+    const command = runtimeCommand(runtime.command, runtime.packageManager, {
+      installAtWorkspaceRoot: Boolean(relativeProjectPath),
+      hasPrisma: Boolean(runtime.hasPrisma)
+    });
     await this.ensureNetwork();
     await this.#ensureImage();
     const bindSource = await this.#resolveBindSource(installPath);
@@ -185,7 +199,7 @@ export class PreviewRuntime {
       ...maskedEnvironmentFiles.flatMap((target) => ['--mount', `type=bind,source=/dev/null,target=${target},readonly`]),
       // Yarn Berry creates executable shims below /tmp. A noexec tmpfs makes
       // valid Yarn projects fail with "permission denied" before dev starts.
-      '--tmpfs', '/tmp:rw,exec,nosuid,nodev,size=256m',
+      '--tmpfs', '/tmp:rw,exec,nosuid,nodev,size=2g',
       '--env', 'HOME=/tmp',
       '--env', 'CI=true',
       '--env', `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=${preview.public_hostname}`,
