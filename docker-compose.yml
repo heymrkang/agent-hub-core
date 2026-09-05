@@ -45,7 +45,6 @@ services:
       traefik.enable: "true"
       traefik.docker.network: coolify
       traefik.http.routers.agent-hub-webhook.priority: "2"
-      traefik.http.routers.agent-hub-webhook.entrypoints: http
       traefik.http.routers.agent-hub-webhook.rule: "Host(`${WEBHOOK_DOMAIN:-agent-hub.12190529.xyz}`)"
       traefik.http.routers.agent-hub-webhook.service: agent-hub-webhook
       traefik.http.services.agent-hub-webhook.loadbalancer.server.port: "8788"
@@ -86,7 +85,6 @@ services:
       traefik.enable: "true"
       traefik.docker.network: coolify
       traefik.http.routers.agent-hub-preview.priority: "1"
-      traefik.http.routers.agent-hub-preview.entrypoints: http
       traefik.http.routers.agent-hub-preview.rule: "HostRegexp(`preview-[a-z0-9-]+\\.${PREVIEW_DOMAIN:-12190529.xyz}`)"
       traefik.http.routers.agent-hub-preview.service: agent-hub-preview
       traefik.http.services.agent-hub-preview.loadbalancer.server.port: "8080"
