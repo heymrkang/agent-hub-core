@@ -84,9 +84,15 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: coolify
-      traefik.http.routers.agent-hub-preview.priority: "1"
-      traefik.http.routers.agent-hub-preview.rule: "HostRegexp(`preview-[a-z0-9-]+\\.${PREVIEW_DOMAIN:-12190529.xyz}`)"
-      traefik.http.routers.agent-hub-preview.service: agent-hub-preview
+      traefik.http.routers.agent-hub-preview-http.priority: "1"
+      traefik.http.routers.agent-hub-preview-http.entrypoints: http
+      traefik.http.routers.agent-hub-preview-http.rule: "HostRegexp(`preview-[a-z0-9-]+\\.12190529\\.xyz`)"
+      traefik.http.routers.agent-hub-preview-http.service: agent-hub-preview
+      traefik.http.routers.agent-hub-preview-https.priority: "1"
+      traefik.http.routers.agent-hub-preview-https.entrypoints: https
+      traefik.http.routers.agent-hub-preview-https.rule: "HostRegexp(`preview-[a-z0-9-]+\\.12190529\\.xyz`)"
+      traefik.http.routers.agent-hub-preview-https.service: agent-hub-preview
+      traefik.http.routers.agent-hub-preview-https.tls: "true"
       traefik.http.services.agent-hub-preview.loadbalancer.server.port: "8080"
     networks:
       - default
