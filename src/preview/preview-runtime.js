@@ -54,12 +54,12 @@ function runtimeCommand(command, packageManager, { installAtWorkspaceRoot = fals
 
   const localInstallCommands = {
     npm: ['npm', 'ci', '--include=dev'],
-    pnpm: ['corepack', 'pnpm', 'install', '--frozen-lockfile', '--prod=false'],
+    pnpm: ['corepack', 'pnpm', 'install', '--frozen-lockfile'],
     yarn: ['corepack', 'yarn', 'install', '--immutable']
   };
   const workspaceInstallCommands = {
     npm: ['npm', '--prefix', '/workspace', 'ci', '--include=dev'],
-    pnpm: ['corepack', 'pnpm', '--dir', '/workspace', 'install', '--frozen-lockfile', '--prod=false'],
+    pnpm: ['corepack', 'pnpm', '--dir', '/workspace', 'install', '--frozen-lockfile'],
     yarn: ['corepack', 'yarn', '--cwd', '/workspace', 'install', '--immutable']
   };
   const install = (installAtWorkspaceRoot ? workspaceInstallCommands : localInstallCommands)[packageManager];

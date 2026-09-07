@@ -50,7 +50,7 @@ test('격리된 managed Preview container 생성 인자를 구성한다', async 
   const created = await docker.create({ preview, runtime });
   assert.equal(created.id, 'container-123');
   assert.deepEqual(created.command, [
-    'sh', '-c', 'corepack pnpm install --frozen-lockfile --prod=false && exec "$@"',
+    'sh', '-c', 'corepack pnpm install --frozen-lockfile && exec "$@"',
     'preview-runtime', 'corepack', 'pnpm', 'run', 'dev'
   ]);
   const create = fake.calls.find(([command]) => command === 'create');
@@ -194,7 +194,7 @@ test('hasPrisma가 true이면 dev 실행 전 prisma generate를 실행한다', a
   const fake = dockerFake();
   const docker = new PreviewRuntime({ run: fake.run });
   const pnpmCreated = await docker.create({ preview, runtime: { ...runtime, hasPrisma: true } });
-  assert.equal(pnpmCreated.command[2], 'corepack pnpm install --frozen-lockfile --prod=false && corepack pnpm exec prisma generate && exec "$@"');
+  assert.equal(pnpmCreated.command[2], 'corepack pnpm install --frozen-lockfile && corepack pnpm exec prisma generate && exec "$@"');
 
   const npmCreated = await docker.create({ preview, runtime: { ...runtime, packageManager: 'npm', hasPrisma: true } });
   assert.equal(npmCreated.command[2], 'npm ci --include=dev && npx --no-install prisma generate && exec "$@"');
