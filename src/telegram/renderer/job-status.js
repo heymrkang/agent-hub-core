@@ -51,7 +51,11 @@ export class JobStatusRenderer {
       return true;
     } catch (error) {
       const transport = bot.__telegramTransport;
-      if (isTerminal && transport?.isRateLimitedError(error)) {
+      const isRateLimited = transport?.isRateLimitedError(error) || false;
+      if (isRateLimited) {
+        console.warn(`[JobStatusRenderer] RATE_LIMIT status=${currentStatus} session=${job.sessionId} message=${messageId} elapsed=${elapsedSec}s retry_after=${error.retryAfter || 'unknown'}s terminal=${isTerminal}`);
+      }
+      if (isTerminal && isRateLimited) {
         if (currentStatus === JobStatus.COMPLETED) {
           transport.defer(`job-status:${key}`, () => bot.deleteMessage(chatId, messageId));
         } else {

@@ -91,6 +91,8 @@ class QueueManager {
     const providerName = job.provider.toLowerCase();
     this.providerRunningCounts.set(providerName, (this.providerRunningCounts.get(providerName) || 0) + 1);
     const startTime = Date.now();
+    const providerTimeoutMs = providerName === 'antigravity' ? runtimeConfig.antigravityTimeoutMs : runtimeConfig.codexTimeoutMs;
+    console.log(`[JobExecution] provider start job=${job.id} session=${job.session_id} provider=${providerName} profile=${profile || 'WORKSPACE'} provider_timeout_ms=${providerTimeoutMs} queue_timeout_ms=${timeoutMs || 'none'}`);
     JobRuntime.markRunning(job.id);
     const intervalTimer = setInterval(() => onStatusUpdate?.(JobStatus.RUNNING, Math.floor((Date.now() - startTime) / 1000)), 1000);
     const timeoutTimer = timeoutMs && timeoutMs > 0 ? setTimeout(() => abortController.abort(new Error('작업 타임아웃')), timeoutMs) : null;
@@ -113,11 +115,13 @@ class QueueManager {
       });
 
       const durationMs = Date.now() - startTime;
+      console.log(`[JobExecution] provider completed job=${job.id} session=${job.session_id} provider=${providerName} elapsed_ms=${durationMs}`);
       JobRuntime.markCompleted(job.id, durationMs);
       onStatusUpdate?.(JobStatus.COMPLETED, Math.floor(durationMs / 1000));
       resolve(result.response);
     } catch (error) {
       const durationMs = Date.now() - startTime;
+      console.warn(`[JobExecution] provider failed job=${job.id} session=${job.session_id} provider=${providerName} elapsed_ms=${durationMs} aborted=${abortController.signal.aborted} error_code=${error?.code || 'unknown'}`);
       if (error?.code === 'CODEX_NATIVE_RESUME_FAILED' || error?.code === 'CODEX_NATIVE_THREAD_MISMATCH') {
         try { ProviderSessionRepository.markFailure({ sessionId: job.session_id, provider: providerName, state: 'ERROR', error }); } catch {}
       }

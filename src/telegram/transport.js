@@ -62,6 +62,7 @@ export class TelegramTransport {
     this.retryDelaysMs = retryDelaysMs;
     this.cooldownUntil = 0;
     this.deferred = new Map();
+    this.deferredMeta = new Map();
     this.flushTimer = null;
     this.raw = {
       sendMessage: bot.sendMessage.bind(bot),
@@ -86,10 +87,10 @@ export class TelegramTransport {
   isCoolingDown() { return this.cooldownUntil > this.now(); }
   remainingCooldownSeconds() { return Math.max(0, Math.ceil((this.cooldownUntil - this.now()) / 1000)); }
 
-  setCooldown(seconds) {
+  setCooldown(seconds, method = 'telegram') {
     const safeSeconds = Math.max(1, Number(seconds) || 1);
     this.cooldownUntil = Math.max(this.cooldownUntil, this.now() + safeSeconds * 1000);
-    console.warn(`[TelegramTransport] RATE_LIMIT cooldown=${safeSeconds}s`);
+    console.warn(`[TelegramTransport] RATE_LIMIT method=${method} cooldown=${safeSeconds}s deferred=${this.deferred.size}`);
     this.scheduleDeferredFlush();
   }
 
@@ -111,7 +112,7 @@ export class TelegramTransport {
       } catch (error) {
         const info = inspectTelegramError(error, method);
         if (info.category === 'RATE_LIMIT') {
-          this.setCooldown(info.retryAfter || 1);
+          this.setCooldown(info.retryAfter || 1, method);
           throw sanitizedError(info);
         }
         if (markdownFallback && info.category === 'PARSE') {
@@ -119,7 +120,7 @@ export class TelegramTransport {
             return await fn(...this.toPlainArgs(method, args));
           } catch (fallbackError) {
             const fallbackInfo = inspectTelegramError(fallbackError, method);
-            if (fallbackInfo.category === 'RATE_LIMIT') this.setCooldown(fallbackInfo.retryAfter || 1);
+            if (fallbackInfo.category === 'RATE_LIMIT') this.setCooldown(fallbackInfo.retryAfter || 1, method);
             throw sanitizedError(fallbackInfo);
           }
         }
@@ -149,7 +150,11 @@ export class TelegramTransport {
 
   defer(key, operation) {
     if (!key || typeof operation !== 'function') return false;
-    this.deferred.set(String(key), operation);
+    const normalizedKey = String(key);
+    this.deferred.set(normalizedKey, operation);
+    if (!this.deferredMeta.has(normalizedKey)) this.deferredMeta.set(normalizedKey, { queuedAt: this.now(), attempts: 0 });
+    const meta = this.deferredMeta.get(normalizedKey);
+    console.warn(`[TelegramTransport] deferred queued key=${normalizedKey} pending=${this.deferred.size} attempts=${meta?.attempts || 0}`);
     this.scheduleDeferredFlush();
     return true;
   }
@@ -167,17 +172,26 @@ export class TelegramTransport {
   async flushDeferred() {
     if (this.isCoolingDown()) { this.scheduleDeferredFlush(); return; }
     for (const [key, operation] of Array.from(this.deferred.entries())) {
+      const meta = this.deferredMeta.get(key) || { queuedAt: this.now(), attempts: 0 };
+      meta.attempts += 1;
+      this.deferredMeta.set(key, meta);
+      const queuedMs = Math.max(0, this.now() - meta.queuedAt);
+      console.warn(`[TelegramTransport] deferred attempt key=${key} attempt=${meta.attempts} queued_ms=${queuedMs}`);
       try {
         await operation();
         this.deferred.delete(key);
+        this.deferredMeta.delete(key);
+        console.warn(`[TelegramTransport] deferred success key=${key} attempts=${meta.attempts} queued_ms=${Math.max(0, this.now() - meta.queuedAt)}`);
         await this.sleepFn(120);
       } catch (error) {
         if (this.isRateLimitedError(error)) {
+          console.warn(`[TelegramTransport] deferred paused key=${key} attempt=${meta.attempts} retry_after=${error.retryAfter || this.remainingCooldownSeconds()}s`);
           this.scheduleDeferredFlush();
           return;
         }
-        console.warn(`[TelegramTransport] deferred=${key} 폐기: ${safeErrorMessage(error)}`);
+        console.warn(`[TelegramTransport] deferred=${key} 폐기 attempts=${meta.attempts} queued_ms=${Math.max(0, this.now() - meta.queuedAt)}: ${safeErrorMessage(error)}`);
         this.deferred.delete(key);
+        this.deferredMeta.delete(key);
       }
     }
     if (this.deferred.size) this.scheduleDeferredFlush();
