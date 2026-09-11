@@ -7,6 +7,8 @@ import { redactSecrets } from '../utils/redact.js';
 
 const DEFAULT_TAIL_SIZE = 10;
 const MIN_COMPACT_MESSAGES = 6;
+// 💡 리눅스 단일 인자 제한(MAX_ARG_STRLEN 128KB)을 절대 초과하지 않도록 청크당 최대 24,000자(약 70KB)로 제한
+const MAX_CHUNK_CHARS = 24000;
 const compactingSessions = new Set();
 
 function countChars(value) {
@@ -15,6 +17,52 @@ function countChars(value) {
 
 function formatMessages(messages) {
   return messages.map((message) => `[${message.role}]\n${redactSecrets(message.text)}`).join('\n\n');
+}
+
+/**
+ * 메시지 목록을 MAX_CHUNK_CHARS 한도 내의 청크 배열로 분할한다.
+ * 단일 메시지가 한도를 넘을 경우에도 누락 없이 안전하게 슬라이스 분할한다.
+ */
+function chunkCandidates(messages, maxChars = MAX_CHUNK_CHARS) {
+  const chunks = [];
+  let currentChunk = [];
+  let currentChars = 0;
+
+  for (const message of messages) {
+    const text = String(message.text || '');
+    const msgChars = text.length;
+
+    // 단일 메시지가 한도를 넘는 거대 메시지인 경우 안전 분할
+    if (msgChars > maxChars) {
+      if (currentChunk.length > 0) {
+        chunks.push(currentChunk);
+        currentChunk = [];
+        currentChars = 0;
+      }
+      for (let offset = 0; offset < text.length; offset += maxChars) {
+        chunks.push([{
+          ...message,
+          text: text.slice(offset, offset + maxChars)
+        }]);
+      }
+      continue;
+    }
+
+    if (currentChunk.length > 0 && currentChars + msgChars > maxChars) {
+      chunks.push(currentChunk);
+      currentChunk = [message];
+      currentChars = msgChars;
+    } else {
+      currentChunk.push(message);
+      currentChars += msgChars;
+    }
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
 }
 
 function buildSummaryPrompt(existingSummary, messages) {
@@ -66,17 +114,27 @@ export class Compactor {
       }
 
       const adapter = providerManager.getAdapter(range.session.active_provider);
-      const prompt = buildSummaryPrompt(range.session.rolling_summary, range.candidates);
+      const chunks = chunkCandidates(range.candidates);
       const beforeChars = countChars(range.session.rolling_summary) + range.candidates.reduce((sum, row) => sum + countChars(row.text), 0);
-      const response = await adapter.executePrompt({
-        prompt,
-        model: range.session.active_model,
-        reasoningEffort: 'default',
-        sessionId,
-        profile: 'READ_ONLY'
-      });
-      const summary = redactSecrets(response?.response).trim();
-      if (!summary) throw new Error('Provider가 빈 요약을 반환했습니다.');
+
+      // 💡 청크 분할 순차 롤링 요약: 이전 청크의 요약 결과를 다음 청크의 기존 summary로 전달하여 데이터 유실 방지
+      let currentSummary = range.session.rolling_summary;
+      for (let i = 0; i < chunks.length; i += 1) {
+        const chunk = chunks[i];
+        const prompt = buildSummaryPrompt(currentSummary, chunk);
+        const response = await adapter.executePrompt({
+          prompt,
+          model: range.session.active_model,
+          reasoningEffort: 'default',
+          sessionId,
+          profile: 'READ_ONLY'
+        });
+        const partialSummary = redactSecrets(response?.response).trim();
+        if (!partialSummary) throw new Error('Provider가 빈 요약을 반환했습니다.');
+        currentSummary = partialSummary;
+      }
+
+      const summary = currentSummary;
       const afterChars = countChars(summary);
       const cursorMessageId = range.candidates.at(-1).id;
 
@@ -91,8 +149,9 @@ export class Compactor {
       ProviderSessionRepository.resetAllToUnbound(sessionId);
 
       return {
-        ...this.result('COMPACTED', true, `✅ **컨텍스트 압축 완료**\n\n• 압축 메시지: \`${range.candidates.length}개\`\n• 최근 원문 유지: \`${range.tail.length}개\`\n• 압축 전 추정 문자: \`${beforeChars}\`\n• 압축 후 추정 문자: \`${afterChars}\`\n• **Native Session**: \`초기화 완료 (다음 턴에서 압축본으로 새 세션 롤오버)\`\n\n_SQLite Canonical 원문은 삭제하거나 수정하지 않았습니다._`),
+        ...this.result('COMPACTED', true, `✅ **컨텍스트 압축 완료**\n\n• 압축 메시지: \`${range.candidates.length}개\`${chunks.length > 1 ? ` (${chunks.length}개 청크 순차 롤링)` : ''}\n• 최근 원문 유지: \`${range.tail.length}개\`\n• 압축 전 추정 문자: \`${beforeChars}\`\n• 압축 후 추정 문자: \`${afterChars}\`\n• **Native Session**: \`초기화 완료 (다음 턴에서 압축본으로 새 세션 롤오버)\`\n\n_SQLite Canonical 원문은 삭제하거나 수정하지 않았습니다._`),
         compactedMessages: range.candidates.length,
+        chunksCount: chunks.length,
         retainedMessages: range.tail.length,
         beforeChars,
         afterChars,

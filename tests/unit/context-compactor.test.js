@@ -288,3 +288,30 @@ test('/compact resets all provider native sessions to UNBOUND so next turn boots
   assert.match(prepared.prompt, /summary-for-rollover/);
   assert.match(prepared.prompt, /first turn after compact/);
 });
+
+test('chunked compact splits large messages into safe chunks and rolls summaries sequentially', async () => {
+  const session = SessionManager.createSession(userId, { provider: 'compact-test' });
+  // 16개 메시지 중 6개가 candidate, 각 candidate를 10,000자로 채워 총 60,000자 초과 유도
+  for (let index = 1; index <= 16; index += 1) {
+    SessionManager.saveMessage({
+      sessionId: session.id,
+      role: index % 2 ? 'user' : 'assistant',
+      text: `large-message-${index}: ` + 'A'.repeat(index <= 6 ? 10000 : 50)
+    });
+  }
+
+  let callCount = 0;
+  registerAdapter(async ({ prompt, profile }) => {
+    callCount += 1;
+    assert.equal(profile, 'READ_ONLY');
+    // MAX_CHUNK_CHARS(24000)를 초과하지 않는 안전한 프롬프트 크기 검증 (템플릿 포함 26,000자 이내)
+    assert.ok(prompt.length < 28000, `프롬프트 크기(${prompt.length})가 리눅스 커널 안전 한도(28000)를 넘지 않아야 함`);
+    return { response: `chunk-summary-v${callCount}` };
+  });
+
+  const result = await Compactor.compactSession(session.id);
+  assert.equal(result.status, 'COMPACTED');
+  assert.ok(result.chunksCount > 1, `2개 이상의 청크로 분할되어야 함 (현재: ${result.chunksCount})`);
+  assert.equal(callCount, result.chunksCount, '모든 청크가 순차적으로 LLM 호출을 거쳐야 함');
+  assert.equal(SessionManager.getSession(session.id).rolling_summary, `chunk-summary-v${callCount}`);
+});
