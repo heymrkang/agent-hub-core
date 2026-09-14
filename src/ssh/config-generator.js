@@ -36,8 +36,18 @@ function sanitizeConfigValue(value) {
   return String(value).replace(/[\r\n]/g, '').trim();
 }
 
+function cloudflareAccessAliases() {
+  return new Set(
+    String(process.env.SSH_CLOUDFLARE_ACCESS_ALIASES || '')
+      .split(',')
+      .map((value) => sanitizeConfigValue(value))
+      .filter(Boolean)
+  );
+}
+
 export function generateSshConfig(hosts) {
   ensureSshLayout();
+  const cfAccessAliases = cloudflareAccessAliases();
   const lines = [
     '# Managed by Agent Hub Core. Manual edits may be overwritten.',
     `Host *`,
@@ -48,12 +58,16 @@ export function generateSshConfig(hosts) {
   ];
 
   for (const host of hosts.filter((h) => h.enabled)) {
-    lines.push(`Host ${sanitizeConfigValue(host.alias)}`);
+    const alias = sanitizeConfigValue(host.alias);
+    lines.push(`Host ${alias}`);
     lines.push(`  HostName ${sanitizeConfigValue(host.host)}`);
     lines.push(`  Port ${Number(host.port) || 22}`);
     lines.push(`  User ${sanitizeConfigValue(host.username)}`);
     lines.push(`  IdentityFile ${sanitizeConfigValue(host.identity_file)}`);
     lines.push('  IdentitiesOnly yes');
+    if (cfAccessAliases.has(alias)) {
+      lines.push('  ProxyCommand cloudflared access ssh --hostname %h');
+    }
     lines.push('');
   }
 
