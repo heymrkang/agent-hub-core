@@ -10,6 +10,12 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*
 
+RUN mkdir -p -m 755 /usr/share/keyrings \
+    && curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" > /etc/apt/sources.list.d/cloudflared.list \
+    && apt-get update && apt-get install -y --no-install-recommends cloudflared \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN npm install -g @openai/codex@0.149.1
@@ -17,7 +23,7 @@ RUN curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cl
     && echo "6cdc7fc90562ba40c8bf0658f30ede016e6acd03083779be8d54d4bf63dd99800393e33c00addf943f6c2b79b4dacefc6fb4a963b2b02f6ce63635ef54a42868  /tmp/agy.tar.gz" | sha512sum -c - \
     && tar -xzf /tmp/agy.tar.gz -C /usr/local/bin && ln -snf /usr/local/bin/antigravity /usr/local/bin/agy \
     && chmod +x /usr/local/bin/antigravity /usr/local/bin/agy && rm -rf /tmp/agy.tar.gz && agy --version
-RUN git --version && gh --version | head -n 1 && docker --version && ssh -V
+RUN git --version && gh --version | head -n 1 && docker --version && ssh -V && cloudflared --version
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN npx -y playwright install --with-deps chromium \
