@@ -10,11 +10,11 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p -m 755 /usr/share/keyrings \
-    && curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" > /etc/apt/sources.list.d/cloudflared.list \
-    && apt-get update && apt-get install -y --no-install-recommends cloudflared \
-    && rm -rf /var/lib/apt/lists/*
+# Pin cloudflared to 2026.5.1. Newer releases currently regress headless
+# Cloudflare Access service-token authentication for access ssh/tcp.
+RUN curl -fsSL https://github.com/cloudflare/cloudflared/releases/download/2026.5.1/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared \
+    && echo "3c6a5ba995a258dbe90f98e5fdb2c2620b7be72c3ca761614f6eb52aee252cea  /usr/local/bin/cloudflared" | sha256sum -c - \
+    && chmod 0755 /usr/local/bin/cloudflared
 
 ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
