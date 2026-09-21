@@ -120,7 +120,7 @@ export class CodexAdapter extends ProviderAdapter {
     // Restricted profiles run with an immutable container root. Only the workspace mount
     // receives the requested ro/rw mode; transient runtime paths are tmpfs and disappear
     // with the helper container. /root/.codex stays rw so native thread files survive helper removal.
-    const dockerArgs = ['run', '--rm', '--name', helperName, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=256m', '--tmpfs', '/root/.cache:rw,nosuid,nodev,size=64m', '-e', 'HOME=/root', '-e', 'TMPDIR=/tmp', '-e', 'CI=true', '-v', `${runtime.workspaceSource}:${workspaceRoot}:${workspaceMode}`, '-v', `${runtime.codexHomeSource}:/root/.codex:rw`];
+    const dockerArgs = ['run', '--rm', '--name', helperName, '--read-only', '--cap-drop', 'ALL', '--cap-add', 'DAC_OVERRIDE', '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=256m', '--tmpfs', '/root/.cache:rw,nosuid,nodev,size=64m', '-e', 'HOME=/root', '-e', 'TMPDIR=/tmp', '-e', 'CI=true', '-v', `${runtime.workspaceSource}:${workspaceRoot}:${workspaceMode}`, '-v', `${runtime.codexHomeSource}:/root/.codex:rw`];
     const ghToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
     if (profile === 'WORKSPACE' && ghToken) {
       dockerArgs.push(
