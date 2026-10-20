@@ -15,7 +15,33 @@ class SchedulerEngine {
   stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
   ensureSystemSchedules() { const db = getDb(); const interval = String(runtimeConfig.modelRefreshIntervalSeconds); for (const provider of ['codex', 'antigravity']) { const id = `system:model-refresh:${provider}`; const existing = db.prepare('SELECT id, schedule_value FROM schedules WHERE id=?').get(id); if (!existing) { const next = new Date(Date.now() + 3000).toISOString(); db.prepare(`INSERT INTO schedules(id,name,kind,schedule_type,schedule_value,timezone,provider,prompt,timeout_seconds,enabled,next_run_at) VALUES(?,?,'SYSTEM','INTERVAL',?,'UTC',?,'MODEL_CATALOG_REFRESH',120,1,?)`).run(id, `Model Catalog Refresh: ${provider}`, interval, provider, next); } else if (existing.schedule_value !== interval) { const next = new Date(Date.now() + runtimeConfig.modelRefreshIntervalSeconds * 1000).toISOString(); db.prepare("UPDATE schedules SET schedule_value=?, next_run_at=?, updated_at=datetime('now') WHERE id=?").run(interval, next, id); } } }
   reconcileMissedRuns() { const db = getDb(); const overdue = db.prepare(`SELECT * FROM schedules WHERE enabled=1 AND next_run_at IS NOT NULL AND next_run_at < ?`).all(new Date(Date.now() - 120000).toISOString()); for (const s of overdue) { this.recordRun(s.id, ScheduleRunStatus.MISSED, { errorMessage: 'Agent Hub downtime 중 실행 시각 경과 — 자동 replay 안 함' }); this.advanceSchedule(s, new Date()); } }
-  async tick() { const due = getDb().prepare(`SELECT * FROM schedules WHERE enabled=1 AND next_run_at IS NOT NULL AND next_run_at <= ? ORDER BY next_run_at ASC LIMIT 20`).all(new Date().toISOString()); for (const schedule of due) { if (this.runningSchedules.has(schedule.id)) { this.recordRun(schedule.id, ScheduleRunStatus.SKIPPED, { errorMessage: 'Overlap policy SKIP' }); this.advanceSchedule(schedule, new Date()); continue; } this.runningSchedules.add(schedule.id); this.execute(schedule).finally(() => this.runningSchedules.delete(schedule.id)); this.advanceSchedule(schedule, new Date()); } }
+  async tick() {
+    const db = getDb();
+    const due = db.prepare(`SELECT * FROM schedules WHERE enabled=1 AND next_run_at IS NOT NULL AND next_run_at <= ? ORDER BY next_run_at ASC LIMIT 20`).all(new Date().toISOString());
+    for (const schedule of due) {
+      if (this.runningSchedules.has(schedule.id)) continue;
+      // Claim the occurrence BEFORE starting work. A calculation failure must never cause repeated dispatch.
+      let next;
+      try {
+        next = schedule.schedule_type === 'ONCE'
+          ? null
+          : computeNextRun(schedule.schedule_type, schedule.schedule_value, schedule.timezone, new Date());
+      } catch (error) {
+        console.error(`[Scheduler] ${schedule.id} 다음 실행 시각 계산 실패, 스케줄 비활성화: ${error.message}`);
+        db.prepare("UPDATE schedules SET enabled=0, next_run_at=NULL, updated_at=datetime('now') WHERE id=?").run(schedule.id);
+        this.recordRun(schedule.id, ScheduleRunStatus.FAILED, { errorMessage: `next_run_at 계산 실패: ${error.message}` });
+        continue;
+      }
+      const claim = db.prepare(`UPDATE schedules SET enabled=?, last_run_at=datetime('now'), next_run_at=?, updated_at=datetime('now') WHERE id=? AND enabled=1 AND next_run_at=?`).run(
+        schedule.schedule_type === 'ONCE' ? 0 : 1, next?.toISOString() || null, schedule.id, schedule.next_run_at
+      );
+      if (claim.changes !== 1) continue;
+      this.runningSchedules.add(schedule.id);
+      Promise.resolve().then(() => this.execute(schedule)).catch(error => {
+        console.error(`[Scheduler] ${schedule.id} 실행 실패: ${error.message}`);
+      }).finally(() => this.runningSchedules.delete(schedule.id));
+    }
+  }
   async runNow(scheduleId, userId) { const schedule = getDb().prepare(`SELECT * FROM schedules WHERE id=? AND user_id=? AND kind='USER'`).get(scheduleId, userId); if (!schedule) throw new Error('스케줄을 찾을 수 없습니다.'); if (this.runningSchedules.has(schedule.id)) { this.recordRun(schedule.id, ScheduleRunStatus.SKIPPED, { errorMessage: 'Manual run overlap — SKIP' }); return { skipped: true }; } this.runningSchedules.add(schedule.id); try { await this.execute(schedule); return { skipped: false }; } finally { this.runningSchedules.delete(schedule.id); } }
   async execute(schedule) {
     const runId = crypto.randomUUID(); const db = getDb(); const started = Date.now();

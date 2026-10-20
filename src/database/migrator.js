@@ -85,6 +85,10 @@ export function runMigrations(db, dbPath, backupDir) {
 
     const applyMigrationTx = db.transaction(() => {
       db.exec(sqlContent);
+      if (migration.version === 18) {
+        const violations = db.pragma('foreign_key_check');
+        if (violations.length) throw new Error(`v18 foreign_key_check 실패: ${JSON.stringify(violations)}`);
+      }
       db.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)').run(
         migration.version,
         migration.name
@@ -92,9 +96,13 @@ export function runMigrations(db, dbPath, backupDir) {
     });
 
     try {
+      // SQLite table rebuild in v18 needs foreign keys disabled outside a transaction.
+      if (migration.version === 18) db.pragma('foreign_keys = OFF');
       applyMigrationTx();
+      if (migration.version === 18) db.pragma('foreign_keys = ON');
       console.log(`[Migrator] Successfully applied v${migration.version}: ${migration.name}`);
     } catch (err) {
+      if (migration.version === 18) db.pragma('foreign_keys = ON');
       console.error(
         `[Migrator Fatal] 마이그레이션 적용 실패 (v${migration.version} - ${migration.name}): ${err.message}`
       );
