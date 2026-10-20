@@ -6,7 +6,7 @@ export async function extractScheduleIntent(text, activeSession, timezone = 'Asi
   if (simple) return validateIntent(simple);
 
   const adapter = providerManager.getAdapter(activeSession.active_provider);
-  const prompt = `다음 사용자의 스케줄 등록 요청을 JSON 하나로만 변환하세요. 설명/마크다운 금지.\n현재 timezone: ${timezone}\n현재 시각 ISO: ${new Date().toISOString()}\n허용 schedule_type: ONCE, INTERVAL, DAILY\nINTERVAL schedule_value는 초 단위 문자열(최소 60), DAILY는 HH:mm, ONCE는 ISO-8601 timestamp.\nprovider는 codex 또는 antigravity. model은 명시하지 않으면 null. timeout_seconds는 기본 300.\n반드시 필드: name,schedule_type,schedule_value,timezone,provider,model,execution_profile,prompt,timeout_seconds,needs_clarification,clarification_reason\n모호한 날짜/시간이면 needs_clarification=true로 하세요.\n사용자 요청: ${JSON.stringify(text)}`;
+  const prompt = `다음 사용자의 스케줄 등록 요청을 JSON 하나로만 변환하세요. 설명/마크다운 금지.\n현재 timezone: ${timezone}\n현재 시각 ISO: ${new Date().toISOString()}\n허용 schedule_type: ONCE, INTERVAL, DAILY, WEEKLY\nINTERVAL schedule_value는 초 단위 문자열(최소 60), DAILY는 HH:mm, WEEKLY는 한국어 요일(예: 화,수,목,금 08:30 또는 일요일 22:00), ONCE는 ISO-8601 timestamp.\nprovider는 codex 또는 antigravity. model은 명시하지 않으면 null. timeout_seconds는 기본 300.\n반드시 필드: name,schedule_type,schedule_value,timezone,provider,model,execution_profile,prompt,timeout_seconds,needs_clarification,clarification_reason\n모호한 날짜/시간이면 needs_clarification=true로 하세요.\n사용자 요청: ${JSON.stringify(text)}`;
   const result = await adapter.executePrompt({ prompt, model: activeSession.active_model, reasoningEffort: 'default', profile: 'READ_ONLY' });
   const raw = String(result.response || '').trim().replace(/^```json\s*/i, '').replace(/```$/,'').trim();
   let parsed;
@@ -26,6 +26,15 @@ function parseSimpleKorean(text, session, timezone) {
     let hour = Number(m[1]); const minute = Number(m[2] || 0);
     if (/오후/.test(text) && hour < 12) hour += 12; if (/오전/.test(text) && hour === 12) hour = 0;
     return base(`매일 ${pad(hour)}:${pad(minute)}`, ScheduleType.DAILY, `${pad(hour)}:${pad(minute)}`, m[3], session, timezone);
+  }
+  m = text.match(/매주\s+([일월화수목금토](?:요일)?(?:\s*[,~\-]\s*[일월화수목금토](?:요일)?)*)\s+(오전|오후)?\s*(\d{1,2})(?::(\d{2}))?\s*(?:시)?\s+(.+)/);
+  if (m) {
+    let hour = Number(m[3]);
+    const minute = Number(m[4] || 0);
+    if (m[2] === '오후' && hour < 12) hour += 12;
+    if (m[2] === '오전' && hour === 12) hour = 0;
+    if (hour > 23 || minute > 59) throw new Error('올바르지 않은 WEEKLY 시간입니다.');
+    return base(`매주 ${m[1]} ${pad(hour)}:${pad(minute)}`, ScheduleType.WEEKLY, `${m[1]} ${pad(hour)}:${pad(minute)}`, m[5], session, timezone);
   }
   return null;
 }
