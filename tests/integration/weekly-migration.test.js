@@ -14,7 +14,7 @@ test('v17 -> v18 preserves schedules, child records, indexes and foreign keys', 
     db.pragma('foreign_keys = ON');
     db.exec(`
       CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT DEFAULT (datetime('now')));
-      INSERT INTO schema_migrations(version,name) VALUES (17,'deploy_targets');
+      WITH RECURSIVE versions(v) AS (SELECT 1 UNION ALL SELECT v+1 FROM versions WHERE v<17) INSERT INTO schema_migrations(version,name) SELECT v, CASE WHEN v=17 THEN 'deploy_targets' ELSE 'existing' END FROM versions;
       CREATE TABLE users(id INTEGER PRIMARY KEY);
       CREATE TABLE sessions(id TEXT PRIMARY KEY);
       CREATE TABLE jobs(id TEXT PRIMARY KEY);
