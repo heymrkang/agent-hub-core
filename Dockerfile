@@ -18,9 +18,9 @@ RUN mkdir -p -m 755 /usr/share/keyrings \
 
 ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-RUN npm install -g @openai/codex@0.149.1
-RUN curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.1.20-5830032204103680/linux-x64/cli_linux_x64.tar.gz" -o /tmp/agy.tar.gz \
-    && echo "6cdc7fc90562ba40c8bf0658f30ede016e6acd03083779be8d54d4bf63dd99800393e33c00addf943f6c2b79b4dacefc6fb4a963b2b02f6ce63635ef54a42868  /tmp/agy.tar.gz" | sha512sum -c - \
+RUN npm install -g @openai/codex@0.164.0
+RUN curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.4.6-4884751325200384/linux-x64/cli_linux_x64.tar.gz" -o /tmp/agy.tar.gz \
+    && echo "4e1244b8b8c1280552f59c1b24b76a9245db9c80032aec6db28fb86033d6088abc30a90dad432d2b246c28fdd87d82abb48727d5ff88ba1d5d4ec76b33348e7d  /tmp/agy.tar.gz" | sha512sum -c - \
     && tar -xzf /tmp/agy.tar.gz -C /usr/local/bin && ln -snf /usr/local/bin/antigravity /usr/local/bin/agy \
     && chmod +x /usr/local/bin/antigravity /usr/local/bin/agy && rm -rf /tmp/agy.tar.gz && agy --version
 RUN git --version && gh --version | head -n 1 && docker --version && ssh -V && cloudflared --version

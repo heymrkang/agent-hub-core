@@ -63,7 +63,7 @@ Agent Hub는 Provider Rules 파일 전체를 덮어쓰지 않고 `AGENT_HUB_MEMO
 - Docker socket integration
 - Internal health endpoint: `http://127.0.0.1:8787/health`
 
-Dockerfile 기준 provider CLI는 Codex `0.149.1`, Antigravity `1.1.20`으로 고정되어 있습니다. 버전을 올릴 때는 Dockerfile의 버전과 Antigravity archive checksum을 함께 갱신하고 regression을 다시 통과시켜야 합니다.
+Dockerfile 기준 provider CLI는 Codex `0.164.0`, Antigravity `1.4.6`으로 고정되어 있습니다. 버전을 올릴 때는 Dockerfile의 버전과 Antigravity archive checksum을 함께 갱신하고 regression을 다시 통과시켜야 합니다.
 
 ## Required persistent mounts
 

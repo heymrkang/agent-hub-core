@@ -140,7 +140,7 @@ UNIQUE(provider, native_session_ref) WHERE native_session_ref IS NOT NULL
 실환경에서 확인한 CLI:
 
 ```text
-codex-cli 0.149.1
+codex-cli 0.164.0
 ```
 
 Create:

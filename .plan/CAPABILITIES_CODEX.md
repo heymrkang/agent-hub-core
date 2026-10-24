@@ -1,6 +1,6 @@
 # Codex CLI Capability Baseline
 
-> **Pinned Version:** `@openai/codex@0.149.1`\
+> **Pinned Version:** `@openai/codex@0.164.0`\
 > **Audit Date:** 2026-09-01\
 > **Audit Environment:** Node.js v20+, npm CLI
 

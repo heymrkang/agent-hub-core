@@ -13,7 +13,7 @@ const LIVE_PROBE_JSONL = [
   JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 14582, cached_input_tokens: 11264, cache_write_input_tokens: 0, output_tokens: 9, reasoning_output_tokens: 0 } })
 ].join('\n');
 
-test('Codex 0.149.1 live probe JSONL에서 native thread, 응답, usage를 추출한다', () => {
+test('Codex live probe JSONL에서 native thread, 응답, usage를 추출한다', () => {
   const parsed = parseCodexExecJsonl(LIVE_PROBE_JSONL, { requireThreadId: true });
   assert.equal(parsed.nativeSessionRef, THREAD_ID);
   assert.equal(parsed.response, 'NATIVE_SESSION_PROBE');
