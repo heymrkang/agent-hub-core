@@ -11,6 +11,7 @@ services:
       - /mnt/storage/agent-hub-core/providers/codex:/root/.codex
       - /mnt/storage/agent-hub-core/providers/gemini:/root/.gemini
       - /mnt/storage/agent-hub-core/dev:/home/dev
+      - /mnt/storage/gdrive/Office:/home/dev/Office:rslave
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in Coolify Environment}"
