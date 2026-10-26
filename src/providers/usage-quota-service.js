@@ -2,7 +2,7 @@ const SUCCESS_TTL_MS = 60_000;
 const FAILURE_TTL_MS = 15_000;
 const STALE_MAX_MS = 600_000;
 const FORCE_COOLDOWN_MS = 15_000;
-const PROBE_TIMEOUT_MS = 10_000;
+const PROBE_TIMEOUT_MS = 30_000;
 
 export class UsageQuotaService {
   constructor({ providerManager, now = () => Date.now(), timeoutMs = PROBE_TIMEOUT_MS } = {}) {

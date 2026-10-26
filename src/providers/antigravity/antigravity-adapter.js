@@ -26,7 +26,7 @@ export class AntigravityAdapter extends ProviderAdapter {
   getCapabilities() { return { authPersistence: 'SUPPORTED', nonInteractive: 'SUPPORTED', jsonOutput: 'SUPPORTED', nativeSessionResume: 'SUPPORTED', modelSwitching: 'SUPPORTED', dynamicModelDiscovery: 'SUPPORTED', multiImage: 'SUPPORTED', nativeCompact: 'UNSUPPORTED', usageMetrics: 'PARTIAL', executionProfiles: 'SUPPORTED', reasoningEffort: 'SUPPORTED' }; }
   async getUsageQuota() {
     const { stdout } = await execFileAsync('agy', ['--print', '/usage', '--output-format', 'json'], {
-      timeout: 9000,
+      timeout: 25000,
       cwd: this.workspaceDir,
       env: { ...process.env, CI: 'true' },
       maxBuffer: 1024 * 1024
