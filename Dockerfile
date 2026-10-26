@@ -17,6 +17,7 @@ RUN mkdir -p -m 755 /usr/share/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Asia/Seoul
+ENV AGY_CLI_DISABLE_AUTO_UPDATE=1
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN npm install -g @openai/codex@0.164.0
 RUN curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.4.6-4884751325200384/linux-x64/cli_linux_x64.tar.gz" -o /tmp/agy.tar.gz \

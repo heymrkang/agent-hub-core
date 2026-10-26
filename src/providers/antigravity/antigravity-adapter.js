@@ -10,6 +10,22 @@ import { parseAntigravityExecutionResponse } from './execution-response.js';
 
 const execFileAsync = promisify(execFile);
 
+export function terminateProcessGroup(child, signal = 'SIGKILL', kill = process.kill) {
+  if (!child?.pid) return false;
+  try {
+    kill(-child.pid, signal);
+    return true;
+  } catch {
+    try { return child.kill(signal); } catch { return false; }
+  }
+}
+
+function timeoutError(message, nativeSessionRef) {
+  const error = new Error(message);
+  if (nativeSessionRef) error.code = 'ANTIGRAVITY_NATIVE_RESUME_FAILED';
+  return error;
+}
+
 export class AntigravityAdapter extends ProviderAdapter {
   constructor() {
     super('antigravity');
@@ -154,7 +170,7 @@ export class AntigravityAdapter extends ProviderAdapter {
       const timer = setTimeout(() => {
         if (!isFinished) {
           child.kill('SIGKILL');
-          finishError(new Error(`Antigravity ${profile} 실행 타임아웃 (${timeoutMs / 1000}초 초과)`));
+          finishError(timeoutError(`Antigravity ${profile} 실행 타임아웃 (${timeoutMs / 1000}초 초과)`, nativeSessionRef));
         }
       }, timeoutMs);
 
@@ -187,18 +203,13 @@ export class AntigravityAdapter extends ProviderAdapter {
       });
     });
   }
-  async executePrompt(options = {}) {
-    const { prompt, model, reasoningEffort = 'default', nativeSessionRef = null, profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
-    const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
-    if (normalizedProfile !== 'FULL_ACCESS') {
-      return this.executeRestrictedPrompt({ prompt, model, reasoningEffort, nativeSessionRef, profile: normalizedProfile, cwd, timeoutMs, signal });
-    }
+  async executeFullAccessPrompt({ prompt, model, reasoningEffort, nativeSessionRef, profile, cwd, timeoutMs, signal }) {
     return new Promise((resolve, reject) => {
-      const args = this.buildArgs({ prompt, model, reasoningEffort, nativeSessionRef, profile: normalizedProfile });
-      const child = spawn('agy', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const args = this.buildArgs({ prompt, model, reasoningEffort, nativeSessionRef, profile });
+      const child = spawn('agy', args, { cwd, env: { ...process.env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
       let stdout = '', stderr = '', isFinished = false;
-      const timer = setTimeout(() => { if (!isFinished) { isFinished = true; child.kill('SIGKILL'); reject(new Error(`Antigravity 실행 타임아웃 (${timeoutMs / 1000}초 초과)`)); } }, timeoutMs);
-      if (signal) signal.addEventListener('abort', () => { if (!isFinished) { isFinished = true; clearTimeout(timer); child.kill('SIGKILL'); reject(new Error('Antigravity 작업이 사용자에 의해 중단되었습니다.')); } }, { once: true });
+      const timer = setTimeout(() => { if (!isFinished) { isFinished = true; terminateProcessGroup(child); reject(timeoutError(`Antigravity 실행 타임아웃 (${timeoutMs / 1000}초 초과)`, nativeSessionRef)); } }, timeoutMs);
+      if (signal) signal.addEventListener('abort', () => { if (!isFinished) { isFinished = true; clearTimeout(timer); terminateProcessGroup(child); reject(new Error('Antigravity 작업이 사용자에 의해 중단되었습니다.')); } }, { once: true });
       child.stdout.on('data', c => { stdout += c.toString(); });
       child.stderr.on('data', c => { stderr += c.toString(); });
       child.on('error', err => { if (isFinished) return; isFinished = true; clearTimeout(timer); reject(new Error(`Antigravity 프로세스 시작 실패: ${err.message}`)); });
@@ -219,6 +230,28 @@ export class AntigravityAdapter extends ProviderAdapter {
         }
       });
     });
+  }
+
+  async executePrompt(options = {}) {
+    const { prompt, model, reasoningEffort = 'default', nativeSessionRef = null, profile = 'WORKSPACE', cwd = this.workspaceDir, timeoutMs = this.defaultTimeoutMs, signal } = options;
+    const normalizedProfile = ['READ_ONLY', 'WORKSPACE', 'FULL_ACCESS'].includes(profile) ? profile : 'WORKSPACE';
+    const executeOnce = () => normalizedProfile === 'FULL_ACCESS'
+      ? this.executeFullAccessPrompt({ prompt, model, reasoningEffort, nativeSessionRef, profile: normalizedProfile, cwd, timeoutMs, signal })
+      : this.executeRestrictedPrompt({ prompt, model, reasoningEffort, nativeSessionRef, profile: normalizedProfile, cwd, timeoutMs, signal });
+
+    try {
+      return await executeOnce();
+    } catch (error) {
+      if (!model || !/invalid model selection/i.test(error?.message || '')) throw error;
+      let modelStillAvailable = false;
+      try {
+        const models = await this.discoverModels(true);
+        modelStillAvailable = models.some(candidate => candidate.id === model);
+      } catch {}
+      if (!modelStillAvailable) throw error;
+      console.warn(`[AntigravityAdapter] ${model} 초기 모델 해석 실패 후 1회 재시도`);
+      return executeOnce();
+    }
   }
 }
 

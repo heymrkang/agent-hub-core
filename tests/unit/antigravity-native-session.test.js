@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { parseAntigravityExecutionResponse } from '../../src/providers/antigravity/execution-response.js';
-import { AntigravityAdapter } from '../../src/providers/antigravity/antigravity-adapter.js';
+import { AntigravityAdapter, terminateProcessGroup } from '../../src/providers/antigravity/antigravity-adapter.js';
 
 test('새 Antigravity 응답은 conversation_id를 native identity로 반환한다', () => {
   const parsed = parseAntigravityExecutionResponse(JSON.stringify({
@@ -66,4 +66,29 @@ test('Antigravity args는 native ref가 있을 때 --conversation으로 resume�
   assert.equal(args[index + 1], 'agy-conv-3');
   assert.equal(args.includes('--effort'), true);
   assert.equal(args.includes('--model'), true);
+});
+
+test('Antigravity 프로세스 종료는 자식까지 포함한 process group을 대상으로 한다', () => {
+  const calls = [];
+  const child = { pid: 321, kill: () => { throw new Error('fallback should not run'); } };
+  assert.equal(terminateProcessGroup(child, 'SIGKILL', (pid, signal) => calls.push([pid, signal])), true);
+  assert.deepEqual(calls, [[-321, 'SIGKILL']]);
+});
+
+test('일시적인 model selection 실패는 모델이 여전히 존재할 때 한 번만 재시도한다', async () => {
+  class RetryAdapter extends AntigravityAdapter {
+    constructor() { super(); this.executions = 0; this.discoveries = 0; }
+    async executeFullAccessPrompt() {
+      this.executions += 1;
+      if (this.executions === 1) throw new Error('invalid model selection: model gemini-x is not recognized');
+      return { response: 'ok', nativeSessionRef: 'agy-retry' };
+    }
+    async discoverModels() { this.discoveries += 1; return [{ id: 'gemini-x' }]; }
+  }
+
+  const adapter = new RetryAdapter();
+  const result = await adapter.executePrompt({ prompt: 'retry', model: 'gemini-x', profile: 'FULL_ACCESS' });
+  assert.equal(result.response, 'ok');
+  assert.equal(adapter.executions, 2);
+  assert.equal(adapter.discoveries, 1);
 });

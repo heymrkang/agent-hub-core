@@ -43,3 +43,15 @@ test('queued and running jobs can both be stopped',async()=>{
   getSettingsManager().set('concurrency_limit',1);for(const id of ['stop-a','stop-b'])addSession(id);const adapter=deferredAdapter();providerManager.registerAdapter(adapter);const running=queueManager.enqueueJob({sessionId:'stop-a',provider:'codex',model:null,prompt:'running',profile:'WORKSPACE'});const queued=queueManager.enqueueJob({sessionId:'stop-b',provider:'codex',model:null,prompt:'queued',profile:'WORKSPACE'});
   await waitFor(()=>adapter.starts.length===1&&queueManager.getQueueStats().totalQueued===1);assert.equal(queueManager.cancelJob(queued.jobId),true);await assert.rejects(queued,/대기 중 취소/);assert.equal(db.prepare('SELECT status FROM jobs WHERE id=?').get(queued.jobId).status,'CANCELLED');assert.equal(queueManager.cancelJob(running.jobId),true);await assert.rejects(running,/취소/);await waitFor(()=>queueManager.getQueueStats().activeExecutionsCount===0);assert.equal(db.prepare('SELECT status FROM jobs WHERE id=?').get(running.jobId).status,'CANCELLED');
 });
+
+test('ERROR provider mapping은 stale native session을 재사용하지 않는다',async()=>{
+  getSettingsManager().set('concurrency_limit',1);addSession('stale-native');
+  db.prepare(`INSERT INTO provider_sessions(id,session_id,provider,native_session_ref,state) VALUES(?,?,?,?,?)`).run('mapping-stale','stale-native','antigravity','stale-conversation','ERROR');
+  const received=[];
+  providerManager.registerAdapter({name:'antigravity',executePrompt:async({nativeSessionRef})=>{received.push(nativeSessionRef);return{response:'recovered',nativeSessionRef:'fresh-conversation'};}});
+  const job=queueManager.enqueueJob({sessionId:'stale-native',provider:'antigravity',model:null,prompt:'recover',profile:'FULL_ACCESS'});
+  assert.equal(await job,'recovered');
+  assert.deepEqual(received,[null]);
+  const mapping=db.prepare('SELECT state,native_session_ref FROM provider_sessions WHERE session_id=? AND provider=?').get('stale-native','antigravity');
+  assert.deepEqual(mapping,{state:'READY',native_session_ref:'fresh-conversation'});
+});

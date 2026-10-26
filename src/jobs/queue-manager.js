@@ -101,7 +101,8 @@ class QueueManager {
     try {
       const adapter = providerManager.getAdapter(job.provider);
       const providerSession = ContextManager.getProviderSession(job.session_id, providerName);
-      const result = await adapter.executePrompt({ prompt, model: job.model, reasoningEffort: job.reasoningEffort, sessionId: job.session_id, nativeSessionRef: providerSession?.native_session_ref || null, profile, signal: abortController.signal });
+      const nativeSessionRef = providerSession?.state === 'READY' ? providerSession.native_session_ref || null : null;
+      const result = await adapter.executePrompt({ prompt, model: job.model, reasoningEffort: job.reasoningEffort, sessionId: job.session_id, nativeSessionRef, profile, signal: abortController.signal });
 
       // last_synced_message_id is the canonical user-turn boundary successfully submitted to this Provider.
       // The following same-provider assistant row already exists inside the Provider native thread and is
@@ -122,7 +123,7 @@ class QueueManager {
     } catch (error) {
       const durationMs = Date.now() - startTime;
       console.warn(`[JobExecution] provider failed job=${job.id} session=${job.session_id} provider=${providerName} elapsed_ms=${durationMs} aborted=${abortController.signal.aborted} error_code=${error?.code || 'unknown'}`);
-      if (error?.code === 'CODEX_NATIVE_RESUME_FAILED' || error?.code === 'CODEX_NATIVE_THREAD_MISMATCH') {
+      if (['CODEX_NATIVE_RESUME_FAILED', 'CODEX_NATIVE_THREAD_MISMATCH', 'ANTIGRAVITY_NATIVE_RESUME_FAILED', 'ANTIGRAVITY_NATIVE_SESSION_MISMATCH'].includes(error?.code)) {
         try { ProviderSessionRepository.markFailure({ sessionId: job.session_id, provider: providerName, state: 'ERROR', error }); } catch {}
       }
       if (abortController.signal.aborted) {
